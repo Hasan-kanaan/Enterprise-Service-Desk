@@ -232,30 +232,31 @@ The system manages these requests from creation through resolution and closure.
 
 There is one `User` model.
 
-Employees, agents, managers, and administrators are NOT separate user entities.
+Employees, agents, managers, administrators, and super administrators are NOT separate user entities.
 
 A user's role determines what they are allowed to do.
 
 Available roles:
 
 ```text
-EMPLOYEE
-AGENT
-MANAGER
+SUPER_ADMIN
 ADMIN
+MANAGER
+AGENT
+EMPLOYEE
 ```
 
 ### EMPLOYEE
 
-Employees are normal company users.
+Employees are internal company employees and ticket requesters.
 
 They can:
 
-- Register an account
 - Login
 - Create tickets
 - View their own tickets
 - Comment on their tickets
+- Respond when support staff request information
 - Receive internal notifications
 - Receive relevant email notifications
 - Close tickets after they are resolved
@@ -270,7 +271,7 @@ They cannot:
 
 ### AGENT
 
-Agents are members of the support team.
+Agents are IT/service-desk support staff.
 
 They can:
 
@@ -290,7 +291,7 @@ Agents cannot normally assign or reassign tickets unless that permission is expl
 
 ### MANAGER
 
-Managers supervise the support operation.
+Managers supervise service-desk operations and are not system administrators.
 
 They can:
 
@@ -309,7 +310,7 @@ Managers remain responsible for ticket assignment during the initial AI implemen
 
 ### ADMIN
 
-Administrators manage the system.
+Admins manage organization accounts and system configuration.
 
 They can:
 
@@ -322,19 +323,33 @@ They can:
 - Manage departments
 - Manage system configuration
 
-The intended administrative model is:
+Admins cannot create `SUPER_ADMIN` or other `ADMIN` accounts. The intended account hierarchy is:
 
 ```text
-ADMIN
+SUPER_ADMIN
   │
-  ├── creates EMPLOYEE accounts
-  ├── creates AGENT accounts
-  └── creates MANAGER accounts
+   └── creates ADMIN accounts
+
+ADMIN
+   │
+   ├── creates EMPLOYEE accounts
+   ├── creates AGENT accounts
+   └── creates MANAGER accounts
 ```
 
-Employees will also be allowed to register themselves.
+### SUPER_ADMIN
 
-The exact interaction between self-registration and administrator-created accounts will be finalized during authentication design.
+Super Admins are the highest-level system administrators.
+
+They can:
+
+- Be created only during the initial application bootstrap/setup
+- Create and manage `ADMIN` accounts
+- Perform system-level administration
+
+They cannot create another `SUPER_ADMIN`.
+
+There is no public registration. Users cannot choose their own role. All account-creation endpoints must be protected by authentication and server-side role-based authorization.
 
 ---
 
@@ -357,10 +372,11 @@ User
 The role is one of:
 
 ```text
-EMPLOYEE
-AGENT
-MANAGER
+SUPER_ADMIN
 ADMIN
+MANAGER
+AGENT
+EMPLOYEE
 ```
 
 We intentionally do not create separate:
@@ -370,6 +386,7 @@ Employee
 Agent
 Manager
 Admin
+SuperAdmin
 ```
 
 entities.
@@ -388,7 +405,8 @@ Do NOT use Clerk or another external authentication provider unless explicitly d
 
 The planned authentication system includes:
 
-- Employee registration
+- One-time initial `SUPER_ADMIN` bootstrap/setup
+- Admin-provisioned account creation
 - Login
 - Password hashing
 - JWT access tokens
@@ -400,6 +418,22 @@ The planned authentication system includes:
 Passwords must never be stored in plaintext.
 
 Refresh tokens should not be stored in plaintext in persistent storage.
+
+The account lifecycle is:
+
+```text
+Fresh installation
+   ↓
+Initial SUPER_ADMIN setup
+   ↓
+SUPER_ADMIN creates ADMIN accounts
+   ↓
+ADMIN creates EMPLOYEE, AGENT, and MANAGER accounts
+   ↓
+Users log in normally
+```
+
+The initial setup is available only while no `SUPER_ADMIN` exists. It becomes unavailable after the first `SUPER_ADMIN` is created. The bootstrap flow is not normal user registration.
 
 Authentication will be implemented gradually during Phase 1.
 
@@ -1172,15 +1206,16 @@ Planned tasks:
 6. Create Role enum
 7. Create Users module
 8. Create Auth module
-9. Implement registration
-10. Implement password hashing
-11. Implement login
-12. Implement JWT access tokens
-13. Implement refresh tokens
-14. Implement protected routes
-15. Implement RBAC
-16. Create basic frontend authentication pages
-17. Connect frontend authentication to backend
+9. Implement initial `SUPER_ADMIN` bootstrap/setup
+10. Implement admin-provisioned account creation
+11. Implement password hashing
+12. Implement login
+13. Implement JWT access tokens
+14. Implement refresh tokens
+15. Implement protected routes
+16. Implement RBAC and server-side role hierarchy enforcement
+17. Create basic frontend authentication pages
+18. Connect frontend authentication to backend
 
 Do not implement the entire phase at once.
 
@@ -1335,7 +1370,7 @@ Before making significant changes, read:
 
 ```text
 README.md
-docs/DECISIONS.md
+docs/decision.md
 ```
 
 These documents describe the project's requirements and architectural decisions.
@@ -1417,7 +1452,7 @@ before implementing them if they conflict with existing decisions.
 Important architectural decisions are documented in:
 
 ```text
-docs/DECISIONS.md
+docs/decision.md
 ```
 
 Do not silently contradict that file.
@@ -1479,7 +1514,7 @@ Contains:
 
 This is the primary high-level project reference.
 
-### docs/DECISIONS.md
+### docs/decision.md
 
 Contains important architectural decisions and the reasoning behind them.
 

@@ -13,7 +13,13 @@ import { UserRole } from '../users/user-role.enum';
 export class ProfileController {
   @Get('profile')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(UserRole.EMPLOYEE, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.AGENT,
+    UserRole.EMPLOYEE,
+  )
   getProfile(@Request() req: any) {
     return {
       message: 'Profile access granted',

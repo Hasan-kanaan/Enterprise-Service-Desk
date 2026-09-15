@@ -1,15 +1,19 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { UserRole } from '../users/user-role.enum';
+import { createHash, randomBytes } from 'node:crypto';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
+import { SetupDto } from './dto/setup.dto';
+import { CreateAccountDto } from './dto/create-account.dto';
+import { UserRole } from '../users/user-role.enum';
+import { jwtConstants } from './auth.constants';
 
 @Injectable()
 export class AuthService {
@@ -18,42 +22,69 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async getSetupStatus() {
+    const hasSuperAdmin = await this.usersService.hasSuperAdmin();
+
+    return { available: !hasSuperAdmin };
+  }
+
+  async setup(dto: SetupDto) {
+    const username = dto.username?.trim().toLowerCase();
     const email = dto.email?.trim().toLowerCase();
     const password = dto.password;
 
-    if (!email || !password) {
-      throw new BadRequestException('Email and password are required');
+    if (!username || !email || !password) {
+      throw new BadRequestException('Username, email, and password are required');
     }
 
-    if (password.length < 8) {
-      throw new BadRequestException('Password must be at least 8 characters long');
-    }
-
-    if (this.usersService.findByEmail(email)) {
-      throw new ConflictException('User with this email already exists');
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = this.usersService.create({
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await this.usersService.createInitialSuperAdmin({
+      username,
       email,
-      password: hashedPassword,
-      role: dto.role ?? UserRole.EMPLOYEE,
+      password: passwordHash,
     });
 
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    };
+    if (!user) {
+      throw new ConflictException('Initial setup has already been completed');
+    }
 
     return {
-      accessToken: this.jwtService.sign(payload),
+      message: 'Initial SUPER_ADMIN setup completed',
       user: {
         id: user.id,
+        username: user.username,
         email: user.email,
         role: user.role,
       },
+    };
+  }
+
+  async createAccount(callerRole: UserRole, dto: CreateAccountDto) {
+    const allowedRoles =
+      callerRole === UserRole.SUPER_ADMIN
+        ? [UserRole.ADMIN]
+        : callerRole === UserRole.ADMIN
+          ? [UserRole.EMPLOYEE, UserRole.AGENT, UserRole.MANAGER]
+          : [];
+
+    if (!allowedRoles.includes(dto.role)) {
+      throw new ForbiddenException('You do not have permission to create this role');
+    }
+
+    const username = dto.username.trim().toLowerCase();
+    const email = dto.email.trim().toLowerCase();
+    const password = await bcrypt.hash(dto.password, 10);
+
+    const user = await this.usersService.create({
+      username,
+      email,
+      password,
+      role: dto.role,
+    });
+
+    return {
+      message: 'Account created successfully',
+      user,
     };
   }
 
@@ -65,7 +96,7 @@ export class AuthService {
       throw new BadRequestException('Email and password are required');
     }
 
-    const user = this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -77,19 +108,78 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const payload = {
+    return this.issueTokens(user);
+  }
+
+  async refresh(refreshToken: string) {
+    if (!refreshToken?.trim()) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const tokenHash = this.hashRefreshToken(refreshToken);
+    const storedToken = await this.usersService.findRefreshToken(tokenHash);
+
+    if (
+      !storedToken ||
+      storedToken.revokedAt !== null ||
+      storedToken.expiresAt <= new Date()
+    ) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    const revoked = await this.usersService.revokeRefreshToken(tokenHash);
+
+    if (!revoked) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    return this.issueTokens(storedToken.user);
+  }
+
+  async logout(refreshToken: string) {
+    if (!refreshToken?.trim()) {
+      throw new BadRequestException('Refresh token is required');
+    }
+
+    await this.usersService.revokeRefreshToken(this.hashRefreshToken(refreshToken));
+
+    return { message: 'Logged out successfully' };
+  }
+
+  private async issueTokens(user: {
+    id: number;
+    username: string;
+    email: string;
+    role: UserRole;
+  }) {
+    const accessToken = this.jwtService.sign({
       sub: user.id,
+      username: user.username,
       email: user.email,
       role: user.role,
-    };
+    });
+    const refreshToken = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await this.usersService.createRefreshToken({
+      userId: user.id,
+      tokenHash: this.hashRefreshToken(refreshToken),
+      expiresAt,
+    });
 
     return {
-      accessToken: this.jwtService.sign(payload),
+      accessToken,
+      refreshToken,
       user: {
         id: user.id,
+        username: user.username,
         email: user.email,
         role: user.role,
       },
     };
+  }
+
+  private hashRefreshToken(refreshToken: string) {
+    return createHash('sha256').update(refreshToken).digest('hex');
   }
 }

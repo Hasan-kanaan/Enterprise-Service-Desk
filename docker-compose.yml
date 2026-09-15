@@ -14,3 +14,9 @@ services:
 
 volumes:
   postgres_data:
+
+  # docker compose up -d
+  # docker compose ps
+  # docker exec -it enterprise-service-desk-db psql -U postgres -d enterprise_service_desk
+  # \dt
+  # \q

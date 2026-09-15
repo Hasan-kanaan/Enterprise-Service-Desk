@@ -6,12 +6,13 @@ import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { ProfileController } from './profile.controller';
 import { RolesGuard } from './roles.guard';
+import { jwtConstants } from './auth.constants';
 
 @Module({
   imports: [
     UsersModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'dev-secret-change-me',
+      secret: jwtConstants.secret,
       signOptions: { expiresIn: '1h' },
     }),
   ],

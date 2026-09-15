@@ -1,7 +1,20 @@
-import { IsEmail, IsEnum, IsNotEmpty, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { UserRole } from '../../users/user-role.enum';
 
 export class RegisterDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(3)
+  @MaxLength(50)
+  username!: string;
+
   @IsEmail()
   @IsNotEmpty()
   email!: string;
