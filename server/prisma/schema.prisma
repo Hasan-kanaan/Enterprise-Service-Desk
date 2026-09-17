@@ -20,15 +20,57 @@ enum UserRole {
   EMPLOYEE
 }
 
+enum TeamScope {
+  REGION
+  GLOBAL
+}
+
+enum TicketStatus {
+  NEW
+  ASSIGNED
+  IN_PROGRESS
+  WAITING_FOR_EMPLOYEE
+  BLOCKED
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SubtaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
 model User {
-  id            Int            @id @default(autoincrement())
-  username      String         @unique @db.VarChar(50)
-  email         String         @unique @db.VarChar(255)
-  password      String         @db.VarChar(255)
-  role          UserRole       @default(EMPLOYEE)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  refreshTokens RefreshToken[]
+  id                Int             @id @default(autoincrement())
+  username          String          @unique @db.VarChar(50)
+  email             String          @unique @db.VarChar(255)
+  password          String          @db.VarChar(255)
+  role              UserRole        @default(EMPLOYEE)
+  regionId          Int?
+  departmentId      Int?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  refreshTokens     RefreshToken[]
+  region            Region?         @relation("UserHomeRegion", fields: [regionId], references: [id], onDelete: SetNull)
+  department        Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  teamMemberships   TeamMember[]
+  managedTeams      TeamManager[]
+  ledTeam           Team?          @relation("TeamLead")
+  specialties       UserSpecialty[]
+  requestedTickets  Ticket[]        @relation("TicketRequester")
+  assignedTickets   Ticket[]        @relation("TicketAssignedAgent")
+  assignedSubtasks  Subtask[]       @relation("SubtaskAssignedAgent")
+  suggestedTickets  Ticket[]        @relation("TicketSuggestedAgent")
+  aiReviewedTickets Ticket[]        @relation("TicketAiReviewer")
 }
 
 model RefreshToken {
@@ -41,4 +83,229 @@ model RefreshToken {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model Region {
+  id            Int            @id @default(autoincrement())
+  name          String         @unique @db.VarChar(100)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  users         User[]         @relation("UserHomeRegion")
+  teams         Team[]
+  ticketRegions TicketRegion[]
+
+  @@index([name])
+}
+
+model Department {
+  id                Int                @id @default(autoincrement())
+  name              String             @unique @db.VarChar(100)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  users             User[]
+  ticketDepartments TicketDepartment[]
+
+  @@index([name])
+}
+
+model Specialty {
+  id        Int             @id @default(autoincrement())
+  name      String          @unique @db.VarChar(100)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  users     UserSpecialty[]
+  teams     TeamSpecialty[]
+}
+
+model Team {
+  id               Int             @id @default(autoincrement())
+  name             String          @db.VarChar(150)
+  scope            TeamScope
+  regionId         Int?
+  teamLeadId       Int?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  region           Region?         @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  members          TeamMember[]
+  managers         TeamManager[]
+  specialties      TeamSpecialty[]
+  assignedTickets  Ticket[]        @relation("TicketAssignedTeam")
+  assignedSubtasks Subtask[]       @relation("SubtaskAssignedTeam")
+  suggestedTickets Ticket[]        @relation("TicketSuggestedTeam")
+  teamLead         User?           @relation("TeamLead", fields: [teamLeadId], references: [id], onDelete: SetNull)
+
+  @@unique([name, regionId])
+  @@unique([teamLeadId])
+  @@index([regionId])
+  @@index([scope])
+}
+
+model TeamMember {
+  teamId   Int
+  userId   Int
+  joinedAt DateTime @default(now())
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@index([userId])
+}
+
+model TeamManager {
+  teamId     Int
+  managerId  Int
+  assignedAt DateTime @default(now())
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  manager    User     @relation(fields: [managerId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, managerId])
+  @@unique([teamId])
+  @@index([managerId])
+}
+
+model UserSpecialty {
+  userId      Int
+  specialtyId Int
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialty   Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, specialtyId])
+  @@index([specialtyId])
+}
+
+model TeamSpecialty {
+  teamId      Int
+  specialtyId Int
+  createdAt   DateTime  @default(now())
+  team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  specialty   Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, specialtyId])
+  @@index([specialtyId])
+}
+
+model TicketCategory {
+  id               Int      @id @default(autoincrement())
+  name             String   @unique @db.VarChar(100)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  tickets          Ticket[] @relation("TicketCategory")
+  suggestedTickets Ticket[] @relation("TicketSuggestedCategory")
+}
+
+model TicketTag {
+  id            Int                @id @default(autoincrement())
+  name          String             @unique @db.VarChar(100)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  tickets       TicketTagOnTicket[]
+  suggestedFor  TicketSuggestedTag[]
+}
+
+model Ticket {
+  id                    Int                @id @default(autoincrement())
+  title                 String             @db.VarChar(200)
+  description           String             @db.Text
+  requesterId           Int
+  categoryId            Int
+  priority              TicketPriority     @default(MEDIUM)
+  status                TicketStatus       @default(NEW)
+  allRegions            Boolean            @default(false)
+  allDepartments        Boolean            @default(false)
+  assignedTeamId        Int?
+  assignedAgentId       Int?
+  aiSuggestedCategoryId Int?
+  aiSuggestedPriority   TicketPriority?
+  aiSuggestedTeamId     Int?
+  aiSuggestedAgentId    Int?
+  aiConfidence          Decimal?           @db.Decimal(5, 4)
+  aiReason              String?            @db.Text
+  aiReviewedAt          DateTime?
+  aiReviewedById        Int?
+  resolvedAt            DateTime?
+  closedAt              DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  requester             User               @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  category              TicketCategory     @relation("TicketCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  affectedRegions       TicketRegion[]
+  affectedDepartments   TicketDepartment[]
+  assignedTeam          Team?              @relation("TicketAssignedTeam", fields: [assignedTeamId], references: [id], onDelete: SetNull)
+  assignedAgent         User?              @relation("TicketAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  suggestedCategory     TicketCategory?    @relation("TicketSuggestedCategory", fields: [aiSuggestedCategoryId], references: [id], onDelete: SetNull)
+  suggestedTeam         Team?              @relation("TicketSuggestedTeam", fields: [aiSuggestedTeamId], references: [id], onDelete: SetNull)
+  suggestedAgent        User?              @relation("TicketSuggestedAgent", fields: [aiSuggestedAgentId], references: [id], onDelete: SetNull)
+  aiReviewedBy          User?              @relation("TicketAiReviewer", fields: [aiReviewedById], references: [id], onDelete: SetNull)
+  tags                  TicketTagOnTicket[]
+  aiSuggestedTags       TicketSuggestedTag[]
+  subtasks              Subtask[]
+
+  @@index([requesterId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([assignedTeamId])
+  @@index([assignedAgentId])
+}
+
+model TicketTagOnTicket {
+  ticketId  Int
+  tagId     Int
+  createdAt DateTime   @default(now())
+  ticket    Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tag       TicketTag  @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  @@id([ticketId, tagId])
+  @@index([tagId])
+}
+
+model TicketSuggestedTag {
+  ticketId  Int
+  tagId     Int
+  createdAt DateTime  @default(now())
+  ticket    Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tag       TicketTag @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  @@id([ticketId, tagId])
+  @@index([tagId])
+}
+
+model TicketRegion {
+  ticketId Int
+  regionId Int
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  region   Region @relation(fields: [regionId], references: [id], onDelete: Restrict)
+
+  @@id([ticketId, regionId])
+  @@index([regionId])
+}
+
+model TicketDepartment {
+  ticketId     Int
+  departmentId Int
+  ticket       Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@id([ticketId, departmentId])
+  @@index([departmentId])
+}
+
+model Subtask {
+  id              Int           @id @default(autoincrement())
+  ticketId        Int
+  title           String        @db.VarChar(200)
+  description     String        @db.Text
+  status          SubtaskStatus @default(TODO)
+  assignedTeamId  Int?
+  assignedAgentId Int?
+  completedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  ticket          Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  assignedTeam    Team?         @relation("SubtaskAssignedTeam", fields: [assignedTeamId], references: [id], onDelete: SetNull)
+  assignedAgent   User?         @relation("SubtaskAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId])
+  @@index([assignedTeamId])
+  @@index([assignedAgentId])
 }

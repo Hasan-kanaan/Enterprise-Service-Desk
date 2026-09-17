@@ -4,7 +4,7 @@ This file tracks changing project progress. The [README.md](README.md) remains t
 
 ## Current Phase
 
-**Phase 1: Authentication & Users**
+**Phase 2: Organization & Authorization Design**
 
 ## Completed
 
@@ -89,6 +89,29 @@ This file tracks changing project progress. The [README.md](README.md) remains t
 - Login and setup API errors now show backend-provided messages where available
 - Account directory distinguishes loading, empty, and retryable failure states
 - README guidance and project status have been separated into this file
+- Organizational and ticket domain schema implemented in Prisma
+- Region, Department, Specialty, Team, team membership, team manager, and specialty relationships implemented
+- Ticket scope, category, managed tags, primary ownership, AI recommendation fields, and subtasks implemented
+- PostgreSQL migrations for the organization/ticket foundation and ticket tags applied successfully
+- Final server-side authorization model approved and documented
+- Organization management foundation implemented for regions, departments, specialties, and teams
+- Protected organization management endpoints added for ADMIN and SUPER_ADMIN users
+- Team membership restricted to AGENT users
+- Team manager assignment restricted to MANAGER users with at most one manager per team
+- Optional Team Lead assignment restricted to AGENT team members, with at most one Team Lead per team and per agent
+- Team scope validation implemented for regional versus global teams
+- Ticket visibility policy implemented with Prisma-level requester, direct-agent, Team Lead, manager, and SUPER_ADMIN filters
+- Ticket visibility policy tests added, including generic not-found behavior for inaccessible ticket IDs
+- Ticket mutation authorization policy implemented for requester, assigned agent, Team Lead, manager, and SUPER_ADMIN relationships
+- Assignment authorization policy implemented for managed/led teams and AGENT team membership validation
+- Subtask authorization policy implemented for Team Leads, managers, and directly assigned agents
+- Status-transition authorization policy implemented for lifecycle checks, resolution, and closure rules
+- ADMIN ticket and conversation access finalized as denied; ADMIN remains limited to user and organization administration
+- Read-only ticket list and detail endpoints implemented using the visibility policy
+- Ticket assignment endpoint implemented with team/agent authorization
+- Ticket status-transition endpoint implemented with lifecycle authorization
+- Subtask create/update endpoints implemented with parent-team and assignee authorization
+- BLOCKED ticket status added to Prisma and applied to PostgreSQL
 
 ## Current Work
 
@@ -98,9 +121,13 @@ The one-time `SUPER_ADMIN` bootstrap is implemented and locked after first use. 
 
 The frontend authentication foundation, account-management directory, role-aware navigation, profile identity, logout, and polished loading/error states are connected to the backend. Access state is memory-only, refresh sessions use the backend HttpOnly cookie, and account creation options follow the current role hierarchy.
 
+The organization and ticket domain foundation is persisted in PostgreSQL. Organization management authorization, reusable ticket authorization policies, read-only ticket endpoints, assignment, status-transition, and subtask endpoints are implemented. Ticket creation, general ticket editing, messaging, notifications, and auto-close remain unimplemented.
+
 ## Next Steps
 
-1. Continue with the next approved service-desk frontend surface
+1. Implement ticket creation and narrowly scoped general ticket editing
+2. Design and implement ticket conversation authorization and messaging
+3. Plan audit history, notifications, and business-day automatic closure
 
 ## Useful Validation Commands
 
@@ -123,3 +150,5 @@ The backend runs on `http://localhost:8000`. The frontend runs on `http://localh
 - Do not treat the development JWT fallback secret as production-safe.
 - Do not store plaintext passwords or refresh tokens in persistent storage.
 - In-memory storage is temporary and is not suitable for production.
+- NULL organization and assignment values are valid states and must not be replaced with fabricated fallback records.
+- Ticket authorization policies are implemented, but ticket endpoint integration is not yet implemented.

@@ -11,8 +11,6 @@ The goal is not only to build a functional application, but also to gain practic
 ---
 
 ## Table of Contents
-
-- [Project Goals](#project-goals)
 - [Technology Stack](#technology-stack)
 - [Project Structure](#project-structure)
 - [Development Ports](#development-ports)
@@ -283,6 +281,8 @@ They can:
 - Resolve tickets
 - Receive internal notifications
 
+Agents see tickets assigned directly to them. Team membership alone does not grant access to every ticket belonging to the team. An AGENT may optionally be designated as Team Lead for one team; Team Lead is a responsibility, not a new role, and grants team-level operational visibility for that team.
+
 Agents should receive an internal notification when a ticket is assigned to them.
 
 Agents do NOT need email notifications when a ticket is assigned.
@@ -307,6 +307,10 @@ They can:
 - Receive internal notifications
 
 Managers remain responsible for ticket assignment during the initial AI implementation.
+
+Managers see tickets belonging to teams they manage. Each team has at most one manager, while a manager may manage multiple teams. Managers do not automatically see tickets based only on home region, department, or company-wide impact.
+
+Managers can participate in employee-agent ticket conversations when intervention or oversight is needed, subject to the same ticket visibility scope.
 
 ### ADMIN
 
@@ -336,6 +340,8 @@ ADMIN
    ├── creates AGENT accounts
    └── creates MANAGER accounts
 ```
+
+ADMIN users can manage users and organization configuration but do not have ticket visibility or access to ticket conversations. Ticket oversight belongs to managers and the operational users authorized for the ticket.
 
 ### SUPER_ADMIN
 
@@ -395,6 +401,12 @@ This keeps authentication, authorization, and user management simpler.
 
 If role-specific fields are required later, they can be added without creating separate authentication systems.
 
+## Organization and Teams
+
+Regions represent physical locations and departments represent organizational functions; departments are not tied to regions. Users may have nullable home region and department values. Specialties are managed entities that can be assigned to agents and teams through many-to-many relationships.
+
+Teams are operational support groups with either `REGION` scope, covering exactly one region, or `GLOBAL` scope, covering all regions without a fake global region. Teams may have multiple specialties, agents may belong to multiple teams, each team has at most one manager, and each team may have zero or one optional Team Lead. Team Lead is an AGENT responsibility, not an RBAC role.
+
 ---
 
 ## Authentication
@@ -446,22 +458,14 @@ Authorization will use Role-Based Access Control (RBAC).
 Conceptually:
 
 ```text
-EMPLOYEE
-    │
-    └── Create and manage own tickets
-
-AGENT
-    │
-    └── Work on assigned tickets
-
-MANAGER
-    │
-    └── Assign and manage tickets
-
-ADMIN
-    │
-    └── Manage users and system configuration
+EMPLOYEE  → own tickets
+AGENT     → directly assigned tickets/subtasks
+TEAM LEAD → tickets and operational work for their team
+MANAGER   → tickets for teams they manage
+ADMIN     → users and organization configuration
 ```
+
+Team membership alone does not grant an agent team-wide ticket visibility. Cross-region or global ticket scope affects the issue, not automatic authorization. Reusable server-side visibility, mutation, assignment, subtask, and status-transition policies are implemented, and read-only ticket list/detail endpoints now consume the visibility policy. Ticket mutation endpoint integration is still pending.
 
 NestJS Guards will eventually be used to protect endpoints based on authentication and roles.
 
@@ -497,11 +501,14 @@ A ticket will eventually contain information such as:
 - Title
 - Description
 - Requester
-- Department
+- Affected regions and departments
 - Category
+- Tags
 - Priority
 - Status
+- Primary assigned team
 - Assigned agent
+- Subtasks
 - AI recommendation
 - Comments
 - Attachments
@@ -510,7 +517,7 @@ A ticket will eventually contain information such as:
 - Resolved timestamp
 - Closed timestamp
 
-The final database schema will be designed before implementation.
+The requester, affected scope, and assignment are separate concepts. A ticket can affect selected or all regions and departments, while retaining one primary team and at most one primary agent. Subtasks allow additional teams and agents to contribute without creating multiple primary owners.
 
 Do not add unnecessary fields without a reason.
 
@@ -525,6 +532,7 @@ NEW
 ASSIGNED
 IN_PROGRESS
 WAITING_FOR_EMPLOYEE
+BLOCKED
 RESOLVED
 CLOSED
 ```
@@ -543,7 +551,7 @@ NEW
 
 ### ASSIGNED
 
-The ticket has been assigned to an agent.
+The ticket has been assigned to a primary team. An individual agent may still be unassigned.
 
 The agent has not necessarily started working on it yet.
 
@@ -597,6 +605,10 @@ IN_PROGRESS
 ```
 
 This status specifically represents situations where the support team is waiting for the requester.
+
+### BLOCKED
+
+Work cannot proceed because of a dependency or blocker. `BLOCKED` is distinct from `WAITING_FOR_EMPLOYEE`; it does not mean that the requester is being asked for information.
 
 ### RESOLVED
 
@@ -866,7 +878,7 @@ The exact email events will be finalized during implementation.
 
 ## Departments
 
-Tickets belong to departments.
+Tickets may affect one or more departments, or explicitly all departments. This affected scope is separate from the requester's home department.
 
 Initial departments may include:
 
@@ -880,7 +892,7 @@ Security
 
 The system should support adding additional departments later.
 
-Departments may eventually have their own categories and support teams.
+Departments are independent organizational entities and are not tied to a single region. Ticket category and tags describe the support issue; they are not departments.
 
 ---
 
@@ -888,7 +900,7 @@ Departments may eventually have their own categories and support teams.
 
 Tickets have a conversation/comment system.
 
-Employees and agents can communicate through ticket comments.
+Employees and agents can communicate through ticket comments. Managers may view and participate in conversations for tickets within their authorized team scope. ADMIN users cannot access ticket conversations.
 
 Example:
 
@@ -1144,23 +1156,21 @@ PostgreSQL is the planned primary database.
 
 An ORM will be used to interact with the database.
 
-The exact ORM and schema will be selected during backend setup.
+The project uses PostgreSQL with Prisma.
 
 Conceptual entities include:
 
 ```text
-User
-Department
-Ticket
-TicketComment
-Notification
-ActivityLog
-Attachment
+User, Region, Department, Specialty
+Team, TeamMember, TeamManager, UserSpecialty, TeamSpecialty
+TicketCategory, TicketTag, Ticket, TicketRegion, TicketDepartment
+TicketTagOnTicket, TicketSuggestedTag, Subtask
+RefreshToken
 ```
 
 These are conceptual entities and are NOT the final schema.
 
-The database schema should be designed carefully before implementation.
+Nullable organization and assignment fields are intentional. NULL means unknown, not assigned, not configured, or not applicable. The application must not replace NULL with fabricated users, teams, regions, departments, or routing defaults.
 
 ---
 
@@ -1221,15 +1231,16 @@ Do not implement the entire phase at once.
 
 Work incrementally.
 
-### Phase 2 — Users & Departments
+### Phase 2 — Organization & Authorization
 
-Focus on:
+Focus on implementing the approved server-side authorization model:
 
-- User management
-- Departments
-- Admin functionality
-- Manager functionality
-- User/department relationships
+- Team and Team Lead management rules
+- Team-scoped manager access
+- Direct agent and Team Lead visibility
+- Employee own-ticket access
+- Ticket and subtask authorization
+- Controlled organization provisioning and NULL handling
 
 ### Phase 3 — Ticket System
 
@@ -1245,6 +1256,8 @@ Focus on:
 - Assignment
 - Comments
 - Ticket lifecycle
+- Subtasks and managed tags
+- Ticket conversation and internal notes
 
 ### Phase 4 — Notifications
 
