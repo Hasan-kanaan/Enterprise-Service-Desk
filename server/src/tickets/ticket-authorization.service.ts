@@ -25,6 +25,11 @@ export type SupportedTicketStatus = TicketStatus | 'BLOCKED';
 export class TicketAuthorizationService {
   constructor(private readonly prisma: PrismaService) {}
 
+  assertCanCreateTicket(user: TicketAuthorizationUser) {
+    if (user.role === UserRole.EMPLOYEE || user.role === UserRole.SUPER_ADMIN) return;
+    throw new ForbiddenException('Only employees may create tickets');
+  }
+
   assertCanMutateTicket(user: TicketAuthorizationUser, ticket: TicketAuthorizationSubject) {
     if (user.role === UserRole.SUPER_ADMIN) return;
     this.assertAdminDecision(user);

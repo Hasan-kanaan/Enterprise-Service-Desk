@@ -20,6 +20,8 @@ import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { UpdateTicketStatusDto } from './dto/update-ticket-status.dto';
 import { CreateSubtaskDto } from './dto/create-subtask.dto';
 import { UpdateSubtaskDto } from './dto/update-subtask.dto';
+import { CreateTicketDto } from './dto/create-ticket.dto';
+import { UpdateTicketDto } from './dto/update-ticket.dto';
 
 type AuthenticatedRequest = {
   user: {
@@ -60,6 +62,20 @@ export class TicketsController {
       id: request.user.sub,
       role: request.user.role as PrismaUserRole,
     });
+  }
+
+  @Post()
+  create(@Body() dto: CreateTicketDto, @Req() request: AuthenticatedRequest) {
+    return this.ticketsService.create(this.authenticatedUser(request), dto);
+  }
+
+  @Patch(':ticketId')
+  update(
+    @Param('ticketId', ParseIntPipe) ticketId: number,
+    @Body() dto: UpdateTicketDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.ticketsService.update(ticketId, this.authenticatedUser(request), dto);
   }
 
   @Patch(':ticketId/assignment')
