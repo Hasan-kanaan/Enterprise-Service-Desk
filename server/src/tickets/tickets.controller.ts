@@ -22,6 +22,7 @@ import { CreateSubtaskDto } from './dto/create-subtask.dto';
 import { UpdateSubtaskDto } from './dto/update-subtask.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
+import { UpdateTicketManagerDto } from './dto/update-ticket-manager.dto';
 
 type AuthenticatedRequest = {
   user: {
@@ -32,13 +33,7 @@ type AuthenticatedRequest = {
 
 @Controller('tickets')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles(
-  UserRole.SUPER_ADMIN,
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.AGENT,
-  UserRole.EMPLOYEE,
-)
+@Roles(UserRole.MANAGER, UserRole.AGENT, UserRole.EMPLOYEE)
 export class TicketsController {
   constructor(
     private readonly ticketVisibilityService: TicketVisibilityService,
@@ -51,6 +46,35 @@ export class TicketsController {
       id: request.user.sub,
       role: request.user.role as PrismaUserRole,
     });
+  }
+
+  @Get('subtasks')
+  listSubtasks(@Req() request: AuthenticatedRequest) {
+    return this.ticketVisibilityService.listVisibleSubtasks(
+      this.authenticatedUser(request),
+    );
+  }
+
+  @Get('subtasks/:subtaskId')
+  findSubtask(
+    @Param('subtaskId', ParseIntPipe) id: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.ticketVisibilityService.findVisibleSubtaskById(
+      id,
+      this.authenticatedUser(request),
+    );
+  }
+
+  @Get(':ticketId/subtasks')
+  listTicketSubtasks(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.ticketVisibilityService.listVisibleSubtasks(
+      this.authenticatedUser(request),
+      id,
+    );
   }
 
   @Get(':ticketId')
@@ -75,7 +99,24 @@ export class TicketsController {
     @Body() dto: UpdateTicketDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.update(ticketId, this.authenticatedUser(request), dto);
+    return this.ticketsService.update(
+      ticketId,
+      this.authenticatedUser(request),
+      dto,
+    );
+  }
+
+  @Patch(':ticketId/manager')
+  assignManager(
+    @Param('ticketId', ParseIntPipe) ticketId: number,
+    @Body() dto: UpdateTicketManagerDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.ticketsService.assignManager(
+      ticketId,
+      this.authenticatedUser(request),
+      dto,
+    );
   }
 
   @Patch(':ticketId/assignment')
@@ -84,7 +125,11 @@ export class TicketsController {
     @Body() dto: AssignTicketDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.assign(ticketId, this.authenticatedUser(request), dto);
+    return this.ticketsService.assign(
+      ticketId,
+      this.authenticatedUser(request),
+      dto,
+    );
   }
 
   @Patch(':ticketId/status')
@@ -93,7 +138,11 @@ export class TicketsController {
     @Body() dto: UpdateTicketStatusDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.updateStatus(ticketId, this.authenticatedUser(request), dto.status);
+    return this.ticketsService.updateStatus(
+      ticketId,
+      this.authenticatedUser(request),
+      dto.status,
+    );
   }
 
   @Post(':ticketId/subtasks')
@@ -102,7 +151,11 @@ export class TicketsController {
     @Body() dto: CreateSubtaskDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.createSubtask(ticketId, this.authenticatedUser(request), dto);
+    return this.ticketsService.createSubtask(
+      ticketId,
+      this.authenticatedUser(request),
+      dto,
+    );
   }
 
   @Patch('subtasks/:subtaskId')
@@ -111,7 +164,11 @@ export class TicketsController {
     @Body() dto: UpdateSubtaskDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.updateSubtask(subtaskId, this.authenticatedUser(request), dto);
+    return this.ticketsService.updateSubtask(
+      subtaskId,
+      this.authenticatedUser(request),
+      dto,
+    );
   }
 
   private authenticatedUser(request: AuthenticatedRequest) {

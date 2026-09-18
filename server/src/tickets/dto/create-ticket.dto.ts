@@ -1,4 +1,14 @@
-import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  ValidateIf,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { TicketPriority } from '../../../generated/prisma/client';
 
 export class CreateTicketDto {
@@ -14,15 +24,15 @@ export class CreateTicketDto {
   @Min(1)
   categoryId!: number;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsEnum(TicketPriority)
   priority?: TicketPriority;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsBoolean()
   allRegions?: boolean;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsBoolean()
   allDepartments?: boolean;
 
@@ -36,7 +46,7 @@ export class CreateTicketDto {
   @Min(1, { each: true })
   affectedDepartmentIds!: number[];
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsArray()
   @IsInt({ each: true })
   @Min(1, { each: true })

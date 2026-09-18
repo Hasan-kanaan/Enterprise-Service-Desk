@@ -68,6 +68,7 @@ model User {
   specialties       UserSpecialty[]
   requestedTickets  Ticket[]        @relation("TicketRequester")
   assignedTickets   Ticket[]        @relation("TicketAssignedAgent")
+  responsibleTickets Ticket[]       @relation("TicketAssignedManager")
   assignedSubtasks  Subtask[]       @relation("SubtaskAssignedAgent")
   suggestedTickets  Ticket[]        @relation("TicketSuggestedAgent")
   aiReviewedTickets Ticket[]        @relation("TicketAiReviewer")
@@ -214,6 +215,7 @@ model Ticket {
   allRegions            Boolean            @default(false)
   allDepartments        Boolean            @default(false)
   assignedTeamId        Int?
+  assignedManagerId     Int?
   assignedAgentId       Int?
   aiSuggestedCategoryId Int?
   aiSuggestedPriority   TicketPriority?
@@ -232,6 +234,7 @@ model Ticket {
   affectedRegions       TicketRegion[]
   affectedDepartments   TicketDepartment[]
   assignedTeam          Team?              @relation("TicketAssignedTeam", fields: [assignedTeamId], references: [id], onDelete: SetNull)
+  assignedManager       User?              @relation("TicketAssignedManager", fields: [assignedManagerId], references: [id], onDelete: Restrict)
   assignedAgent         User?              @relation("TicketAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
   suggestedCategory     TicketCategory?    @relation("TicketSuggestedCategory", fields: [aiSuggestedCategoryId], references: [id], onDelete: SetNull)
   suggestedTeam         Team?              @relation("TicketSuggestedTeam", fields: [aiSuggestedTeamId], references: [id], onDelete: SetNull)
@@ -242,6 +245,8 @@ model Ticket {
   subtasks              Subtask[]
 
   @@index([requesterId])
+  @@index([assignedManagerId])
+  @@index([status, assignedManagerId])
   @@index([categoryId])
   @@index([status])
   @@index([assignedTeamId])

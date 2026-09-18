@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit --incremental false",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -17,7 +18,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -68,7 +69,7 @@
       "ts"
     ],
     "moduleNameMapper": {
-      "^(.*)\\.js$": "$1"
+      "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",

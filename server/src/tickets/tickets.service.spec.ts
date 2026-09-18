@@ -1,135 +1,157 @@
-import { SubtaskStatus, TicketStatus, UserRole } from '../../generated/prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { Prisma, TicketStatus, UserRole } from '../../generated/prisma/client';
+import { TicketAuthorizationService } from './ticket-authorization.service';
 import { TicketsService } from './tickets.service';
 
+const manager = { id: 31, role: UserRole.MANAGER };
 describe('TicketsService', () => {
-  const ticketFindUnique = jest.fn();
-  const ticketUpdate = jest.fn();
-  const subtaskFindUnique = jest.fn();
-  const subtaskCreate = jest.fn();
-  const subtaskUpdate = jest.fn();
-  const assertCanAssignTicket = jest.fn();
-  const assertCanTransitionStatus = jest.fn();
-  const assertCanAssignSubtask = jest.fn();
-  const assertCanMutateSubtask = jest.fn();
-
+  const db = {
+    $queryRaw: jest.fn(),
+    ticket: {
+      findUniqueOrThrow: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    user: { findUnique: jest.fn() },
+    team: { findUnique: jest.fn() },
+    teamMember: { findUnique: jest.fn() },
+    subtask: { findUnique: jest.fn(), update: jest.fn() },
+  };
+  const transaction = jest.fn();
   const service = new TicketsService(
-    {
-      ticket: { findUnique: ticketFindUnique, update: ticketUpdate },
-      subtask: {
-        findUnique: subtaskFindUnique,
-        create: subtaskCreate,
-        update: subtaskUpdate,
-      },
-    } as any,
-    {
-      assertCanAssignTicket,
-      assertCanTransitionStatus,
-      assertCanAssignSubtask,
-      assertCanMutateSubtask,
-    } as any,
+    { ...db, $transaction: transaction } as any,
+    new TicketAuthorizationService(),
   );
-
+  let current: any;
   beforeEach(() => {
-    jest.clearAllMocks();
-    ticketFindUnique.mockResolvedValue({ id: 1 });
-    ticketUpdate.mockResolvedValue({ id: 1 });
-    subtaskCreate.mockResolvedValue({ id: 2 });
-    subtaskUpdate.mockResolvedValue({ id: 2 });
-  });
-
-  it('authorizes and persists team-first ticket assignment', async () => {
-    await service.assign(1, { id: 31, role: UserRole.MANAGER }, { teamId: 30 });
-
-    expect(assertCanAssignTicket).toHaveBeenCalledWith(
-      { id: 31, role: UserRole.MANAGER },
-      30,
-      null,
-    );
-    expect(ticketUpdate).toHaveBeenCalledWith({
-      where: { id: 1 },
-      data: { assignedTeamId: 30, assignedAgentId: null, status: TicketStatus.ASSIGNED },
-    });
-  });
-
-  it('authorizes and persists status transitions', async () => {
-    ticketFindUnique.mockResolvedValue({
+    jest.resetAllMocks();
+    current = {
       id: 1,
       requesterId: 10,
-      assignedAgentId: 20,
+      assignedManagerId: 31,
       assignedTeamId: 30,
+      assignedAgentId: 20,
+      assignedTeam: { teamLeadId: 21 },
       status: TicketStatus.IN_PROGRESS,
       resolvedAt: null,
       closedAt: null,
-      assignedTeam: { teamLeadId: 21, managers: [{ managerId: 31 }] },
+    };
+    transaction.mockImplementation((callback) => callback(db));
+    db.$queryRaw.mockResolvedValue([{ id: 1 }]);
+    db.ticket.findUniqueOrThrow.mockImplementation(async () => current);
+    db.ticket.update.mockImplementation(async ({ data }) => ({
+      ...current,
+      ...data,
+    }));
+    db.ticket.updateMany.mockResolvedValue({ count: 1 });
+    db.team.findUnique.mockResolvedValue({ id: 30 });
+    db.teamMember.findUnique.mockResolvedValue({
+      user: { role: UserRole.AGENT },
     });
+    db.user.findUnique.mockResolvedValue({ role: UserRole.MANAGER });
+  });
 
-    await service.updateStatus(1, { id: 20, role: UserRole.AGENT }, TicketStatus.RESOLVED);
-
-    expect(assertCanTransitionStatus).toHaveBeenCalledWith(
-      { id: 20, role: UserRole.AGENT },
-      expect.objectContaining({ assignedTeamId: 30 }),
-      TicketStatus.IN_PROGRESS,
-      TicketStatus.RESOLVED,
-    );
-    expect(ticketUpdate).toHaveBeenCalledWith({
-      where: { id: 1 },
-      data: expect.objectContaining({ status: TicketStatus.RESOLVED, resolvedAt: expect.any(Date) }),
+  it('preserves an omitted agent and active status on reassignment', async () => {
+    const result = await service.assign(1, manager, { teamId: 40 });
+    expect(result.assignedAgentId).toBe(20);
+    expect(result.status).toBe(TicketStatus.IN_PROGRESS);
+    expect(result.resolvedAt).toBeNull();
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'Serializable',
     });
   });
 
-  it('authorizes and creates a subtask without changing the parent ticket', async () => {
-    ticketFindUnique.mockResolvedValue({
-      id: 1,
-      requesterId: 10,
-      assignedAgentId: 20,
-      assignedTeamId: 30,
-      status: TicketStatus.IN_PROGRESS,
-      assignedTeam: { teamLeadId: 21, managers: [{ managerId: 31 }] },
-    });
+  it('rejects an incompatible retained agent without writing', async () => {
+    db.teamMember.findUnique.mockResolvedValue(null);
+    await expect(
+      service.assign(1, manager, { teamId: 40 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(db.ticket.update).not.toHaveBeenCalled();
+    await expect(
+      service.assign(1, manager, { teamId: 40, agentId: null }),
+    ).resolves.toMatchObject({ assignedAgentId: null });
+  });
 
-    await service.createSubtask(1, { id: 21, role: UserRole.AGENT }, {
-      title: 'Investigate network path',
-      description: 'Check regional connectivity',
-      assignedTeamId: 30,
-      assignedAgentId: 20,
-    });
-
-    expect(assertCanAssignSubtask).toHaveBeenCalledWith(
-      { id: 21, role: UserRole.AGENT },
-      expect.objectContaining({ assignedTeamId: 30 }),
-      30,
-      20,
-    );
-    expect(subtaskCreate).toHaveBeenCalledWith({
-      data: {
-        ticketId: 1,
-        title: 'Investigate network path',
-        description: 'Check regional connectivity',
-        assignedTeamId: 30,
-        assignedAgentId: 20,
-      },
+  it('assigns a team without requiring an agent and moves NEW to ASSIGNED', async () => {
+    current = {
+      ...current,
+      status: TicketStatus.NEW,
+      assignedTeamId: null,
+      assignedAgentId: null,
+      assignedTeam: null,
+    };
+    await expect(
+      service.assign(1, manager, { teamId: 40 }),
+    ).resolves.toMatchObject({
+      status: TicketStatus.ASSIGNED,
+      assignedAgentId: null,
     });
   });
 
-  it('authorizes subtask updates and clears completedAt when reopened', async () => {
-    subtaskFindUnique.mockResolvedValue({
+  it('manager transfer writes no team, agent, status, or timestamp fields', async () => {
+    await service.assignManager(1, manager, { assignedManagerId: 32 });
+    expect(db.ticket.updateMany).toHaveBeenCalledWith({
+      where: { id: 1, assignedManagerId: 31, status: TicketStatus.IN_PROGRESS },
+      data: { assignedManagerId: 32 },
+    });
+  });
+
+  it('does not authorize the destination team owner to take an unrelated ticket', async () => {
+    await expect(
+      service.assign(1, { id: 32, role: UserRole.MANAGER }, { teamId: 40 }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.ticket.update).not.toHaveBeenCalled();
+  });
+
+  it('validates and persists the same explicit NULL subtask assignment', async () => {
+    db.subtask.findUnique.mockResolvedValue({
       id: 2,
-      assignedAgentId: 20,
+      ticketId: 1,
       assignedTeamId: 30,
-      ticket: {
-        requesterId: 10,
-        assignedAgentId: 20,
-        assignedTeamId: 30,
-        assignedTeam: { teamLeadId: 21, managers: [{ managerId: 31 }] },
-      },
+      assignedAgentId: 20,
+      assignedTeam: { teamLeadId: 21 },
     });
-
-    await service.updateSubtask(2, { id: 20, role: UserRole.AGENT }, { status: SubtaskStatus.TODO });
-
-    expect(assertCanMutateSubtask).toHaveBeenCalled();
-    expect(subtaskUpdate).toHaveBeenCalledWith({
+    await expect(
+      service.updateSubtask(2, manager, { assignedTeamId: null }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(db.subtask.update).not.toHaveBeenCalled();
+    await service.updateSubtask(2, manager, {
+      assignedTeamId: null,
+      assignedAgentId: null,
+    });
+    expect(db.subtask.update).toHaveBeenCalledWith({
       where: { id: 2 },
-      data: { status: SubtaskStatus.TODO, completedAt: null },
+      data: expect.objectContaining({
+        assignedTeamId: null,
+        assignedAgentId: null,
+      }),
     });
   });
+
+  it.each([
+    { code: 'P2034' },
+    {
+      code: 'P2010',
+      meta: { driverAdapterError: { cause: { originalCode: '40001' } } },
+    },
+    { code: 'P2010', meta: { code: '40P01' } },
+  ])(
+    'turns serialization conflicts into 409 without retrying stale work: $code',
+    async (error) => {
+      transaction.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('concurrent update', {
+          ...error,
+          clientVersion: 'test',
+        }),
+      );
+      await expect(
+        service.assignManager(1, manager, { assignedManagerId: 32 }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(transaction).toHaveBeenCalledTimes(1);
+    },
+  );
 });

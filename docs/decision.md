@@ -2,7 +2,7 @@
 
 ## Product
 
-We are building an AI-Powered Enterprise IT Service Desk for internal company support.
+We are building an Enterprise IT Service Desk for internal company support. AI assistance is planned after the non-AI workflow is functional.
 
 ## Account Provisioning and Role Hierarchy
 
@@ -27,6 +27,7 @@ The five roles are:
 - Can create and manage `ADMIN` accounts.
 - Can perform system-level administration.
 - Cannot create another `SUPER_ADMIN`.
+- Has no service-desk ticket, subtask, or future internal-note authority.
 
 #### ADMIN
 
@@ -35,12 +36,14 @@ The five roles are:
 - Can create and manage `EMPLOYEE`, `AGENT`, and `MANAGER` accounts.
 - Handles user administration and organization-level system configuration.
 - Cannot create `SUPER_ADMIN` or `ADMIN` accounts.
+- Has no service-desk ticket, subtask, or future internal-note authority.
 
 #### MANAGER
 
 - Service-desk manager, not a system administrator.
 - Oversees service-desk operations, agents, assignments, escalations, and workflows.
-- Reviews and approves or changes AI ticket assignment recommendations.
+- Sees shared unowned NEW intake and tickets explicitly assigned to them as responsible manager.
+- AI recommendation review remains planned.
 
 #### AGENT
 
@@ -84,7 +87,7 @@ ADMIN
 
 The initial setup endpoint must become unavailable after the first `SUPER_ADMIN` exists. Account-creation endpoints must require authentication and server-side RBAC. The client is never trusted to select a privileged role.
 
-The initial setup must eventually be protected against concurrent requests, must never create a second `SUPER_ADMIN`, and must use the same password-hashing and security standards as normal account creation. These are architectural requirements, not implemented features yet.
+Initial setup uses a PostgreSQL advisory transaction lock and password hashing. Setup is unavailable while a SUPER_ADMIN exists; there is no separate permanent setup-completed record.
 
 ### Decision Rationale
 
@@ -120,20 +123,23 @@ Tickets use the following lifecycle:
 
 `WAITING_FOR_EMPLOYEE` means support is waiting for requester information or action. `BLOCKED` means work cannot proceed because of a dependency or blocker; these statuses are distinct.
 
-Agents and Team Leads may resolve tickets. Employees can close resolved tickets, managers may close tickets when the final authorization rules allow it, and a future automation may close a resolved ticket after three business days without employee activity. Closure auditing must distinguish employee-confirmed, manager, and automatic closure.
+Directly assigned agents, primary-team leads, and the responsible manager may resolve operational tickets. The employee requester or responsible manager may close a resolved ticket. Resolving sets `resolvedAt`; closing preserves it and sets `closedAt`.
+
+Manager assignment/transfer does not change status. First primary-team assignment moves NEW to ASSIGNED; an individual agent is optional. Reassignment preserves ASSIGNED, IN_PROGRESS, WAITING_FOR_EMPLOYEE, and BLOCKED. RESOLVED/CLOSED reject manager transfer, team/agent reassignment, and every subtask mutation. Ownership changes never reset resolution/closure timestamps. NEW -> ASSIGNED cannot be invoked through the status endpoint.
+
+There is no reopen operation. Subtask status remains independent of parent status, but a terminal parent freezes subtask work. General ticket metadata editing retains its existing relationship-based permissions; the terminal freeze concerns ownership and subtask work. Business-day auto-close and closure auditing remain planned.
 
 ## Assignment Workflow
 
-AI will be part of the ticket workflow from the beginning.
+Employee creation produces NEW with `assignedManagerId`, `assignedTeamId`, and `assignedAgentId` all NULL. All MANAGER users may read NEW tickets without a responsible manager and assign themselves or another real MANAGER. Intake visibility alone does not permit general edits, status operations, team assignment, or subtask management.
 
-When a ticket is created, AI may suggest:
-- category
-- priority
-- best agent
-- confidence score
-- reason
+Once assigned, only the responsible manager has manager-level authority. They may transfer responsibility to another MANAGER or choose any real primary team; TeamManager does not grant or restrict this authority. Transfer preserves the primary team, agent, status, and timestamps. Clearing the responsible manager or primary team is unsupported. There is no return-to-intake/unrouted operation.
 
-Managers approve or change the suggestion before assignment.
+Team Leads may change the primary agent only within the ticket's currently led primary team. They cannot change the manager or primary team. Ordinary primary agents cannot reassign ownership.
+
+Ticket and subtask mutations lock their parent Ticket row in a serializable transaction, recheck authorization there, and write within that transaction. Manager assignment additionally uses a conditional ownership/status update. Serialization conflicts return 409; callers must reload and explicitly retry, with no automatic conversion of stale claims into transfers.
+
+There is no AI, category, regional, or automatic routing, and no additional triage role. AI suggestions/review are future work.
 
 ## Organization and Team Management
 
@@ -146,42 +152,67 @@ Teams use one of two scopes:
 - `REGION`: exactly one region.
 - `GLOBAL`: all regions, with no fake global region record.
 
-A team has at most one manager and may have zero or one Team Lead. A manager may manage multiple teams. An agent may belong to multiple teams and may be Team Lead of at most one team at a time. Manager authority is scoped to each managed team; membership in a shared team does not grant a manager authority over the agent in another team.
+A team has at most one manager and may have zero or one Team Lead. A manager may manage multiple teams. An agent may belong to multiple teams and may be Team Lead of at most one team at a time. `TeamManager` records organizational responsibility only; it is independent of ticket responsibility and grants no ticket or subtask authority.
 
 Teams may have multiple specialties. Team membership, specialty membership, and home region are independent relationships.
 
 ## Authorization Design
 
-The approved visibility model is relationship-based and is enforced by reusable server-side visibility and authorization policies. Ticket controllers and endpoint integration are not implemented yet.
+Server-side guards and policies protect the implemented ticket APIs. Read restrictions are part of Prisma queries, not client-side filters.
 
-- Employees see their own tickets.
-- Agents see tickets assigned directly to them and subtasks assigned to them.
-- Team Leads see tickets belonging to their team and may coordinate work within that team.
-- Managers see tickets belonging to teams they manage.
+| Role | Ticket visibility |
+| --- | --- |
+| EMPLOYEE | Own requested tickets |
+| AGENT | Direct primary-agent assignments |
+| AGENT acting as Team Lead | Direct assignments plus tickets assigned to their currently led team |
+| MANAGER | NEW with NULL assignedManagerId, plus tickets with assignedManagerId equal to caller ID |
+| ADMIN / SUPER_ADMIN | None |
 
-Team membership alone does not give an agent visibility into every team ticket. Team Leads may create, assign, and reassign subtasks within their team. Managers may assign and reassign tickets and subtasks for teams they manage. No role automatically receives company-wide visibility.
+Ordinary membership, home region/department, specialty, affected scope, REGION/GLOBAL scope, and TeamManager never independently grant visibility. Subtask assignment does not grant parent-ticket visibility.
 
-Team Leads and managers do not gain organization-management powers from their operational responsibility. They cannot manage regions, departments, teams, specialties, categories, or tags unless separately authorized.
-
-ADMIN users can manage users and organization configuration but do not have ticket visibility or access to ticket conversations. SUPER_ADMIN retains system-level access as already defined.
+ADMIN and SUPER_ADMIN retain their existing account and organization administrative capabilities. System administration is separate from service-desk operations. Operational managers and leads do not gain organization-administration powers.
 
 ## Ticket Ownership and Scope
 
-A ticket has one primary assigned team and at most one primary assigned agent. The assigned agent must have a primary team; a ticket may have an assigned team with no assigned agent. Multiple areas of work are represented by subtasks rather than multiple primary owners.
+A ticket has independently nullable responsible-manager, primary-team, and primary-agent references. The responsible manager is an explicit User relationship, never derived from TeamManager. An agent requires a team and must be an AGENT member of it; a team without an agent is valid.
 
-Requester organization and affected scope are separate. A ticket may affect one or more regions or departments, or explicitly affect all regions or all departments. A global ticket is not automatically visible to every regional manager or agent. Access is determined primarily by the assigned team and the relevant manager or Team Lead relationship.
+The assignedManager relationship uses `onDelete: Restrict`. Manager deletion cannot silently clear ticket responsibility. Existing tickets receive NULL on migration without inference or backfill. Existing non-NEW managerless development rows require explicit fixture/data reconciliation outside the ordinary claim endpoint; no production inference mechanism is added.
 
-If a future workflow needs a coordination location for a cross-region ticket, it must use an explicitly configured `defaultOperationalRegion`, which remains NULL until configured. It must never be inferred from the first database record or affected region.
+Affected regions/departments describe impact, separately from the requester's home organization and ticket ownership. They do not grant access or select default routing. No `defaultOperationalRegion` or routing configuration is implemented.
 
-## Subtasks and Messaging
+## Subtasks
 
-Subtasks are supporting work under one parent ticket. They may have an assigned team and agent, use `TODO`, `IN_PROGRESS`, `COMPLETED`, or `CANCELLED`, and do not nest. Agents may work on subtasks assigned to them but cannot create or assign subtasks. Team Leads and managers may create, assign, and reassign them. Completing or blocking a subtask must not automatically close or block the parent ticket.
+Subtasks do not nest. They may have nullable team/agent references and use TODO, IN_PROGRESS, COMPLETED, CANCELLED.
 
-Tickets will eventually support employee-visible messages, support-agent messages, and internal notes hidden from employees. Employees and assigned support personnel may participate in their authorized conversations. Managers may view and participate in conversations for tickets within their authorized team scope when intervention or oversight is needed. ADMIN users cannot access ticket conversations. Messaging is planned and is not implemented yet.
+| Actor | Read/work | Assignment and creation |
+| --- | --- | --- |
+| EMPLOYEE | None | None |
+| Direct subtask AGENT | Their specific subtask | None |
+| Primary parent AGENT | No extra access | None |
+| Subtask team's Team Lead | Subtasks assigned to their currently led team | Change/clear agents within that team; no team moves/clearing |
+| Responsible MANAGER | All subtasks under their ticket | Create, assign, clear subtask ownership, and delegate across real teams |
+| Other MANAGER / TeamManager | No extra access | None |
+| ADMIN / SUPER_ADMIN | None | None |
+
+Team Leads may create subtasks only when the parent primary team is their currently led team, and must explicitly assign the new subtask to that same team. No default team is inferred. Responsible managers may create genuinely unassigned subtasks.
+
+Subtask-only responses contain the subtask's fields and parent ID, not parent content, requester information, conversations, or notes. Completing/reopening a subtask does not change the parent. RESOLVED/CLOSED parents reject all subtask creation, editing, status changes, and assignment changes. Subtask statuses have no additional transition graph yet.
+
+## Conversations and Internal Notes ? Planned
+
+Employee/support conversations and support-only internal notes are separate future features. Neither is implemented.
+
+Internal notes will be multiple historical records with at least id, ticketId, authorId, content, and createdAt; never one mutable Ticket.note string. AGENT/Team Lead/MANAGER access must use current ticket authorization, and EMPLOYEE/ADMIN/SUPER_ADMIN must never receive note contents in API responses. Notes are general-purpose and not coupled to BLOCKED status. Edit/delete history, terminal-ticket note policy, and whether intake-only managers may add notes still need design. No Prisma note model exists yet.
+
+AI, notifications, email, audit history, attachments, automatic closure, and frontend ticket workflows remain deferred.
 
 ## NULL and Data Integrity
 
-NULL means unknown, not assigned, not configured, or not applicable. Existing NULL organization and assignment values must remain NULL until an explicit business rule assigns a real entity. The system must not create fabricated users, teams, regions, departments, or default routing values to replace NULLs. Friendly labels such as `Not assigned` are presentation-only values.
+NULL means unknown, unassigned, or not applicable. No fake/default entity or first-created record may replace it. Friendly labels belong only in the UI.
+
+PATCH semantics: omitted preserves; explicit NULL requests clearing a nullable field; real ID assigns that entity. Authorization validates the exact final state persisted. Clearing manager or primary team is rejected as an unsupported operation, never treated as omission.
+
+Changing team with an incompatible retained agent is rejected unless the request explicitly clears the agent or supplies an eligible replacement (Option A). No silent clearing. Subtask team clearing requires an explicitly cleared agent when one exists. Non-nullable metadata fields reject NULL.
 
 ## Frontend Structure
 

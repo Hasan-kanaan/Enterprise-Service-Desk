@@ -4,7 +4,7 @@ An AI-powered full-stack Enterprise IT Service Desk built as a real-world learni
 
 The application simulates an internal IT support platform for a large company. Employees can submit IT support tickets, support agents can work on those tickets, managers can oversee and assign tickets, and administrators can manage the system.
 
-AI is integrated into the workflow to assist with ticket categorization, priority selection, and agent assignment.
+AI assistance with categorization, priority, and assignment is planned after the non-AI service-desk workflow is functional; it is not integrated yet.
 
 The goal is not only to build a functional application, but also to gain practical full-stack development experience while learning backend development gradually.
 
@@ -27,6 +27,7 @@ The goal is not only to build a functional application, but also to gain practic
 - [Email System](#email-system)
 - [Departments](#departments)
 - [Comments](#comments)
+- [Internal Notes (Planned)](#internal-notes-planned)
 - [Attachments](#attachments)
 - [Audit History](#audit-history)
 - [Backend Architecture](#backend-architecture)
@@ -287,7 +288,7 @@ Agents should receive an internal notification when a ticket is assigned to them
 
 Agents do NOT need email notifications when a ticket is assigned.
 
-Agents cannot normally assign or reassign tickets unless that permission is explicitly added later.
+Ordinary agents cannot assign/reassign ownership. A Team Lead may assign/reassign the primary agent within their currently led primary team, but cannot change the responsible manager or primary team.
 
 ### MANAGER
 
@@ -306,11 +307,11 @@ They can:
 - Monitor agents
 - Receive internal notifications
 
-Managers remain responsible for ticket assignment during the initial AI implementation.
+The responsible manager controls team assignment and manager transfer. Any manager may initially assign a manager to an unowned NEW ticket. AI review is planned, not implemented.
 
-Managers see tickets belonging to teams they manage. Each team has at most one manager, while a manager may manage multiple teams. Managers do not automatically see tickets based only on home region, department, or company-wide impact.
+Managers see shared intake (NEW tickets with NULL assignedManagerId) and tickets explicitly assigned to them as responsible manager. TeamManager is an organizational relationship and grants no ticket authority. Home organization and affected scope do not grant access.
 
-Managers can participate in employee-agent ticket conversations when intervention or oversight is needed, subject to the same ticket visibility scope.
+Employee/support conversation participation is planned, subject to ticket authorization; conversations are not implemented.
 
 ### ADMIN
 
@@ -353,7 +354,7 @@ They can:
 - Create and manage `ADMIN` accounts
 - Perform system-level administration
 
-They cannot create another `SUPER_ADMIN`.
+They cannot create another `SUPER_ADMIN`. They have no ticket, subtask, or future internal-note access. Their account and organization administrative responsibilities remain intact.
 
 There is no public registration. Users cannot choose their own role. All account-creation endpoints must be protected by authentication and server-side role-based authorization.
 
@@ -461,13 +462,13 @@ Conceptually:
 EMPLOYEE  → own tickets
 AGENT     → directly assigned tickets/subtasks
 TEAM LEAD → tickets and operational work for their team
-MANAGER   → tickets for teams they manage
-ADMIN     → users and organization configuration
+MANAGER   -> unowned NEW intake and explicitly manager-owned tickets
+ADMIN / SUPER_ADMIN -> administration only; no ticket/subtask access
 ```
 
-Team membership alone does not grant an agent team-wide ticket visibility. Cross-region or global ticket scope affects the issue, not automatic authorization. Reusable server-side visibility, mutation, assignment, subtask, and status-transition policies are implemented, and read-only ticket list/detail endpoints now consume the visibility policy. Ticket mutation endpoint integration is still pending.
+Team membership alone does not grant an agent team-wide ticket visibility. Cross-region or global ticket scope affects the issue, not automatic authorization. Server-side visibility, creation/editing, manager ownership, team/agent assignment, status, and subtask policies are connected to the API. Manager-level authority follows assignedManagerId, never TeamManager. Intake visibility alone permits initial manager assignment, not other mutations.
 
-NestJS Guards will eventually be used to protect endpoints based on authentication and roles.
+NestJS Guards protect endpoints based on authentication and roles; service policies enforce ticket and subtask relationships.
 
 Conceptually:
 
@@ -506,6 +507,7 @@ A ticket will eventually contain information such as:
 - Tags
 - Priority
 - Status
+- Explicit nullable responsible manager
 - Primary assigned team
 - Assigned agent
 - Subtasks
@@ -517,7 +519,7 @@ A ticket will eventually contain information such as:
 - Resolved timestamp
 - Closed timestamp
 
-The requester, affected scope, and assignment are separate concepts. A ticket can affect selected or all regions and departments, while retaining one primary team and at most one primary agent. Subtasks allow additional teams and agents to contribute without creating multiple primary owners.
+The requester, affected scope, responsible manager, and operational team/agent assignments are separate concepts. A ticket can affect selected or all regions and departments, while retaining one primary team and at most one primary agent. Subtasks allow additional teams and agents to contribute without creating multiple primary owners.
 
 Do not add unnecessary fields without a reason.
 
@@ -541,7 +543,7 @@ CLOSED
 
 The employee has created the ticket.
 
-The ticket has not yet been assigned to an agent.
+The ticket awaits primary-team assignment. It may already have a responsible manager; manager assignment alone leaves it NEW.
 
 ```text
 Employee creates ticket
@@ -655,41 +657,45 @@ The exact reopening workflow will be designed when the ticket system is implemen
 
 ## Ticket Workflow
 
-The general lifecycle is:
+The implemented workflow is manual:
 
 ```text
-Employee
-   │
-   │ Creates ticket
-   ▼
-NEW
-   │
-   │ AI analyzes ticket
-   ▼
-AI Recommendation
-   │
-   │ Manager reviews
-   ▼
-ASSIGNED
-   │
-   │ Agent starts work
-   ▼
-IN_PROGRESS
-   │
-   ├────────────────┐
-   │                │
-   │ Need info      │ Issue fixed
-   ▼                ▼
-WAITING_FOR_       RESOLVED
-EMPLOYEE              │
-   │                  │ Employee confirms
-   │ Employee         │
-   │ responds         │
-   ▼                  ▼
-IN_PROGRESS         CLOSED
+Employee creates NEW (manager/team/agent all NULL)
+  -> Any MANAGER assigns themselves or another real MANAGER
+  -> Remains NEW, visible to that responsible manager
+  -> Responsible manager assigns a real primary team
+  -> ASSIGNED (individual agent optional)
+  -> IN_PROGRESS -> WAITING_FOR_EMPLOYEE or BLOCKED -> IN_PROGRESS
+  -> RESOLVED -> CLOSED
 ```
 
-The exact allowed status transitions will be enforced by the backend.
+The responsible manager may select any real team, independent of TeamManager. Only that manager may transfer responsibility to another manager. Transfer changes no team, agent, status, or timestamps. Team Leads can assign agents only within their ticket's currently led primary team.
+
+PATCH omission preserves ownership; explicit NULL clears only where permitted. Changing teams with an incompatible retained agent is rejected unless the caller explicitly clears/replaces the agent. Clearing manager or primary team is unsupported. No defaults or automatic routing are created.
+
+### Implemented Ticket API
+
+All routes require authentication. ADMIN and SUPER_ADMIN are denied all ticket/subtask routes.
+
+| Route | Purpose |
+| --- | --- |
+| GET /tickets, GET /tickets/:ticketId | Filtered ticket reads |
+| POST /tickets | Employee creation with NULL ownership |
+| PATCH /tickets/:ticketId | Relationship-authorized metadata edits |
+| PATCH /tickets/:ticketId/manager | Initial ownership / transfer; body: assignedManagerId |
+| PATCH /tickets/:ticketId/assignment | Team/agent assignment; body: optional teamId, agentId |
+| PATCH /tickets/:ticketId/status | Authorized lifecycle transition |
+| GET /tickets/subtasks | Caller-visible subtask list |
+| GET /tickets/subtasks/:subtaskId | Caller-visible subtask detail |
+| GET /tickets/:ticketId/subtasks | Caller-visible subset under a parent |
+| POST /tickets/:ticketId/subtasks | Responsible-manager or parent-team lead creation |
+| PATCH /tickets/subtasks/:subtaskId | Authorized content/status/assignment changes |
+
+Ticket reads return scalar fields, without expanded tags, scope links, or subtasks. Subtask reads never include parent-ticket content. There is no frontend ticket integration or category/tag catalog API yet.
+
+Employees have no support-subtask access. Direct subtask agents can read/work on their own subtask, but cannot reassign it. Primary parent-agent assignment grants no extra subtask access. Team Leads read/manage subtasks assigned to their led team, may assign agents within that team, and may create subtasks for that team when it is the parent primary team. Only the responsible manager delegates subtasks across teams. Subtask state changes never change parent state, and terminal parents freeze subtask mutations.
+
+Mutations lock the parent ticket in serializable PostgreSQL transactions. Concurrent stale writes return 409 and must be explicitly retried after reloading. Inaccessible ticket/subtask details return 404; forbidden mutations return 403 and terminal ownership/work changes return 409. General metadata editing retains its existing relationship rules.
 
 ---
 
@@ -740,7 +746,7 @@ Priority should be based on the impact and urgency of the issue.
 
 ## AI Integration
 
-AI is a core part of the application.
+AI is a planned part of the application, deferred until the manual service-desk workflow is functional.
 
 AI should be considered during the initial system architecture rather than added as an afterthought.
 
@@ -752,7 +758,7 @@ When a ticket is created, AI may analyze it and provide:
 - Confidence score
 - Reason for the recommendation
 
-The initial workflow is:
+The future AI workflow is:
 
 ```text
 Employee creates ticket
@@ -898,9 +904,9 @@ Departments are independent organizational entities and are not tied to a single
 
 ## Comments
 
-Tickets have a conversation/comment system.
+A ticket conversation/comment system is planned and not implemented.
 
-Employees and agents can communicate through ticket comments. Managers may view and participate in conversations for tickets within their authorized team scope. ADMIN users cannot access ticket conversations.
+Employees and agents can communicate through ticket comments. Responsible managers may participate subject to the future conversation policy. ADMIN and SUPER_ADMIN have no ticket conversation access.
 
 Example:
 
@@ -925,6 +931,14 @@ It works now.
 Comments are part of the ticket history.
 
 Comments may also trigger notifications.
+
+---
+
+## Internal Notes (Planned)
+
+Internal notes are separate from employee-visible conversations. They will be multiple historical records with id, ticketId, authorId, content, and createdAt, not a mutable note string on Ticket. Editing/revision history and terminal-ticket behavior still need design.
+
+Notes are general-purpose, not tied to BLOCKED. Authorized agents, Team Leads, and managers will have support-only access. Employee, ADMIN, and SUPER_ADMIN responses must never contain note contents. Authorization is server-side. No note model or API is implemented; intake-only manager write permissions remain a future design question.
 
 ---
 
@@ -1066,7 +1080,7 @@ email
 password
 ```
 
-DTOs will eventually be used with NestJS validation.
+DTOs are used with global NestJS validation, including rejection of unexpected fields.
 
 #### Guard
 
@@ -1152,7 +1166,7 @@ The backend is responsible for:
 
 ## Database
 
-PostgreSQL is the planned primary database.
+PostgreSQL is the primary database.
 
 An ORM will be used to interact with the database.
 
@@ -1168,7 +1182,7 @@ TicketTagOnTicket, TicketSuggestedTag, Subtask
 RefreshToken
 ```
 
-These are conceptual entities and are NOT the final schema.
+These entities exist in Prisma. Ticket.assignedManagerId is an explicit nullable User relation with restrictive deletion. The manager migration leaves existing rows NULL without inference; non-NEW managerless development rows require explicit reconciliation if they need manager operations.
 
 Nullable organization and assignment fields are intentional. NULL means unknown, not assigned, not configured, or not applicable. The application must not replace NULL with fabricated users, teams, regions, departments, or routing defaults.
 
@@ -1236,7 +1250,7 @@ Work incrementally.
 Focus on implementing the approved server-side authorization model:
 
 - Team and Team Lead management rules
-- Team-scoped manager access
+- Explicit responsible-manager ownership and shared NEW intake
 - Direct agent and Team Lead visibility
 - Employee own-ticket access
 - Ticket and subtask authorization

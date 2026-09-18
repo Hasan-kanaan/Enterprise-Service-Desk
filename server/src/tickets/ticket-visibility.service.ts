@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, UserRole } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -13,8 +17,6 @@ export class TicketVisibilityService {
 
   buildWhere(user: TicketVisibilityUser): Prisma.TicketWhereInput {
     switch (user.role) {
-      case UserRole.SUPER_ADMIN:
-        return {};
       case UserRole.EMPLOYEE:
         return { requesterId: user.id };
       case UserRole.AGENT:
@@ -26,12 +28,18 @@ export class TicketVisibilityService {
         };
       case UserRole.MANAGER:
         return {
-          assignedTeam: {
-            managers: { some: { managerId: user.id } },
-          },
+          OR: [
+            { status: 'NEW', assignedManagerId: null },
+            { assignedManagerId: user.id },
+          ],
         };
+      case UserRole.SUPER_ADMIN:
       case UserRole.ADMIN:
-        throw new ForbiddenException('ADMIN users do not have ticket visibility');
+        throw new ForbiddenException(
+          'System administration does not grant ticket visibility',
+        );
+      default:
+        throw new ForbiddenException('Unknown service-desk role');
     }
   }
 
@@ -56,5 +64,39 @@ export class TicketVisibilityService {
 
   countVisible(user: TicketVisibilityUser) {
     return this.prisma.ticket.count({ where: this.buildWhere(user) });
+  }
+
+  buildSubtaskWhere(user: TicketVisibilityUser): Prisma.SubtaskWhereInput {
+    if (user.role === UserRole.MANAGER)
+      return { ticket: { assignedManagerId: user.id } };
+    if (user.role === UserRole.AGENT)
+      return {
+        OR: [
+          { assignedAgentId: user.id },
+          { assignedTeam: { teamLeadId: user.id } },
+        ],
+      };
+    throw new ForbiddenException('This role has no support-subtask access');
+  }
+
+  listVisibleSubtasks(user: TicketVisibilityUser, ticketId?: number) {
+    // No parent include: subtask-only access must not disclose parent-ticket data.
+    return this.prisma.subtask.findMany({
+      where: {
+        AND: [
+          this.buildSubtaskWhere(user),
+          ticketId === undefined ? {} : { ticketId },
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async findVisibleSubtaskById(id: number, user: TicketVisibilityUser) {
+    const subtask = await this.prisma.subtask.findFirst({
+      where: { AND: [{ id }, this.buildSubtaskWhere(user)] },
+    });
+    if (!subtask) throw new NotFoundException('Subtask not found');
+    return subtask;
   }
 }

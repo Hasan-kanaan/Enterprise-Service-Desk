@@ -1,4 +1,11 @@
-import { IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateSubtaskDto {
   @IsString()
@@ -12,10 +19,10 @@ export class CreateSubtaskDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  assignedTeamId?: number;
+  assignedTeamId?: number | null;
 
   @IsOptional()
   @IsInt()
   @Min(1)
-  assignedAgentId?: number;
+  assignedAgentId?: number | null;
 }

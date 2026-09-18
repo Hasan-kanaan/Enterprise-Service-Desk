@@ -1,183 +1,215 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { TicketStatus, UserRole } from '../../generated/prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
 import { TicketAuthorizationUser } from './ticket-authorization.types';
 
 export type TicketAuthorizationSubject = {
   requesterId: number;
+  assignedManagerId: number | null;
   assignedAgentId: number | null;
   assignedTeamId: number | null;
-  assignedTeam?: {
-    teamLeadId: number | null;
-    managers?: Array<{ managerId: number }>;
-  } | null;
+  status: TicketStatus;
+  assignedTeam: { teamLeadId: number | null } | null;
 };
 
 export type SubtaskAuthorizationSubject = {
   assignedAgentId: number | null;
   assignedTeamId: number | null;
+  assignedTeam: { teamLeadId: number | null } | null;
   ticket: TicketAuthorizationSubject;
 };
 
-export type SupportedTicketStatus = TicketStatus | 'BLOCKED';
-
 @Injectable()
 export class TicketAuthorizationService {
-  constructor(private readonly prisma: PrismaService) {}
+  assertServiceDeskUser(user: TicketAuthorizationUser) {
+    if (
+      user.role !== UserRole.EMPLOYEE &&
+      user.role !== UserRole.AGENT &&
+      user.role !== UserRole.MANAGER
+    ) {
+      throw new ForbiddenException(
+        'System administration does not grant ticket access',
+      );
+    }
+  }
 
   assertCanCreateTicket(user: TicketAuthorizationUser) {
-    if (user.role === UserRole.EMPLOYEE || user.role === UserRole.SUPER_ADMIN) return;
-    throw new ForbiddenException('Only employees may create tickets');
+    if (user.role !== UserRole.EMPLOYEE)
+      throw new ForbiddenException('Only employees may create tickets');
   }
 
-  assertCanMutateTicket(user: TicketAuthorizationUser, ticket: TicketAuthorizationSubject) {
-    if (user.role === UserRole.SUPER_ADMIN) return;
-    this.assertAdminDecision(user);
-
-    if (this.isOperationalUserForTicket(user, ticket)) return;
-
-    throw new ForbiddenException('You do not have permission to modify this ticket');
-  }
-
-  async assertCanAssignTicket(
+  isResponsibleManager(
     user: TicketAuthorizationUser,
-    teamId: number,
-    agentId: number | null,
+    ticket: TicketAuthorizationSubject,
   ) {
-    if (user.role === UserRole.ADMIN) this.assertAdminDecision(user);
-    if (user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.MANAGER && user.role !== UserRole.AGENT) {
-      throw new ForbiddenException('You do not have permission to assign tickets');
-    }
+    return (
+      user.role === UserRole.MANAGER && ticket.assignedManagerId === user.id
+    );
+  }
 
-    const team = await this.prisma.team.findUnique({
-      where: { id: teamId },
-      select: {
-        id: true,
-        teamLeadId: true,
-        managers: { select: { managerId: true } },
-        members: { where: agentId === null ? undefined : { userId: agentId }, select: { userId: true, user: { select: { role: true } } } },
-      },
-    });
+  isTeamLead(
+    user: TicketAuthorizationUser,
+    team: { teamLeadId: number | null } | null,
+  ) {
+    return user.role === UserRole.AGENT && team?.teamLeadId === user.id;
+  }
 
-    if (!team) throw new NotFoundException('Team not found');
-
-    const controlsTeam =
-      user.role === UserRole.SUPER_ADMIN ||
-      (user.role === UserRole.MANAGER && team.managers.some(({ managerId }) => managerId === user.id)) ||
-      (user.role === UserRole.AGENT && team.teamLeadId === user.id);
-
-    if (!controlsTeam) {
-      throw new ForbiddenException('You do not have permission to assign this team');
-    }
-
-    if (agentId !== null && (team.members.length !== 1 || team.members[0].user.role !== UserRole.AGENT)) {
-      throw new ForbiddenException('The assigned agent must be an AGENT member of the team');
+  assertActive(ticket: TicketAuthorizationSubject) {
+    if (
+      ticket.status === TicketStatus.RESOLVED ||
+      ticket.status === TicketStatus.CLOSED
+    ) {
+      throw new ConflictException(
+        'Resolved and closed tickets freeze operational ownership and subtasks',
+      );
     }
   }
 
-  assertCanCreateSubtask(user: TicketAuthorizationUser, ticket: TicketAuthorizationSubject) {
-    if (user.role === UserRole.SUPER_ADMIN) return;
-    this.assertAdminDecision(user);
-
-    if (user.role === UserRole.MANAGER && this.isOperationalUserForTicket(user, ticket)) {
+  assertCanMutateTicket(
+    user: TicketAuthorizationUser,
+    ticket: TicketAuthorizationSubject,
+  ) {
+    this.assertServiceDeskUser(user);
+    if (
+      (user.role === UserRole.EMPLOYEE && ticket.requesterId === user.id) ||
+      (user.role === UserRole.AGENT && ticket.assignedAgentId === user.id) ||
+      this.isTeamLead(user, ticket.assignedTeam) ||
+      this.isResponsibleManager(user, ticket)
+    )
       return;
-    }
-
-    if (user.role === UserRole.AGENT && ticket.assignedTeam?.teamLeadId === user.id) {
-      return;
-    }
-
-    throw new ForbiddenException('You do not have permission to create a subtask');
+    throw new ForbiddenException(
+      'You do not have permission to modify this ticket',
+    );
   }
 
-  async assertCanAssignSubtask(
+  assertCanAssignManager(
+    user: TicketAuthorizationUser,
+    ticket: TicketAuthorizationSubject,
+  ) {
+    this.assertServiceDeskUser(user);
+    if (user.role !== UserRole.MANAGER)
+      throw new ForbiddenException('Only managers may assign responsibility');
+    this.assertActive(ticket);
+    if (ticket.status === TicketStatus.NEW && ticket.assignedManagerId === null)
+      return;
+    if (this.isResponsibleManager(user, ticket)) return;
+    throw new ForbiddenException(
+      'Only the responsible manager may transfer this ticket',
+    );
+  }
+
+  assertCanAssignTicket(
+    user: TicketAuthorizationUser,
+    ticket: TicketAuthorizationSubject,
+    teamId: number,
+  ) {
+    this.assertServiceDeskUser(user);
+    this.assertActive(ticket);
+    if (this.isResponsibleManager(user, ticket)) return;
+    if (
+      this.isTeamLead(user, ticket.assignedTeam) &&
+      teamId === ticket.assignedTeamId
+    )
+      return;
+    throw new ForbiddenException(
+      'Only the responsible manager may change the team; its Team Lead may assign agents',
+    );
+  }
+
+  assertCanCreateSubtask(
     user: TicketAuthorizationUser,
     ticket: TicketAuthorizationSubject,
     teamId: number | null,
-    agentId: number | null,
   ) {
-    if (teamId === null && agentId !== null) {
-      throw new BadRequestException('A subtask agent requires an assigned team');
-    }
-
-    this.assertCanCreateSubtask(user, ticket);
-
-    if (teamId !== null) {
-      await this.assertCanAssignTicket(user, teamId, agentId);
-    }
+    this.assertServiceDeskUser(user);
+    this.assertActive(ticket);
+    if (this.isResponsibleManager(user, ticket)) return;
+    if (
+      this.isTeamLead(user, ticket.assignedTeam) &&
+      teamId !== null &&
+      teamId === ticket.assignedTeamId
+    )
+      return;
+    throw new ForbiddenException(
+      'Subtask creation requires responsible-manager or parent-team lead authority',
+    );
   }
 
-  assertCanMutateSubtask(user: TicketAuthorizationUser, subtask: SubtaskAuthorizationSubject) {
-    if (user.role === UserRole.SUPER_ADMIN) return;
-    this.assertAdminDecision(user);
+  assertCanMutateSubtask(
+    user: TicketAuthorizationUser,
+    subtask: SubtaskAuthorizationSubject,
+  ) {
+    this.assertServiceDeskUser(user);
+    this.assertActive(subtask.ticket);
+    if (this.isResponsibleManager(user, subtask.ticket)) return;
+    if (this.isTeamLead(user, subtask.assignedTeam)) return;
+    if (user.role === UserRole.AGENT && subtask.assignedAgentId === user.id)
+      return;
+    throw new ForbiddenException(
+      'Only the subtask assignee, its Team Lead, or responsible manager may modify it',
+    );
+  }
 
-    if (user.role === UserRole.AGENT && subtask.assignedAgentId === user.id) return;
-    if (this.isOperationalUserForTicket(user, subtask.ticket)) return;
-
-    throw new ForbiddenException('You do not have permission to modify this subtask');
+  assertCanAssignSubtask(
+    user: TicketAuthorizationUser,
+    subtask: SubtaskAuthorizationSubject,
+    teamId: number | null,
+  ) {
+    this.assertCanMutateSubtask(user, subtask);
+    if (this.isResponsibleManager(user, subtask.ticket)) return;
+    if (
+      this.isTeamLead(user, subtask.assignedTeam) &&
+      teamId !== null &&
+      teamId === subtask.assignedTeamId
+    )
+      return;
+    throw new ForbiddenException(
+      'Only the responsible manager may move subtasks; their Team Lead may assign agents',
+    );
   }
 
   assertCanTransitionStatus(
     user: TicketAuthorizationUser,
     ticket: TicketAuthorizationSubject,
-    from: SupportedTicketStatus,
-    to: SupportedTicketStatus,
+    to: TicketStatus,
   ) {
-    if (!this.isAllowedTransition(from, to)) {
-      throw new ForbiddenException(`The ticket cannot transition from ${from} to ${to}`);
-    }
-
-    if (user.role === UserRole.SUPER_ADMIN) return;
-    this.assertAdminDecision(user);
-
-    if (
-      user.role === UserRole.EMPLOYEE &&
-      ticket.requesterId === user.id &&
-      from === TicketStatus.RESOLVED &&
-      to === TicketStatus.CLOSED
-    ) {
-      return;
-    }
-
-    if (to === TicketStatus.CLOSED && user.role !== UserRole.MANAGER) {
-      throw new ForbiddenException('Only the requester, a manager, or SUPER_ADMIN may close a ticket');
-    }
-
-    if (user.role === UserRole.AGENT || user.role === UserRole.MANAGER) {
-      if (this.isOperationalUserForTicket(user, ticket)) return;
-    }
-
-    throw new ForbiddenException('You do not have permission to change this ticket status');
-  }
-
-  private isOperationalUserForTicket(user: TicketAuthorizationUser, ticket: TicketAuthorizationSubject) {
-    if (user.role === UserRole.EMPLOYEE) return ticket.requesterId === user.id;
-    if (user.role === UserRole.AGENT) {
-      return ticket.assignedAgentId === user.id || ticket.assignedTeam?.teamLeadId === user.id;
-    }
-    if (user.role === UserRole.MANAGER) {
-      return ticket.assignedTeam?.managers?.some(({ managerId }) => managerId === user.id) ?? false;
-    }
-    return false;
-  }
-
-  private assertAdminDecision(user: TicketAuthorizationUser) {
-    if (user.role === UserRole.ADMIN) {
-      throw new ForbiddenException('ADMIN users do not have ticket access');
-    }
-  }
-
-  private isAllowedTransition(from: SupportedTicketStatus, to: SupportedTicketStatus) {
-    const transitions: Record<SupportedTicketStatus, SupportedTicketStatus[]> = {
-      NEW: [TicketStatus.ASSIGNED],
+    this.assertServiceDeskUser(user);
+    // NEW -> ASSIGNED belongs exclusively to the primary-team assignment operation.
+    const transitions: Record<TicketStatus, TicketStatus[]> = {
+      NEW: [],
       ASSIGNED: [TicketStatus.IN_PROGRESS],
-      IN_PROGRESS: [TicketStatus.WAITING_FOR_EMPLOYEE, 'BLOCKED', TicketStatus.RESOLVED],
+      IN_PROGRESS: [
+        TicketStatus.WAITING_FOR_EMPLOYEE,
+        TicketStatus.BLOCKED,
+        TicketStatus.RESOLVED,
+      ],
       WAITING_FOR_EMPLOYEE: [TicketStatus.IN_PROGRESS],
       BLOCKED: [TicketStatus.IN_PROGRESS],
       RESOLVED: [TicketStatus.CLOSED],
       CLOSED: [],
     };
-
-    return transitions[from].includes(to);
+    if (!transitions[ticket.status].includes(to)) {
+      throw new ConflictException(
+        `The ticket cannot transition from ${ticket.status} to ${to}`,
+      );
+    }
+    if (to === TicketStatus.CLOSED) {
+      if (
+        (user.role === UserRole.EMPLOYEE && ticket.requesterId === user.id) ||
+        this.isResponsibleManager(user, ticket)
+      )
+        return;
+    } else if (
+      this.isResponsibleManager(user, ticket) ||
+      this.isTeamLead(user, ticket.assignedTeam) ||
+      (user.role === UserRole.AGENT && ticket.assignedAgentId === user.id)
+    )
+      return;
+    throw new ForbiddenException(
+      'You do not have permission to change this ticket status',
+    );
   }
 }

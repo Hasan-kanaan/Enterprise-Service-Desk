@@ -1,10 +1,22 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { UserRole } from '../../generated/prisma/client';
-import { TicketVisibilityService, TicketVisibilityUser } from './ticket-visibility.service';
+import {
+  TicketVisibilityService,
+  TicketVisibilityUser,
+} from './ticket-visibility.service';
 
-const employee = (id: number): TicketVisibilityUser => ({ id, role: UserRole.EMPLOYEE });
-const agent = (id: number): TicketVisibilityUser => ({ id, role: UserRole.AGENT });
-const manager = (id: number): TicketVisibilityUser => ({ id, role: UserRole.MANAGER });
+const employee = (id: number): TicketVisibilityUser => ({
+  id,
+  role: UserRole.EMPLOYEE,
+});
+const agent = (id: number): TicketVisibilityUser => ({
+  id,
+  role: UserRole.AGENT,
+});
+const manager = (id: number): TicketVisibilityUser => ({
+  id,
+  role: UserRole.MANAGER,
+});
 
 describe('TicketVisibilityService', () => {
   const findMany = jest.fn();
@@ -26,10 +38,7 @@ describe('TicketVisibilityService', () => {
 
   it('filters agents to direct assignment or their current Team Lead team', () => {
     expect(service.buildWhere(agent(20))).toEqual({
-      OR: [
-        { assignedAgentId: 20 },
-        { assignedTeam: { teamLeadId: 20 } },
-      ],
+      OR: [{ assignedAgentId: 20 }, { assignedTeam: { teamLeadId: 20 } }],
     });
   });
 
@@ -45,9 +54,12 @@ describe('TicketVisibilityService', () => {
     expect(where).not.toContain('specialties');
   });
 
-  it('filters managers to teams they manage', () => {
+  it('filters managers to unowned NEW intake and explicitly owned tickets', () => {
     expect(service.buildWhere(manager(30))).toEqual({
-      assignedTeam: { managers: { some: { managerId: 30 } } },
+      OR: [
+        { status: 'NEW', assignedManagerId: null },
+        { assignedManagerId: 30 },
+      ],
     });
   });
 
@@ -57,18 +69,18 @@ describe('TicketVisibilityService', () => {
     expect(where).not.toContain('departmentId');
   });
 
-  it('uses the same team relationship for global team managers', () => {
+  it('does not derive manager visibility from TeamManager', () => {
     expect(service.buildWhere(manager(30))).toEqual({
-      assignedTeam: { managers: { some: { managerId: 30 } } },
+      OR: [
+        { status: 'NEW', assignedManagerId: null },
+        { assignedManagerId: 30 },
+      ],
     });
   });
 
   it('uses the same team-lead relationship for global team leads', () => {
     expect(service.buildWhere(agent(20))).toEqual({
-      OR: [
-        { assignedAgentId: 20 },
-        { assignedTeam: { teamLeadId: 20 } },
-      ],
+      OR: [{ assignedAgentId: 20 }, { assignedTeam: { teamLeadId: 20 } }],
     });
   });
 
@@ -78,18 +90,16 @@ describe('TicketVisibilityService', () => {
     });
   });
 
-  it('uses assigned-team relationships instead of affected-region relationships', () => {
+  it('uses responsible-manager ownership instead of affected-region relationships', () => {
     const where = JSON.stringify(service.buildWhere(manager(30)));
-    expect(where).toContain('assignedTeam');
+    expect(where).toContain('assignedManagerId');
+    expect(where).not.toContain('assignedTeam');
     expect(where).not.toContain('affectedRegions');
   });
 
   it('does not grant operational visibility to unassigned agents', () => {
     expect(service.buildWhere(agent(20))).toEqual({
-      OR: [
-        { assignedAgentId: 20 },
-        { assignedTeam: { teamLeadId: 20 } },
-      ],
+      OR: [{ assignedAgentId: 20 }, { assignedTeam: { teamLeadId: 20 } }],
     });
   });
 
@@ -99,14 +109,31 @@ describe('TicketVisibilityService', () => {
     expect(where).not.toContain('assignedAgentId');
   });
 
-  it('allows SUPER_ADMIN system-level visibility', () => {
-    expect(service.buildWhere({ id: 1, role: UserRole.SUPER_ADMIN })).toEqual({});
+  it('denies SUPER_ADMIN ticket visibility', () => {
+    expect(() =>
+      service.buildWhere({ id: 1, role: UserRole.SUPER_ADMIN }),
+    ).toThrow(ForbiddenException);
   });
 
-  it('does not guess ADMIN ticket visibility', () => {
+  it('denies ADMIN ticket visibility', () => {
     expect(() => service.buildWhere({ id: 2, role: UserRole.ADMIN })).toThrow(
       ForbiddenException,
     );
+  });
+
+  it.each([UserRole.EMPLOYEE, UserRole.ADMIN, UserRole.SUPER_ADMIN])(
+    'denies %s subtask reads',
+    (role) => {
+      expect(() => service.buildSubtaskWhere({ id: 10, role })).toThrow(
+        ForbiddenException,
+      );
+    },
+  );
+
+  it('does not grant intake managers subtask visibility', () => {
+    expect(service.buildSubtaskWhere(manager(30))).toEqual({
+      ticket: { assignedManagerId: 30 },
+    });
   });
 
   it('passes the restricted filter to list queries', async () => {
@@ -115,7 +142,12 @@ describe('TicketVisibilityService', () => {
     await service.listVisible(manager(30));
 
     expect(findMany).toHaveBeenCalledWith({
-      where: { assignedTeam: { managers: { some: { managerId: 30 } } } },
+      where: {
+        OR: [
+          { status: 'NEW', assignedManagerId: null },
+          { assignedManagerId: 30 },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
     });
   });
@@ -143,7 +175,12 @@ describe('TicketVisibilityService', () => {
 
     await expect(service.countVisible(manager(30))).resolves.toBe(2);
     expect(count).toHaveBeenCalledWith({
-      where: { assignedTeam: { managers: { some: { managerId: 30 } } } },
+      where: {
+        OR: [
+          { status: 'NEW', assignedManagerId: null },
+          { assignedManagerId: 30 },
+        ],
+      },
     });
   });
 });
