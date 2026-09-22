@@ -1,4 +1,4 @@
-import api from '@/services/api'
+import api, { settleSessionRefresh } from '@/services/api'
 import type { AuthResponse, AuthUser } from '@/types/auth'
 
 export type LoginInput = {
@@ -28,5 +28,6 @@ export async function getSetupStatus() {
 }
 
 export async function logout() {
+  await settleSessionRefresh()
   await api.post('/auth/logout')
 }

@@ -1,5 +1,6 @@
 import api from '@/services/api'
-import type { AuthUser, UserRole } from '@/types/auth'
+import type { Account } from '@/types/administration'
+import type { UserRole } from '@/types/auth'
 
 export type CreateAccountInput = {
   username: string
@@ -8,12 +9,12 @@ export type CreateAccountInput = {
   role: UserRole
 }
 
-export async function listAccounts() {
-  const { data } = await api.get<AuthUser[]>('/users')
+export async function listAccounts(signal?: AbortSignal) {
+  const { data } = await api.get<Account[]>('/users', { signal })
   return data
 }
 
 export async function createAccount(input: CreateAccountInput) {
-  const { data } = await api.post<{ user: AuthUser }>('/auth/accounts', input)
+  const { data } = await api.post<{ user: Account }>('/auth/accounts', input)
   return data.user
 }

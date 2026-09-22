@@ -258,6 +258,8 @@ export class UsersService {
         role: true,
         status: true,
         sessionVersion: true,
+        region: { select: { id: true, name: true } },
+        department: { select: { id: true, name: true } },
       },
     });
 

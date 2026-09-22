@@ -351,7 +351,7 @@ Super Admins are the highest-level system administrators.
 They can:
 
 - Be created only during the initial application bootstrap/setup
-- Create and manage `ADMIN` accounts
+- Create and manage `ADMIN`, `MANAGER`, `AGENT`, and `EMPLOYEE` accounts
 - Perform system-level administration
 
 They cannot create another `SUPER_ADMIN`. They have no ticket, subtask, or future internal-note access. Their account and organization administrative responsibilities remain intact.
@@ -439,7 +439,7 @@ Fresh installation
    ↓
 Initial SUPER_ADMIN setup
    ↓
-SUPER_ADMIN creates ADMIN accounts
+SUPER_ADMIN can create ADMIN, MANAGER, AGENT, and EMPLOYEE accounts
    ↓
 ADMIN creates EMPLOYEE, AGENT, and MANAGER accounts
    ↓
@@ -681,6 +681,7 @@ All routes require authentication. ADMIN and SUPER_ADMIN are denied all ticket/s
 | Route | Purpose |
 | --- | --- |
 | GET /tickets, GET /tickets/:ticketId | Filtered ticket reads |
+| GET /ticket-options | Operational roles: category, tag, region, department ID/name choices |
 | POST /tickets | Employee creation with NULL ownership |
 | PATCH /tickets/:ticketId | Relationship-authorized metadata edits |
 | PATCH /tickets/:ticketId/manager | Initial ownership / transfer; body: assignedManagerId |
@@ -695,7 +696,7 @@ All routes require authentication. ADMIN and SUPER_ADMIN are denied all ticket/s
 | POST /tickets/:ticketId/subtasks | Responsible-manager or parent-team lead creation |
 | PATCH /tickets/subtasks/:subtaskId | Authorized content/status/assignment changes |
 
-Ticket lists return scalar fields. Ticket detail includes scope/tag IDs, ownership summaries, and the latest work-cycle summary. History is a separate, authorized endpoint. Subtask reads never include parent-ticket content. There is no frontend ticket integration or category/tag catalog API yet.
+Ticket lists return scalar fields. Ticket detail includes scope/tag IDs, ownership summaries, and the latest work-cycle summary. History is a separate, authorized endpoint. Subtask reads never include parent-ticket content. The employee frontend uses these APIs and the read-only ticket-options catalog; the catalog exposes no user directory or administrative team data.
 
 Employees have no support-subtask access. Direct subtask agents can read/work on their own subtask, but cannot reassign it. Primary parent-agent assignment grants no extra subtask access. Team Leads read/manage subtasks assigned to their led team, may assign agents within that team, and may create subtasks for that team when it is the parent primary team. Only the responsible manager delegates subtasks across teams. Subtask state changes never change parent state, and terminal parents freeze subtask mutations.
 
@@ -727,7 +728,7 @@ Current responsibility controls ticket/history visibility. Historical participat
 
 `GET /tickets?active=true` filters current visible operational tickets; `status=RESOLVED` supports exact status filtering. Subtask list routes support `currentWork=true` to exclude ended-cycle or completed/cancelled work. Future React labels can derive ?Current Work ? Reopening #2?, ?Reopening #1?, and ?Original Investigation? directly from cycle sequence/type.
 
-Work-cycle history is implemented product history. A generic audit log, conversations, private notes, notifications, automatic closure, and frontend ticket pages remain deferred. Future conversations can reference the cycle ID.
+Work-cycle history is implemented product history and is displayed in the employee ticket detail page. A generic audit log, conversations, private notes, notifications, and automatic closure remain deferred. Future conversations can reference the cycle ID.
 
 ---
 
@@ -1159,6 +1160,95 @@ client/
 The project intentionally uses this structure instead of a feature-first architecture.
 
 The goal is to keep the frontend familiar while learning backend development.
+
+### Implemented Employee Workspace
+
+The responsive employee workspace includes a dashboard with real request counts, a searchable/filterable ticket list, ticket creation, current ticket detail, metadata editing, and public work-cycle history. `/tickets`, `/tickets/new`, and `/tickets/:ticketId` are employee routes. Manager and Agent/Team Lead screens use the operational routes described below. Administrative users have no ticket navigation or ticket authority.
+
+Employees can cancel their own NEW/ASSIGNED requests, close RESOLVED requests, and reopen RESOLVED/CLOSED requests with a reason. Confirmation dialogs explain each operation. Terminal tickets hide metadata editing; CANCELLED cannot reopen. History retains the server's historical ownership and timestamps and never requests or displays support subtasks. The server remains authoritative for every operation. A 409 requires explicit reload; mutations are not automatically retried on conflicts. Invalid legacy reopen routing offers the backend's explicit return-to-intake choice.
+
+Creation/edit forms load actual category, tag, region, and department choices from `GET /ticket-options`. No organization IDs or owners are invented. Missing categories block submission with an explanatory state. This endpoint is read-only and restricted to EMPLOYEE/AGENT/MANAGER; organization catalog administration remains separate work.
+
+Access tokens remain in memory. Startup restores the session through the HttpOnly refresh cookie before protected routes render. Concurrent 401 responses share one refresh; refreshed identity updates Redux, and rejected sessions return to sign-in with the requested path preserved. Network failures show a retry state. Pages handle loading, empty lists, validation errors, unavailable tickets, and conflicts. Larger route modules load on demand.
+
+Run the backend on `http://localhost:8000` and the frontend on `http://localhost:3000` using each application's `pnpm dev` / `pnpm start:dev` scripts as applicable. The client defaults to that API URL; `VITE_API_URL` can override it. Browser and API origins must match the backend's CORS/cookie configuration. Use an existing ACTIVE employee account and actual configured catalogs.
+
+Frontend verification, from `client/`:
+
+```powershell
+pnpm lint
+pnpm build
+pnpm test:browser
+```
+
+The browser test uses an installed Chrome/Edge (or `BROWSER_PATH` pointing to a Chromium executable), Node's native WebSocket support, and the built Vite preview on port 3000. Stop the dev server before running it. It uses isolated API fixtures for deterministic browser interactions, leaves screenshots in the OS temporary directory, and removes its temporary browser profile. It does not use a real account or modify application data. Backend PostgreSQL e2e tests separately verify the actual API contracts and catalog permissions; see [status.md](status.md) for commands and results.
+
+---
+
+### Implemented Manager and Agent/Team Lead Workspace
+
+The operational frontend consumes the existing ticket, assignment, lifecycle, subtask, and history write/read APIs. It does not introduce new mutation authority or database models.
+
+| Route | Purpose |
+| --- | --- |
+| `/dashboard` | Manager/agent counts derived from authorized current work |
+| `/work/intake` | MANAGER-only shared unowned NEW queue |
+| `/work/tickets` | Current responsible-manager or direct primary-agent assignments; optional terminal records |
+| `/work/team` | Tickets whose primary team the current AGENT actually leads |
+| `/work/tickets/:ticketId` | Authorized current state, actions, current-cycle subtasks, and history |
+| `/work/subtasks` | Authorized current incomplete subtasks; optional completed/historical records |
+| `/work/subtasks/:subtaskId` | Limited subtask detail and permitted actions, without parent content/history requests |
+
+Managers can claim intake, route owned tickets, choose/clear primary agents, transfer responsibility, edit metadata, perform allowed status transitions, close resolved work, reopen, and create/manage authorized subtasks. Transfer returns to the owned-ticket list, since the former owner loses visibility. Intake alone exposes claim but no metadata, routing, or subtask management controls.
+
+Agents see their current direct assignments and can edit/work them under existing permissions. Team Lead remains a relationship, not an RBAC role. Current leads also see a led-team queue, can select primary agents from their own team, and create/manage authorized own-team subtasks. Ordinary primary assignment grants no extra subtask authority. TeamManager still grants no ticket authority.
+
+Assignment dialogs list real eligible active users. Team changes retain the previous agent selection and require explicit clearing/replacement if incompatible; no silent reassignment is introduced. Managers may explicitly leave subtasks unassigned. Team Leads cannot move work across teams, change responsible managers, or reopen tickets. Confirmations cover assignment, transfer, status, reopening, and subtask updates. Resolution summaries and reopening reasons are requester-visible. Standard 409 conflicts freeze submission and require explicit reload; no write is automatically retried on conflict.
+
+History reuses the employee cycle renderer with authorized support-work content. Current-cycle work is separate from earlier frozen cycles. Subtask detail displays assignment, completion timestamp/actor, and frozen state, including incomplete historical subtasks. It never fetches parent-ticket details or history. Initial subtask lists may show existing assignment IDs when the existing list response has no names; the limited detail projection supplies display names. Historical participation does not expand any active queue.
+
+The existing administrative organization/user APIs are not called for operational pickers. Three small read-only projections fill the missing UI context:
+
+| Endpoint | Restricted projection |
+| --- | --- |
+| `GET /ticket-workspace` | Current caller's led-team IDs/names only |
+| `GET /ticket-workspace/tickets/:ticketId` | Actions/statuses from existing policies and eligible manager/team/agent choices for an authorized ticket |
+| `GET /ticket-workspace/subtasks/:subtaskId` | Authorized subtask fields/display names, historical/frozen flags, actions, and eligible assignment choices; no parent content |
+
+All three require MANAGER or AGENT authentication. Resource projections reuse existing visibility predicates and authorization methods. Ticket/subtask context reads use a consistent database snapshot. Options contain only team IDs/names and active eligible user IDs/usernames; ordinary agents get no assignee directory and Team Leads get only the authorized team. Terminal work returns no assignment choices. These are current presentation hints, not grants: existing transactional mutation checks remain authoritative after any concurrent change.
+
+`pnpm test:browser` runs the accepted Employee suite followed by Manager/Agent/Team Lead acceptance. The operational suite covers claim/routing/transfer, metadata/status/reopen, authorized subtask work, historical freezing, filtered history, unauthorized exclusion, mobile layout, 401/403/404/409 handling, and network retry. Browser tests use isolated API fixtures; PostgreSQL e2e tests separately exercise the actual projection and mutation authorization. No browser-to-live-database coverage is claimed.
+
+ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Conversations, notes, notifications, attachments, AI, automatic closure, generic audits, and SSO/SCIM remain deferred.
+
+---
+
+### Administration Workspace
+
+ADMIN and SUPER_ADMIN use a dedicated administration navigation with `/admin`, `/admin/accounts`, `/admin/organization`, and `/admin/organization/teams/:teamId`. Their dashboard opens `/admin`; the old `/users` URL redirects to the protected accounts route. EMPLOYEE/AGENT/MANAGER cannot enter these routes. Administration never loads ticket queues, details, history, or support subtasks.
+
+The account directory displays username, email, role, ACTIVE/INACTIVE status, and existing nullable region/department labels. Search and status filtering operate on the authorized directory. Creation requires a username, email, password of at least eight characters, and an explicitly chosen permitted role. SUPER_ADMIN can create ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN can create MANAGER/AGENT/EMPLOYEE. No normal workflow creates SUPER_ADMIN or offers public registration. The backend SUPER_ADMIN creation matrix was explicitly expanded to these four roles in this phase and is covered by unit/HTTP tests.
+
+Activation/deactivation uses the existing lifecycle API and authority matrix. Confirmation explains administrative offboarding of current responsibilities, preservation of historical attribution, and that no replacements are selected. Reactivation explicitly requires fresh sign-in and does not restore previous sessions or responsibilities. The resulting account status is refreshed from the directory. There is no delete-user control, operational preview, or replacement-person picker. Account creation also participates in existing access-token renewal; only session/bootstrap endpoints bypass the ordinary 401 retry mechanism.
+
+Organization controls use existing mutations only:
+
+| Concept | Available UI |
+| --- | --- |
+| Regions / departments / specialties | List and create |
+| Teams | List, create with explicit REGION/GLOBAL coverage, view details |
+| Membership | Add active AGENT members; remove members after clearing any Team Lead responsibility |
+| Team Lead | Assign/replace an active member who leads no other team; explicitly remove |
+| TeamManager | Assign an active MANAGER when vacant; explicitly remove before replacement |
+| Team specialties | Display existing links only |
+
+GLOBAL creation omits regionId; REGION creation requires one actual region. No organization records or relationships are invented. Agents can join multiple teams and managers can manage multiple teams. TeamManager remains organizational only, with no ticket authority. Team member removal consumes the current backend behavior; it is not an offboarding/assignment-transfer workflow.
+
+The only read changes are nullable region/department ID/name projections on GET /users and member userId plus user ID/username/role/status on GET /organization/teams. Existing administrative guards remain; no new endpoints or operational data are exposed.
+
+The current backend has no rename/delete APIs for regions, departments, specialties or teams; no team coverage update; no specialty-link mutations; and no account identity/role/home-organization editing API. Those controls are deliberately absent. Broader membership/organization lifecycle rules, including reconciliation of retained work after membership removal, remain separate design work. This phase adds no organization mutation or migration.
+
+Administration uses shared loading/error states and native confirmation dialogs, explicit 403/404/409 reload, disabled pending controls, validation, empty states, and responsive layouts. `pnpm test:browser` now runs Employee, operational, and administration suites sequentially. Administration acceptance covers both creation/lifecycle matrices, every organization operation exposed above, relationship restrictions, route isolation, token renewal, error recovery, and mobile layout. Browser fixtures remain isolated from actual application data; PostgreSQL tests separately verify real backend contracts and authorization.
 
 ---
 

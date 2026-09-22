@@ -7,11 +7,23 @@ import { JwtModule } from '@nestjs/jwt';
 import { jwtConstants } from '../auth/auth.constants';
 import { TicketsController } from './tickets.controller';
 import { TicketsService } from './tickets.service';
+import { TicketWorkspaceController } from './ticket-workspace.controller';
+import { TicketOptionsController } from './ticket-options.controller';
 
 @Module({
   imports: [JwtModule.register({ secret: jwtConstants.secret })],
-  controllers: [TicketsController],
-  providers: [TicketAuthorizationService, TicketVisibilityService, TicketsService, AuthGuard, RolesGuard],
+  controllers: [
+    TicketsController,
+    TicketOptionsController,
+    TicketWorkspaceController,
+  ],
+  providers: [
+    TicketAuthorizationService,
+    TicketVisibilityService,
+    TicketsService,
+    AuthGuard,
+    RolesGuard,
+  ],
   exports: [TicketAuthorizationService, TicketVisibilityService],
 })
 export class TicketsAuthorizationModule {}

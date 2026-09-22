@@ -24,7 +24,7 @@ The five roles are:
 
 - Highest-level system administrator.
 - Created only during the initial application bootstrap/setup.
-- Can create and manage `ADMIN` accounts.
+- Can create and manage `ADMIN`, `MANAGER`, `AGENT`, and `EMPLOYEE` accounts.
 - Can perform system-level administration.
 - Cannot create another `SUPER_ADMIN`.
 - Has no service-desk ticket, subtask, or future internal-note authority.
@@ -71,7 +71,7 @@ Setup completed
 Normal login and application use
 ```
 
-After bootstrap:
+After bootstrap, SUPER_ADMIN may provision ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN may provision MANAGER/AGENT/EMPLOYEE. The delegation hierarchy is:
 
 ```text
 SUPER_ADMIN
@@ -210,7 +210,7 @@ Employee/support conversations and support-only internal notes are separate futu
 
 Internal notes will be multiple historical records with at least id, ticketId, authorId, content, and createdAt; never one mutable Ticket.note string. AGENT/Team Lead/MANAGER access must use current ticket authorization, and EMPLOYEE/ADMIN/SUPER_ADMIN must never receive note contents in API responses. Notes are general-purpose and not coupled to BLOCKED status. Edit/delete history, terminal-ticket note policy, and whether intake-only managers may add notes still need design. No Prisma note model exists yet.
 
-AI, notifications, email, audit history, attachments, automatic closure, and frontend ticket workflows remain deferred.
+AI, notifications, email, audit history, attachments, and automatic closure remain deferred. Employee and operational Manager/Agent/Team Lead ticket workflows are implemented.
 
 ## NULL and Data Integrity
 
@@ -256,7 +256,7 @@ Deploy with application writes paused while applying the migration and switching
 
 ## Frontend Structure
 
-The frontend will use a classic structure:
+The frontend uses a classic structure:
 
 - components/
 - pages/
@@ -266,3 +266,53 @@ The frontend will use a classic structure:
 
 Reason:
 This is simpler and easier to understand while learning React TypeScript.
+
+## Employee Frontend Foundation
+
+Retain the existing React/TypeScript/Vite, Redux, Axios, React Hook Form, Tailwind, and CSS stack. No new dependencies or database changes are required. Shared typed API services, abortable resource loading, status/cycle presentation helpers, forms, confirmation dialogs, and public history components support the employee routes. Dashboard statistics come from the employee's authorized ticket list. Search/status tabs filter that returned list locally; pagination is deferred until the API supports it.
+
+Employee ticket routes are gated by role for navigation and usability; backend authorization remains the security boundary. ADMIN/SUPER_ADMIN receive no ticket navigation or ticket authority. Manager/Agent/Team Lead ticket pages use the operational workspace described below. Current ticket data and work-cycle history load separately from their existing endpoints. History renders server-provided ownership snapshots, reasons, resolutions, and nullable timestamps without deriving old owners from current assignments. The employee UI neither requests nor models support subtasks or internal notes.
+
+Use explicit cancel, close, and reopen actions with confirmations. Reopening requires a reason; invalid legacy routing can be retried only after explicitly choosing the backend's returnToIntake recovery. A standard 409 locks stale submission and offers reload before retry. RESOLVED/CLOSED/CANCELLED hide ordinary metadata editing. The UI never changes ownership or reopens through an edit endpoint.
+
+The existing backend lacked a catalog usable by employee ticket forms. Add only GET /ticket-options under the operational module: authenticated EMPLOYEE/AGENT/MANAGER can read category/tag/region/department ID/name choices. It exposes no users, memberships, administrative team details, or writes. Existing organization administration permissions remain unchanged. Empty catalogs remain empty; the client never substitutes fabricated records or picks the first entry. A missing category catalog blocks submission.
+
+Keep access tokens in memory, restore through the HttpOnly cookie before protected routing, and synchronize refresh responses into Redux. Share a refresh across concurrent requests, preserve the requested path through sign-in, prevent pending responses from restoring a locally signed-out session, and surface connection failures with retry. Do not persist credentials or tokens in browser storage. Logout waits for a pending refresh before revoking the resulting cookie session.
+
+Browser acceptance checks use native CDP with an installed Chromium browser and isolated API fixtures. They exercise real rendered React pages and HTTP request shapes without adding a test dependency or mutating development data. PostgreSQL-backed backend tests continue to verify actual authorization and lifecycle behavior. This division does not claim browser-to-live-database end-to-end coverage.
+
+
+## Operational Frontend and Scoped Read Projections
+
+Keep the accepted employee workspace and the existing classic frontend layout. Operational pages reuse ticket forms, rows, badges, dialogs, resource loading, session recovery, and cycle history. The history renderer accepts an optional work renderer; the employee caller supplies none. Support subtask types are separate from the employee response contract.
+
+Manager queues separate unowned NEW intake from current ownership. Agent queues separate direct assignments from tickets belonging to the team they currently lead. All lists begin with backend-authorized data; local search/terminal filters only narrow it. Operational metrics count those actual rows and authorized current incomplete subtasks. Historical participants are never used as queue membership. TeamManager is not consulted.
+
+The operational frontend uses existing write endpoints unchanged. Available ticket/subtask actions are read-only hints computed by the same TicketAuthorizationService methods used by writes. Do not reproduce the status transition graph in frontend code. All writes retain their original transactional rechecks; stale hints never grant access. Standard 409 responses lock the dialog/form until explicit reload. Transfer to another manager navigates back to the owned queue. Assignment dialogs preserve incompatible old agents until the operator explicitly clears/replaces them. No default owners, teams, or agents are invented.
+
+The existing organization APIs are administrative and the raw operational reads lacked Team Lead context, eligible choices, and safe standalone subtask lifecycle information. Add only TicketWorkspaceController with GET /ticket-workspace, /ticket-workspace/tickets/:ticketId, and /ticket-workspace/subtasks/:subtaskId. Require MANAGER/AGENT guards, reuse TicketVisibilityService predicates, and compute permissions from existing policies. Resource reads use RepeatableRead for consistent relationships/options. Existing schemas, mutation services, locks, and role rules are unchanged.
+
+The context endpoint returns only the caller's led teams. Ticket pickers return active MANAGER IDs/usernames only for owned transferable tickets, and real teams with active AGENT member IDs/usernames only for permitted assignment/creation. Team Leads receive only their led primary team; ordinary agents and intake-only managers receive no assignment directory. Frozen tickets receive no assignment choices. Email addresses, passwords, and administrative details beyond the required team/eligible-agent options are not exposed.
+
+The standalone subtask projection first enforces the existing independent subtask predicate. It internally reads only the parent fields needed by existing policies and current-cycle comparison, then omits that parent from its response. It adds assignment/completer display names, historical/frozen flags, and scoped action hints to the existing subtask fields. Neither parent title, requester, history, nor parent content is returned. Direct subtask-only navigation makes no parent API calls. Current completed/cancelled subtasks retain existing within-cycle behavior; all prior-cycle subtasks are frozen regardless of status.
+
+Current-cycle subtasks appear separately within ticket detail; authorized earlier work is grouped under its cycle in the shared history view. Agents/leads receive only the existing filtered history projection. Current incomplete subtask queues use the existing currentWork filter; an explicit broader view allows authorized completed/historical records without suggesting they are active assignments. Standalone detail rechecks current read/action availability before exposing edit controls.
+
+The browser suite verifies manager, direct agent, and actual Team Lead flows with isolated API fixtures. PostgreSQL e2e adds relationship-scoped context, picker field/eligibility restrictions, denied administrative/outsider access, subtask-only confidentiality, completion attribution, and terminal/historical freezing. The operational phase excluded administration UI; its implementation is documented below. Messaging/AI/audit features remain deferred.
+
+
+## Administration Frontend and Existing Organization Capabilities
+
+The administration workspace is separate from employee/operational routes and reuses the established shell and component styling. ADMIN/SUPER_ADMIN dashboards route to /admin, with accounts and organization navigation only. Operational roles are excluded by frontend route guards and existing backend guards. No administration component requests ticket or support-subtask APIs.
+
+Account management renders the authorized directory, including status and nullable home-organization labels. The existing backend originally limited SUPER_ADMIN creation to ADMIN. The user explicitly approved expanding that one authorization matrix to ADMIN/MANAGER/AGENT/EMPLOYEE. Frontend and backend now agree; ADMIN remains limited to MANAGER/AGENT/EMPLOYEE, and SUPER_ADMIN creation remains bootstrap-only. Unit and HTTP matrix tests verify both positive and negative cases. Account creation reuses protected-request 401 renewal rather than being excluded merely because its URL starts with /auth.
+
+Lifecycle confirmation describes existing administrative offboarding without loading any affected operational records or selecting replacements. Reactivation restores eligibility for fresh login only, not prior sessions/responsibilities. No user deletion UI exists. Status responses remain the existing minimal id/status projection, and the directory is reloaded after success.
+
+Organization implementation is bounded by existing APIs: list/create regions, departments, specialties and teams; add/remove membership; assign/replace/remove Team Lead; assign/remove TeamManager. Team scope is explicit and REGION requires a real region, while GLOBAL submits no regionId. Member pickers contain active AGENT accounts not already in that team. Lead pickers contain active member agents who lead no other team. Manager pickers contain active MANAGER accounts; an existing TeamManager must be explicitly removed before another is assigned. No fake/default records or relationships are used.
+
+GET /users adds only nullable region/department id/name relationships. GET /organization/teams adds members with userId and user id/username/role/status. These are small additions to already administrative reads, not new endpoints, permissions, or a service-desk preview. Existing raw directory sessionVersion is not rendered. Passwords and operational records are not included in the new projections.
+
+Do not expose unsupported organization mutations. Rename/delete of master records and teams, changing existing team coverage, changing specialty links, and account identity/role/home-organization editing lack current APIs. They remain deferred. Membership removal uses its existing backend rule: a Team Lead must first be removed as lead. It does not transfer retained operational assignments. Broader responsibility/membership reconciliation and concurrency rules are not invented in this frontend phase.
+
+Administration dialogs show validation/errors, block repeat submission while pending, and require explicit reload after 403/404/409 before another mutation. Browser coverage uses isolated fixtures for both administrative roles and all exposed organization actions, and verifies no administrative ticket requests. Existing Employee and operational suites remain regression coverage. No new dependencies, schema, migrations, or organization mutation APIs were added.

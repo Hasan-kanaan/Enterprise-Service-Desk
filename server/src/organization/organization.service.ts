@@ -46,6 +46,14 @@ export class OrganizationService {
       orderBy: { name: 'asc' },
       include: {
         region: true,
+        members: {
+          select: {
+            userId: true,
+            user: {
+              select: { id: true, username: true, role: true, status: true },
+            },
+          },
+        },
         teamLead: { select: { id: true, username: true, role: true } },
         managers: {
           include: {

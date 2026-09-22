@@ -64,7 +64,7 @@ export class AuthService {
   async createAccount(callerRole: UserRole, dto: CreateAccountDto) {
     const allowedRoles =
       callerRole === UserRole.SUPER_ADMIN
-        ? [UserRole.ADMIN]
+        ? [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.EMPLOYEE]
         : callerRole === UserRole.ADMIN
           ? [UserRole.EMPLOYEE, UserRole.AGENT, UserRole.MANAGER]
           : [];

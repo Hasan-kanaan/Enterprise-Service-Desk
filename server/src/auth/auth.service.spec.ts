@@ -53,16 +53,14 @@ describe('AuthService', () => {
         sessionVersion: 0,
         role: UserRole.ADMIN,
       }),
-      issueSession: jest
-        .fn()
-        .mockResolvedValue({
-          id: 1,
-          username: 'adminuser',
-          email: 'admin@company.com',
-          role: UserRole.ADMIN,
-          status: 'ACTIVE',
-          sessionVersion: 0,
-        }),
+      issueSession: jest.fn().mockResolvedValue({
+        id: 1,
+        username: 'adminuser',
+        email: 'admin@company.com',
+        role: UserRole.ADMIN,
+        status: 'ACTIVE',
+        sessionVersion: 0,
+      }),
     };
     const jwtService = {
       sign: jest.fn(() => 'signed-test-token'),
@@ -91,16 +89,14 @@ describe('AuthService', () => {
         sessionVersion: 0,
         role: UserRole.EMPLOYEE,
       }),
-      issueSession: jest
-        .fn()
-        .mockResolvedValue({
-          id: 1,
-          username: 'adminuser',
-          email: 'admin@company.com',
-          role: UserRole.ADMIN,
-          status: 'ACTIVE',
-          sessionVersion: 0,
-        }),
+      issueSession: jest.fn().mockResolvedValue({
+        id: 1,
+        username: 'adminuser',
+        email: 'admin@company.com',
+        role: UserRole.ADMIN,
+        status: 'ACTIVE',
+        sessionVersion: 0,
+      }),
     };
 
     const auth = new AuthService(
@@ -176,28 +172,60 @@ describe('AuthService', () => {
     ).rejects.toThrow('Initial setup has already been completed');
   });
 
-  it('allows SUPER_ADMIN to create only ADMIN accounts', async () => {
-    const usersService = {
-      create: jest.fn().mockResolvedValue({
-        id: 2,
-        username: 'newadmin',
-        email: 'admin2@company.com',
-        role: UserRole.ADMIN,
-      }),
+  it.each([
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.AGENT,
+    UserRole.EMPLOYEE,
+  ])('allows SUPER_ADMIN to create %s', async (role) => {
+    const users = {
+      create: jest
+        .fn()
+        .mockImplementation(async (data) => ({
+          ...data,
+          password: undefined,
+          id: 2,
+        })),
     };
-    const auth = new AuthService(usersService as any, {} as any);
-
+    const auth = new AuthService(users as any, {} as any);
     const result = await auth.createAccount(UserRole.SUPER_ADMIN, {
-      username: 'NewAdmin',
-      email: 'admin2@company.com',
+      username: 'NewUser',
+      email: 'new@company.test',
       password: 'StrongPass123!',
-      role: UserRole.ADMIN,
+      role,
     });
-
-    expect(result.user.role).toBe(UserRole.ADMIN);
-    expect(usersService.create).toHaveBeenCalledWith(
-      expect.objectContaining({ username: 'newadmin', role: UserRole.ADMIN }),
+    expect(result.user.role).toBe(role);
+    expect(users.create).toHaveBeenCalledWith(
+      expect.objectContaining({ username: 'newuser', role }),
     );
+    expect(
+      await bcrypt.compare(
+        'StrongPass123!',
+        users.create.mock.calls[0][0].password,
+      ),
+    ).toBe(true);
+  });
+
+  it('never provisions SUPER_ADMIN or lets operational users provision accounts', async () => {
+    const create = jest.fn();
+    const auth = new AuthService({ create } as any, {} as any);
+    for (const [caller, role] of [
+      [UserRole.SUPER_ADMIN, UserRole.SUPER_ADMIN],
+      [UserRole.ADMIN, UserRole.ADMIN],
+      [UserRole.MANAGER, UserRole.EMPLOYEE],
+      [UserRole.AGENT, UserRole.EMPLOYEE],
+      [UserRole.EMPLOYEE, UserRole.EMPLOYEE],
+    ]) {
+      await expect(
+        auth.createAccount(caller, {
+          username: 'someone',
+          email: 'someone@test.invalid',
+          password: 'StrongPass123!',
+          role,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    }
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('allows ADMIN to create employee, agent, and manager accounts', async () => {
@@ -254,16 +282,14 @@ describe('AuthService', () => {
         },
       }),
       revokeRefreshToken: jest.fn().mockResolvedValue(true),
-      issueSession: jest
-        .fn()
-        .mockResolvedValue({
-          id: 1,
-          username: 'adminuser',
-          email: 'admin@company.com',
-          role: UserRole.ADMIN,
-          status: 'ACTIVE',
-          sessionVersion: 0,
-        }),
+      issueSession: jest.fn().mockResolvedValue({
+        id: 1,
+        username: 'adminuser',
+        email: 'admin@company.com',
+        role: UserRole.ADMIN,
+        status: 'ACTIVE',
+        sessionVersion: 0,
+      }),
     };
     const jwtService = {
       verifyAsync: jest.fn().mockResolvedValue({ sub: 1 }),

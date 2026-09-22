@@ -204,6 +204,357 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     await db.department.delete({ where: { id: departmentId } });
   });
 
+  it('exposes only real ticket reference options to operational roles', async () => {
+    await request(app.getHttpServer()).get('/ticket-options').expect(401);
+    for (const name of ['employee', 'agent', 'manager']) {
+      const response = await get('/ticket-options', name).expect(200);
+      expect(Object.keys(response.body).sort()).toEqual([
+        'categories',
+        'departments',
+        'regions',
+        'tags',
+      ]);
+      expect(response.body.categories).toContainEqual({
+        id: categoryId,
+        name: expect.any(String),
+      });
+      expect(response.body.regions).toContainEqual({
+        id: regionId,
+        name: expect.any(String),
+      });
+      expect(response.body.departments).toContainEqual({
+        id: departmentId,
+        name: expect.any(String),
+      });
+      for (const values of Object.values(response.body) as Array<
+        Array<object>
+      >) {
+        for (const value of values)
+          expect(Object.keys(value).sort()).toEqual(['id', 'name']);
+      }
+    }
+    await get('/ticket-options', 'admin').expect(403);
+    await get('/ticket-options', 'superAdmin').expect(403);
+  });
+
+  it('limits workspace context to the caller led team and operational roles', async () => {
+    await request(app.getHttpServer()).get('/ticket-workspace').expect(401);
+    for (const name of ['employee', 'admin', 'superAdmin'])
+      await get('/ticket-workspace', name).expect(403);
+    expect((await get('/ticket-workspace', 'lead').expect(200)).body).toEqual({
+      ledTeams: [{ id: teamA.id, name: teamA.name }],
+    });
+    expect((await get('/ticket-workspace', 'member').expect(200)).body).toEqual(
+      { ledTeams: [] },
+    );
+    expect(
+      (await get('/ticket-workspace', 'otherManager').expect(200)).body,
+    ).toEqual({ ledTeams: [] });
+  });
+
+  it('projects ticket actions from ownership and exposes only eligible choices', async () => {
+    await db.user.update({
+      where: { id: users.member.id },
+      data: { status: 'INACTIVE' },
+    });
+    await db.user.update({
+      where: { id: users.thirdManager.id },
+      data: { status: 'INACTIVE' },
+    });
+    const own = (
+      await get(`/ticket-workspace/tickets/${owned.id}`, 'manager').expect(200)
+    ).body;
+    expect(own.permissions).toEqual({
+      edit: true,
+      take: false,
+      transfer: true,
+      assignTeam: true,
+      assignAgent: true,
+      createSubtask: true,
+      reopen: false,
+      statuses: ['WAITING_FOR_EMPLOYEE', 'BLOCKED', 'RESOLVED'],
+    });
+    expect(own.teams).toEqual(
+      expect.arrayContaining([
+        { id: teamA.id, name: teamA.name, agents: expect.any(Array) },
+        { id: teamB.id, name: teamB.name, agents: expect.any(Array) },
+      ]),
+    );
+    expect(
+      own.teams.find((team: { id: number }) => team.id === teamA.id).agents,
+    ).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: users.member.id }),
+      ]),
+    );
+    expect(own.managers).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: users.thirdManager.id }),
+      ]),
+    );
+    for (const person of [
+      ...own.managers,
+      ...own.teams.flatMap((team: { agents: object[] }) => team.agents),
+    ])
+      expect(Object.keys(person).sort()).toEqual(['id', 'username']);
+    const queue = (
+      await get(`/ticket-workspace/tickets/${intake.id}`, 'manager').expect(200)
+    ).body;
+    expect(queue).toEqual({
+      permissions: {
+        edit: false,
+        take: true,
+        transfer: false,
+        assignTeam: false,
+        assignAgent: false,
+        createSubtask: false,
+        reopen: false,
+        statuses: [],
+      },
+      teams: [],
+      managers: [],
+    });
+    await get(`/ticket-workspace/tickets/${owned.id}`, 'otherManager').expect(
+      404,
+    );
+    await get(`/ticket-workspace/tickets/${owned.id}`, 'member').expect(401);
+    await get(`/ticket-workspace/tickets/${owned.id}`, 'otherAgent').expect(
+      404,
+    );
+    await get(`/ticket-workspace/tickets/${owned.id}`, 'admin').expect(403);
+  });
+
+  it('restricts Team Lead choices to the led primary team without manager powers', async () => {
+    const lead = (
+      await get(`/ticket-workspace/tickets/${owned.id}`, 'lead').expect(200)
+    ).body;
+    expect(lead.permissions).toMatchObject({
+      edit: true,
+      assignTeam: false,
+      assignAgent: true,
+      transfer: false,
+      take: false,
+      createSubtask: true,
+      reopen: false,
+    });
+    expect(lead.teams.map((team: { id: number }) => team.id)).toEqual([
+      teamA.id,
+    ]);
+    expect(lead.managers).toEqual([]);
+    const agent = (
+      await get(`/ticket-workspace/tickets/${owned.id}`, 'agent').expect(200)
+    ).body;
+    expect(agent.permissions).toMatchObject({
+      edit: true,
+      assignTeam: false,
+      assignAgent: false,
+      createSubtask: false,
+      reopen: false,
+    });
+    expect(agent.teams).toEqual([]);
+    await get(`/ticket-workspace/tickets/${owned.id}`, 'member').expect(404);
+    await get(`/ticket-workspace/tickets/${owned.id}`, 'otherLead').expect(404);
+  });
+
+  it('keeps delegated subtask projections independent of parent-ticket visibility', async () => {
+    const delegated = (
+      await get(
+        `/ticket-workspace/subtasks/${subtask.id}`,
+        'otherAgent',
+      ).expect(200)
+    ).body;
+    expect(delegated.permissions).toEqual({
+      edit: true,
+      assignTeam: false,
+      assignAgent: false,
+    });
+    expect(delegated.teams).toEqual([]);
+    expect(delegated).not.toHaveProperty('ticket');
+    expect(delegated.subtask).not.toHaveProperty('ticket');
+    expect(delegated.subtask).not.toHaveProperty('requesterId');
+    expect(delegated.subtask).not.toHaveProperty('workCycles');
+    expect(delegated.subtask.assignedTeam).toEqual({
+      id: teamB.id,
+      name: teamB.name,
+    });
+    expect(delegated.subtask.assignedAgent).toEqual({
+      id: users.otherAgent.id,
+      username: users.otherAgent.username,
+    });
+    await get(`/ticket-workspace/tickets/${owned.id}`, 'otherAgent').expect(
+      404,
+    );
+    await get(`/tickets/${owned.id}/history`, 'otherAgent').expect(404);
+    const lead = (
+      await get(`/ticket-workspace/subtasks/${subtask.id}`, 'otherLead').expect(
+        200,
+      )
+    ).body;
+    expect(lead.permissions).toEqual({
+      edit: true,
+      assignTeam: false,
+      assignAgent: true,
+    });
+    expect(lead.teams.map((team: { id: number }) => team.id)).toEqual([
+      teamB.id,
+    ]);
+    await get(`/ticket-workspace/subtasks/${subtask.id}`, 'lead').expect(404);
+    await get(`/ticket-workspace/subtasks/${subtask.id}`, 'agent').expect(404);
+    await get(
+      `/ticket-workspace/subtasks/${subtask.id}`,
+      'otherManager',
+    ).expect(404);
+    await get(`/ticket-workspace/subtasks/${subtask.id}`, 'employee').expect(
+      403,
+    );
+    await get(`/ticket-workspace/subtasks/${subtask.id}`, 'superAdmin').expect(
+      403,
+    );
+  });
+
+  it('freezes terminal and historical subtask projections and preserves completion attribution', async () => {
+    await patch(`/tickets/subtasks/${subtask.id}`, 'otherAgent', {
+      status: 'COMPLETED',
+    }).expect(200);
+    const complete = (
+      await get(`/ticket-workspace/subtasks/${subtask.id}`, 'manager').expect(
+        200,
+      )
+    ).body;
+    expect(complete.subtask.completedBy).toEqual({
+      id: users.otherAgent.id,
+      username: users.otherAgent.username,
+    });
+    expect(complete.subtask.completedAt).not.toBeNull();
+    await patch(`/tickets/${owned.id}/status`, 'manager', {
+      status: 'RESOLVED',
+    }).expect(200);
+    const terminal = (
+      await get(`/ticket-workspace/tickets/${owned.id}`, 'manager').expect(200)
+    ).body;
+    expect(terminal.permissions).toEqual({
+      edit: false,
+      take: false,
+      transfer: false,
+      assignTeam: false,
+      assignAgent: false,
+      createSubtask: false,
+      reopen: true,
+      statuses: ['CLOSED'],
+    });
+    expect(terminal.teams).toEqual([]);
+    expect(
+      (
+        await get(
+          `/ticket-workspace/subtasks/${subtask.id}`,
+          'otherAgent',
+        ).expect(200)
+      ).body,
+    ).toMatchObject({
+      frozen: true,
+      historical: false,
+      permissions: { edit: false, assignAgent: false, assignTeam: false },
+      teams: [],
+    });
+    await post(`/tickets/${owned.id}/reopen`, 'manager', {
+      reason: 'Retry',
+    }).expect(201);
+    expect(
+      (
+        await get(
+          `/ticket-workspace/subtasks/${subtask.id}`,
+          'otherAgent',
+        ).expect(200)
+      ).body,
+    ).toMatchObject({
+      frozen: true,
+      historical: true,
+      permissions: { edit: false, assignAgent: false, assignTeam: false },
+      teams: [],
+    });
+    await patch(`/tickets/subtasks/${subtask.id}`, 'otherAgent', {
+      status: 'TODO',
+    }).expect(409);
+  });
+
+  it.each(['admin', 'superAdmin'])(
+    'enforces the account provisioning matrix over HTTP for %s',
+    async (caller) => {
+      const allowed: UserRole[] =
+        caller === 'superAdmin'
+          ? [
+              UserRole.ADMIN,
+              UserRole.MANAGER,
+              UserRole.AGENT,
+              UserRole.EMPLOYEE,
+            ]
+          : [UserRole.MANAGER, UserRole.AGENT, UserRole.EMPLOYEE];
+      for (const role of Object.values(UserRole)) {
+        const suffix = randomUUID().slice(0, 8);
+        const response = await post('/auth/accounts', caller, {
+          username: `new-${suffix}`,
+          email: `${suffix}@test.invalid`,
+          password: 'StrongPass123!',
+          role,
+        }).expect(allowed.includes(role) ? 201 : 403);
+        if (allowed.includes(role)) {
+          users[suffix] = await db.user.findUniqueOrThrow({
+            where: { id: response.body.user.id },
+          });
+          expect(response.body.user).not.toHaveProperty('password');
+          expect(response.body.user.role).toBe(role);
+          expect(users[suffix].status).toBe('ACTIVE');
+          expect(users[suffix].regionId).toBeNull();
+          expect(users[suffix].departmentId).toBeNull();
+        }
+      }
+    },
+  );
+
+  it('adds only safe account organization labels and member identity projections for administration', async () => {
+    for (const caller of ['admin', 'superAdmin']) {
+      const directory = (await get('/users', caller).expect(200)).body;
+      const account = directory.find(
+        (row: { id: number }) => row.id === users.agent.id,
+      );
+      expect(account.region).toEqual({
+        id: regionId,
+        name: expect.any(String),
+      });
+      expect(account.department).toEqual({
+        id: departmentId,
+        name: expect.any(String),
+      });
+      expect(account).not.toHaveProperty('password');
+      expect(account).not.toHaveProperty('tickets');
+      const teams = (await get('/organization/teams', caller).expect(200)).body;
+      const team = teams.find((row: { id: number }) => row.id === teamA.id);
+      expect(
+        team.members.map((member: { userId: number }) => member.userId),
+      ).toEqual(expect.arrayContaining([users.agent.id, users.lead.id]));
+      for (const member of team.members) {
+        expect(Object.keys(member).sort()).toEqual(['user', 'userId']);
+        expect(Object.keys(member.user).sort()).toEqual([
+          'id',
+          'role',
+          'status',
+          'username',
+        ]);
+      }
+      expect(team).not.toHaveProperty('tickets');
+    }
+    for (const caller of ['employee', 'agent', 'manager']) {
+      await get('/users', caller).expect(403);
+      await get('/organization/teams', caller).expect(403);
+      await post('/auth/accounts', caller, {
+        username: 'unauthorized',
+        email: 'not-allowed@test.invalid',
+        password: 'StrongPass123!',
+        role: UserRole.EMPLOYEE,
+      }).expect(403);
+    }
+  });
+
   it('requires authentication and filters actual rows for all operational roles', async () => {
     await request(app.getHttpServer()).get('/tickets').expect(401);
     const expected: Record<string, number[]> = {
