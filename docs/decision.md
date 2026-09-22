@@ -120,20 +120,26 @@ Tickets use the following lifecycle:
 - BLOCKED
 - RESOLVED
 - CLOSED
+- CANCELLED
 
 `WAITING_FOR_EMPLOYEE` means support is waiting for requester information or action. `BLOCKED` means work cannot proceed because of a dependency or blocker; these statuses are distinct.
 
 Directly assigned agents, primary-team leads, and the responsible manager may resolve operational tickets. The employee requester or responsible manager may close a resolved ticket. Resolving sets `resolvedAt`; closing preserves it and sets `closedAt`.
 
-Manager assignment/transfer does not change status. First primary-team assignment moves NEW to ASSIGNED; an individual agent is optional. Reassignment preserves ASSIGNED, IN_PROGRESS, WAITING_FOR_EMPLOYEE, and BLOCKED. RESOLVED/CLOSED reject manager transfer, team/agent reassignment, and every subtask mutation. Ownership changes never reset resolution/closure timestamps. NEW -> ASSIGNED cannot be invoked through the status endpoint.
+Manager assignment/transfer does not change status. First primary-team assignment moves NEW to ASSIGNED; an individual agent is optional. Reassignment preserves ASSIGNED, IN_PROGRESS, WAITING_FOR_EMPLOYEE, and BLOCKED. RESOLVED/CLOSED/CANCELLED reject metadata edits, manager transfer, team/agent reassignment, and every subtask mutation. Ownership changes never reset resolution/closure timestamps. NEW -> ASSIGNED cannot be invoked through the status endpoint.
 
-There is no reopen operation. Subtask status remains independent of parent status, but a terminal parent freezes subtask work. General ticket metadata editing retains its existing relationship-based permissions; the terminal freeze concerns ownership and subtask work. Business-day auto-close and closure auditing remain planned.
+Cancellation is an explicit employee-requester operation from NEW or ASSIGNED only. CANCELLED is permanent and cannot reopen. Nothing is deleted. RESOLVED -> CLOSED remains an explicit lifecycle action by the requester/responsible manager; closure does not unlock ordinary edits.
+
+Reopening is an explicit operation, not a TicketStatus. The requester or current responsible MANAGER may reopen RESOLVED/CLOSED with a nonempty requester-visible reason. Agents, Team Leads, ADMIN, and SUPER_ADMIN cannot reopen merely through their roles/responsibilities. There is no time limit. Normal reopening preserves eligible ownership and sets IN_PROGRESS. Ticket resolvedAt/closedAt clear; previous cycle timestamps remain.
+
+An inactive or absent historical manager causes NEW with manager/team/agent all NULL, returning to shared intake. With an active manager and valid team, an inactive historical agent is automatically cleared while retaining manager/team and IN_PROGRESS. No replacement is selected. Other invalid legacy routing requires explicit returnToIntake: true; valid routing cannot use that flag as a discretionary reset.
+
 
 ## Assignment Workflow
 
-Employee creation produces NEW with `assignedManagerId`, `assignedTeamId`, and `assignedAgentId` all NULL. All MANAGER users may read NEW tickets without a responsible manager and assign themselves or another real MANAGER. Intake visibility alone does not permit general edits, status operations, team assignment, or subtask management.
+Employee creation produces NEW with `assignedManagerId`, `assignedTeamId`, and `assignedAgentId` all NULL. All ACTIVE MANAGER users may read NEW tickets without a responsible manager and assign themselves or another real ACTIVE MANAGER. Intake visibility alone does not permit general edits, status operations, team assignment, or subtask management.
 
-Once assigned, only the responsible manager has manager-level authority. They may transfer responsibility to another MANAGER or choose any real primary team; TeamManager does not grant or restrict this authority. Transfer preserves the primary team, agent, status, and timestamps. Clearing the responsible manager or primary team is unsupported. There is no return-to-intake/unrouted operation.
+Once assigned, only the responsible manager has manager-level authority. They may transfer responsibility to another MANAGER or choose any real primary team; TeamManager does not grant or restrict this authority. Transfer preserves the primary team, agent, status, and timestamps. Clearing the responsible manager or primary team is unsupported. Ordinary assignment cannot clear manager/team. The only intake returns are the documented special reopen and administrative manager-offboarding operations.
 
 Team Leads may change the primary agent only within the ticket's currently led primary team. They cannot change the manager or primary team. Ordinary primary agents cannot reassign ownership.
 
@@ -174,7 +180,7 @@ ADMIN and SUPER_ADMIN retain their existing account and organization administrat
 
 ## Ticket Ownership and Scope
 
-A ticket has independently nullable responsible-manager, primary-team, and primary-agent references. The responsible manager is an explicit User relationship, never derived from TeamManager. An agent requires a team and must be an AGENT member of it; a team without an agent is valid.
+A ticket has independently nullable responsible-manager, primary-team, and primary-agent references. The responsible manager is an explicit User relationship, never derived from TeamManager. An agent requires a team and must be an ACTIVE AGENT member of it; a team without an agent is valid.
 
 The assignedManager relationship uses `onDelete: Restrict`. Manager deletion cannot silently clear ticket responsibility. Existing tickets receive NULL on migration without inference or backfill. Existing non-NEW managerless development rows require explicit fixture/data reconciliation outside the ordinary claim endpoint; no production inference mechanism is added.
 
@@ -196,7 +202,7 @@ Subtasks do not nest. They may have nullable team/agent references and use TODO,
 
 Team Leads may create subtasks only when the parent primary team is their currently led team, and must explicitly assign the new subtask to that same team. No default team is inferred. Responsible managers may create genuinely unassigned subtasks.
 
-Subtask-only responses contain the subtask's fields and parent ID, not parent content, requester information, conversations, or notes. Completing/reopening a subtask does not change the parent. RESOLVED/CLOSED parents reject all subtask creation, editing, status changes, and assignment changes. Subtask statuses have no additional transition graph yet.
+Subtask-only responses contain the subtask's fields and parent ID, not parent content, requester information, conversations, or notes. Completing/reopening a subtask does not change the parent. RESOLVED/CLOSED/CANCELLED parents reject all subtask creation, editing, status changes, and assignment changes. Subtasks from an earlier cycle remain permanently frozen after the ticket reopens, including incomplete subtasks; their truthful status is preserved. Subtask statuses have no additional transition graph yet.
 
 ## Conversations and Internal Notes ? Planned
 
@@ -213,6 +219,40 @@ NULL means unknown, unassigned, or not applicable. No fake/default entity or fir
 PATCH semantics: omitted preserves; explicit NULL requests clearing a nullable field; real ID assigns that entity. Authorization validates the exact final state persisted. Clearing manager or primary team is rejected as an unsupported operation, never treated as omission.
 
 Changing team with an incompatible retained agent is rejected unless the request explicitly clears the agent or supplies an eligible replacement (Option A). No silent clearing. Subtask team clearing requires an explicitly cleared agent when one exists. Non-nullable metadata fields reject NULL.
+
+## Active Accounts and Administrative Offboarding
+
+Users have ACTIVE/INACTIVE status. No application endpoint physically deletes users or tickets. SUPER_ADMIN may activate/deactivate ADMIN, MANAGER, AGENT, and EMPLOYEE. ADMIN may activate/deactivate MANAGER, AGENT, and EMPLOYEE. Operational roles have no lifecycle authority. SUPER_ADMIN deactivation is excluded; bootstrap remains unavailable while any SUPER_ADMIN exists.
+
+Deactivation is atomic offboarding, not a blocker-based transfer workflow. For active tickets (NEW, ASSIGNED, IN_PROGRESS, WAITING_FOR_EMPLOYEE, BLOCKED) owned by the target manager, reset status to NEW and manager/team/agent to NULL. For active primary-agent assignments, clear only that agent. Clear the agent only on target-assigned TODO/IN_PROGRESS subtasks in the current operational cycle. Remove the target's Team Lead and TeamManager responsibilities. Do not select replacements. Ordinary membership, requester identity, terminal ownership, completed/cancelled subtasks, and previous-cycle work remain unchanged.
+
+Offboarding does not create a work cycle: it removes current responsibility within the same unfinished attempt. The administrative response contains only user ID/status. ADMIN/SUPER_ADMIN still cannot read ticket contents, browse history, choose replacement support staff, or perform ordinary ticket operations.
+
+Login and refresh require ACTIVE. Access-token validation loads the current user and role from PostgreSQL. Deactivation increments sessionVersion and revokes outstanding refresh tokens in the same transaction. Reactivation never restores old tokens. Legacy JWTs without a version are accepted only while the user's version is zero. Refresh consumption and replacement issuance are atomic. New ticket/subtask assignments, team membership, Team Lead, and TeamManager responsibility require an active eligible target. Guarded operational writes recheck actor status/version inside their transaction.
+
+## Work Cycles and History
+
+Ticket remains current operational state. TicketWorkCycle stores one ORIGINAL attempt and each explicit REOPENED attempt, uniquely ordered by (ticketId, sequenceNumber). The greatest sequence is current; there is no Ticket.currentCycleId. Creation and reopening atomically create the corresponding cycle.
+
+Resolution/cancellation ends operational work and captures ownership IDs once. A resolved cycle's endedAt represents its resolution timestamp. Closing adds closedAt/closedById and changes outcome to CLOSED without creating another cycle or rewriting ending ownership. Reopening never modifies previous-cycle work. Resolution summaries and reopening reasons are requester-visible; they are not internal notes.
+
+History uses ending ownership for ended cycles and current Ticket ownership for the current unfinished cycle. These snapshots mean responsibility at the end, not every person who ever participated. Subtasks retain their own attribution; nullable completedById records the actual actor on entering COMPLETED. Reopening a current-cycle subtask clears current completion time/actor. Legacy completion actors stay NULL. No participant ledger or assignment event stream is introduced.
+
+Subtask.createdInCycleId is required, immutable, and constrained to a cycle of the same ticket. Clients cannot select or move the cycle. Earlier-cycle TODO/IN_PROGRESS subtasks are historical and never silently cancelled or made actionable. Future conversations can reference cycle IDs; messages and private notes are not implemented.
+
+GET /tickets/:ticketId returns current state, scope/tag IDs, ownership summaries, and currentCycle. GET /tickets/:ticketId/history returns cycles newest first with identity, sequence, type, reason, timestamps, outcome, ownership basis, actors, and independently authorized subtasks. isCurrent is based on sequence; isEnded is based on outcome, so unknown legacy timestamps are valid. React can label sequence 1 as Original Investigation and sequences 2+ as Reopening #1, #2, etc.
+
+Full history requires current ticket visibility; historical participation grants no additional ticket authority. EMPLOYEE receives public cycle fields and no support subtasks. Agents/leads receive only subtasks permitted by the existing separate subtask predicate. Current responsible managers receive all their ticket's subtasks. Intake-only managers receive public cycle history but no subtasks. Responses mark subtasksAccess as NONE/FILTERED/ALL. Subtask-only reads never include parent content or cycle history. ADMIN/SUPER_ADMIN remain excluded. History reads use a consistent database snapshot.
+
+GET /tickets?active=true restricts the existing visibility predicate to operational statuses; status=RESOLVED (or another real status) adds an exact filter. GET /tickets/subtasks?currentWork=true and its per-ticket equivalent return only authorized incomplete subtasks from unfinished cycles under operational parents. Unfiltered subtask reads preserve existing limited historical access.
+
+## Concurrency and Migration
+
+Ticket/subtask/reopen/cancel writes reuse parent Ticket FOR UPDATE and Serializable transactions. Active-user/assignment checks lock user rows inside the write transaction. Administrative offboarding locks the actor/target users and affected tickets; organization responsibility creation and refresh issuance also use Serializable transactions and user locks. Serialization failures/deadlocks produce 409 with no partial writes and no automatic business-operation retry. Callers reload and explicitly retry the same requested operation. If assignment commits first, a successful offboarding retry clears it; if deactivation commits first, new assignment is rejected. No successful offboarding leaves the inactive target holding current actionable responsibility.
+
+Migration 20260918120000_user_lifecycle_work_cycles adds account lifecycle, CANCELLED, cycles, and subtask cycle/completer references. Existing users become ACTIVE with sessionVersion 0. Each existing ticket receives exactly one ORIGINAL cycle starting at its known createdAt. Known resolvedAt/closedAt are copied without guessing missing times or actors. Existing terminal ownership is labeled RECORDED_AT_MIGRATION, with actual capture time; it is not falsely asserted to be ownership at resolution. All existing subtasks attach to the initial cycle without changing their work data. Same-ticket and required-cycle constraints apply after backfill. New historical references restrict deletion; unrelated existing SET NULL relationships are unchanged.
+
+Deploy with application writes paused while applying the migration and switching backend versions. Old writers cannot create valid subtasks after the new required cycle field is installed. Migration tests replay all previous SQL in a private schema inside the explicitly configured test database, verify backfill and constraints, and roll the schema back.
 
 ## Frontend Structure
 

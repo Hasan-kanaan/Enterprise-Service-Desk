@@ -7,6 +7,7 @@ import {
   Param,
   ParseIntPipe,
   Req,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
@@ -22,12 +23,15 @@ import { CreateSubtaskDto } from './dto/create-subtask.dto';
 import { UpdateSubtaskDto } from './dto/update-subtask.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
+import { ListTicketsDto, ListSubtasksDto } from './dto/list-tickets.dto';
+import { ReopenTicketDto } from './dto/reopen-ticket.dto';
 import { UpdateTicketManagerDto } from './dto/update-ticket-manager.dto';
 
 type AuthenticatedRequest = {
   user: {
     sub: number;
     role: UserRole;
+    sessionVersion?: number;
   };
 };
 
@@ -41,17 +45,28 @@ export class TicketsController {
   ) {}
 
   @Get()
-  list(@Req() request: AuthenticatedRequest) {
-    return this.ticketVisibilityService.listVisible({
-      id: request.user.sub,
-      role: request.user.role as PrismaUserRole,
-    });
+  list(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: ListTicketsDto = {},
+  ) {
+    return this.ticketVisibilityService.listVisible(
+      {
+        id: request.user.sub,
+        role: request.user.role as PrismaUserRole,
+      },
+      query,
+    );
   }
 
   @Get('subtasks')
-  listSubtasks(@Req() request: AuthenticatedRequest) {
+  listSubtasks(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: ListSubtasksDto = {},
+  ) {
     return this.ticketVisibilityService.listVisibleSubtasks(
       this.authenticatedUser(request),
+      undefined,
+      query.currentWork === 'true',
     );
   }
 
@@ -68,12 +83,14 @@ export class TicketsController {
 
   @Get(':ticketId/subtasks')
   listTicketSubtasks(
+    @Query() query: ListSubtasksDto,
     @Param('ticketId', ParseIntPipe) id: number,
     @Req() request: AuthenticatedRequest,
   ) {
     return this.ticketVisibilityService.listVisibleSubtasks(
       this.authenticatedUser(request),
       id,
+      query.currentWork === 'true',
     );
   }
 
@@ -142,7 +159,36 @@ export class TicketsController {
       ticketId,
       this.authenticatedUser(request),
       dto.status,
+      dto.resolutionSummary,
     );
+  }
+
+  @Get(':ticketId/history')
+  history(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.ticketVisibilityService.history(
+      id,
+      this.authenticatedUser(request),
+    );
+  }
+
+  @Post(':ticketId/cancel')
+  cancel(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.ticketsService.cancel(id, this.authenticatedUser(request));
+  }
+
+  @Post(':ticketId/reopen')
+  reopen(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Body() dto: ReopenTicketDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.ticketsService.reopen(id, this.authenticatedUser(request), dto);
   }
 
   @Post(':ticketId/subtasks')
@@ -172,6 +218,10 @@ export class TicketsController {
   }
 
   private authenticatedUser(request: AuthenticatedRequest) {
-    return { id: request.user.sub, role: request.user.role as PrismaUserRole };
+    return {
+      id: request.user.sub,
+      role: request.user.role as PrismaUserRole,
+      sessionVersion: request.user.sessionVersion,
+    };
   }
 }

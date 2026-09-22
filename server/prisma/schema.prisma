@@ -20,6 +20,32 @@ enum UserRole {
   EMPLOYEE
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TicketWorkCycleType {
+  ORIGINAL
+  REOPENED
+}
+
+enum TicketWorkCycleOutcome {
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum CycleStartDisposition {
+  CONTINUE
+  RETURN_TO_INTAKE
+}
+
+enum OwnershipSnapshotBasis {
+  END_OF_WORK
+  RECORDED_AT_MIGRATION
+}
+
 enum TeamScope {
   REGION
   GLOBAL
@@ -33,6 +59,7 @@ enum TicketStatus {
   BLOCKED
   RESOLVED
   CLOSED
+  CANCELLED
 }
 
 enum TicketPriority {
@@ -55,6 +82,8 @@ model User {
   email             String          @unique @db.VarChar(255)
   password          String          @db.VarChar(255)
   role              UserRole        @default(EMPLOYEE)
+  status            UserStatus      @default(ACTIVE)
+  sessionVersion    Int             @default(0)
   regionId          Int?
   departmentId      Int?
   createdAt         DateTime        @default(now())
@@ -72,6 +101,12 @@ model User {
   assignedSubtasks  Subtask[]       @relation("SubtaskAssignedAgent")
   suggestedTickets  Ticket[]        @relation("TicketSuggestedAgent")
   aiReviewedTickets Ticket[]        @relation("TicketAiReviewer")
+  startedCycles     TicketWorkCycle[] @relation("CycleStarter")
+  endedCycles       TicketWorkCycle[] @relation("CycleEnder")
+  closedCycles      TicketWorkCycle[] @relation("CycleCloser")
+  managedCycles     TicketWorkCycle[] @relation("CycleManager")
+  assignedCycles    TicketWorkCycle[] @relation("CycleAgent")
+  completedSubtasks Subtask[]         @relation("SubtaskCompleter")
 }
 
 model RefreshToken {
@@ -133,6 +168,7 @@ model Team {
   assignedTickets  Ticket[]        @relation("TicketAssignedTeam")
   assignedSubtasks Subtask[]       @relation("SubtaskAssignedTeam")
   suggestedTickets Ticket[]        @relation("TicketSuggestedTeam")
+  endingCycles     TicketWorkCycle[]
   teamLead         User?           @relation("TeamLead", fields: [teamLeadId], references: [id], onDelete: SetNull)
 
   @@unique([name, regionId])
@@ -243,6 +279,7 @@ model Ticket {
   tags                  TicketTagOnTicket[]
   aiSuggestedTags       TicketSuggestedTag[]
   subtasks              Subtask[]
+  workCycles            TicketWorkCycle[]
 
   @@index([requesterId])
   @@index([assignedManagerId])
@@ -298,19 +335,57 @@ model TicketDepartment {
 model Subtask {
   id              Int           @id @default(autoincrement())
   ticketId        Int
+  createdInCycleId Int
   title           String        @db.VarChar(200)
   description     String        @db.Text
   status          SubtaskStatus @default(TODO)
   assignedTeamId  Int?
   assignedAgentId Int?
   completedAt     DateTime?
+  completedById   Int?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   ticket          Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   assignedTeam    Team?         @relation("SubtaskAssignedTeam", fields: [assignedTeamId], references: [id], onDelete: SetNull)
   assignedAgent   User?         @relation("SubtaskAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  createdInCycle  TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
+  completedBy     User? @relation("SubtaskCompleter", fields: [completedById], references: [id], onDelete: Restrict)
 
   @@index([ticketId])
   @@index([assignedTeamId])
   @@index([assignedAgentId])
+  @@index([createdInCycleId, ticketId])
+}
+
+model TicketWorkCycle {
+  id                     Int @id @default(autoincrement())
+  ticketId               Int
+  sequenceNumber         Int
+  type                   TicketWorkCycleType
+  startedAt              DateTime
+  startedById            Int?
+  startReason            String? @db.VarChar(2000)
+  startDisposition       CycleStartDisposition?
+  outcome                TicketWorkCycleOutcome?
+  endedAt                DateTime?
+  endedById              Int?
+  closedAt               DateTime?
+  closedById             Int?
+  resolutionSummary      String? @db.VarChar(4000)
+  endingManagerId        Int?
+  endingTeamId           Int?
+  endingAgentId          Int?
+  ownershipSnapshotBasis OwnershipSnapshotBasis?
+  ownershipCapturedAt    DateTime?
+  ticket                 Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  startedBy              User? @relation("CycleStarter", fields: [startedById], references: [id], onDelete: Restrict)
+  endedBy                User? @relation("CycleEnder", fields: [endedById], references: [id], onDelete: Restrict)
+  closedBy               User? @relation("CycleCloser", fields: [closedById], references: [id], onDelete: Restrict)
+  endingManager          User? @relation("CycleManager", fields: [endingManagerId], references: [id], onDelete: Restrict)
+  endingAgent            User? @relation("CycleAgent", fields: [endingAgentId], references: [id], onDelete: Restrict)
+  endingTeam             Team? @relation(fields: [endingTeamId], references: [id], onDelete: Restrict)
+  subtasks               Subtask[]
+
+  @@unique([ticketId, sequenceNumber])
+  @@unique([id, ticketId])
 }

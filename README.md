@@ -537,6 +537,7 @@ WAITING_FOR_EMPLOYEE
 BLOCKED
 RESOLVED
 CLOSED
+CANCELLED
 ```
 
 ### NEW
@@ -651,7 +652,7 @@ The requester has confirmed the ticket is finished.
 
 If the employee discovers that the issue still exists, the ticket should not simply be closed.
 
-The exact reopening workflow will be designed when the ticket system is implemented.
+The requester or responsible manager may explicitly reopen RESOLVED/CLOSED with a reason. Each reopening creates a new work cycle; CANCELLED cannot reopen.
 
 ---
 
@@ -671,7 +672,7 @@ Employee creates NEW (manager/team/agent all NULL)
 
 The responsible manager may select any real team, independent of TeamManager. Only that manager may transfer responsibility to another manager. Transfer changes no team, agent, status, or timestamps. Team Leads can assign agents only within their ticket's currently led primary team.
 
-PATCH omission preserves ownership; explicit NULL clears only where permitted. Changing teams with an incompatible retained agent is rejected unless the caller explicitly clears/replaces the agent. Clearing manager or primary team is unsupported. No defaults or automatic routing are created.
+PATCH omission preserves ownership; explicit NULL clears only where permitted. Changing teams with an incompatible retained agent is rejected unless the caller explicitly clears/replaces the agent. Ordinary assignment cannot clear manager or primary team. Special reopening and administrative manager offboarding can explicitly return a ticket to empty NEW intake. No defaults or automatic routing are created.
 
 ### Implemented Ticket API
 
@@ -684,18 +685,49 @@ All routes require authentication. ADMIN and SUPER_ADMIN are denied all ticket/s
 | PATCH /tickets/:ticketId | Relationship-authorized metadata edits |
 | PATCH /tickets/:ticketId/manager | Initial ownership / transfer; body: assignedManagerId |
 | PATCH /tickets/:ticketId/assignment | Team/agent assignment; body: optional teamId, agentId |
-| PATCH /tickets/:ticketId/status | Authorized lifecycle transition |
+| PATCH /tickets/:ticketId/status | Authorized transition; optional resolutionSummary only when resolving |
+| POST /tickets/:ticketId/cancel | Employee requester; NEW/ASSIGNED only |
+| POST /tickets/:ticketId/reopen | Requester/responsible manager; required reason |
+| GET /tickets/:ticketId/history | Currently authorized cycle history with separately filtered subtasks |
 | GET /tickets/subtasks | Caller-visible subtask list |
 | GET /tickets/subtasks/:subtaskId | Caller-visible subtask detail |
 | GET /tickets/:ticketId/subtasks | Caller-visible subset under a parent |
 | POST /tickets/:ticketId/subtasks | Responsible-manager or parent-team lead creation |
 | PATCH /tickets/subtasks/:subtaskId | Authorized content/status/assignment changes |
 
-Ticket reads return scalar fields, without expanded tags, scope links, or subtasks. Subtask reads never include parent-ticket content. There is no frontend ticket integration or category/tag catalog API yet.
+Ticket lists return scalar fields. Ticket detail includes scope/tag IDs, ownership summaries, and the latest work-cycle summary. History is a separate, authorized endpoint. Subtask reads never include parent-ticket content. There is no frontend ticket integration or category/tag catalog API yet.
 
 Employees have no support-subtask access. Direct subtask agents can read/work on their own subtask, but cannot reassign it. Primary parent-agent assignment grants no extra subtask access. Team Leads read/manage subtasks assigned to their led team, may assign agents within that team, and may create subtasks for that team when it is the parent primary team. Only the responsible manager delegates subtasks across teams. Subtask state changes never change parent state, and terminal parents freeze subtask mutations.
 
-Mutations lock the parent ticket in serializable PostgreSQL transactions. Concurrent stale writes return 409 and must be explicitly retried after reloading. Inaccessible ticket/subtask details return 404; forbidden mutations return 403 and terminal ownership/work changes return 409. General metadata editing retains its existing relationship rules.
+Mutations lock the parent ticket in serializable PostgreSQL transactions. Concurrent stale writes return 409 and must be explicitly retried after reloading. Inaccessible ticket/subtask details return 404; forbidden mutations return 403 and terminal ownership/work changes return 409. RESOLVED/CLOSED/CANCELLED freeze all ordinary metadata, ownership, and subtask mutations. Previous-cycle subtasks remain frozen after reopening.
+
+---
+
+## Account Lifecycle and Offboarding
+
+Users are ACTIVE or INACTIVE; no user or ticket DELETE endpoint exists. `PATCH /users/:userId/status` accepts `{ "status": "INACTIVE" }` or ACTIVE. SUPER_ADMIN can manage ADMIN/MANAGER/AGENT/EMPLOYEE status; ADMIN can manage MANAGER/AGENT/EMPLOYEE status. SUPER_ADMIN deactivation is excluded.
+
+Deactivation atomically removes only the departing user's current operational responsibilities. Manager-owned active tickets return to NEW with manager/team/agent all NULL. Active primary-agent assignments clear only the agent. Actionable TODO/IN_PROGRESS current-cycle subtask assignments clear only the agent. Team Lead and TeamManager responsibilities are removed without replacement. Terminal tickets and historical work remain unchanged. This administrative operation returns only user ID/status and grants no ticket visibility or ordinary service-desk powers.
+
+Inactive users cannot log in, refresh sessions, or receive new operational assignments. Protected requests check database status, current role, and sessionVersion. Deactivation increments the version and revokes refresh tokens atomically. Reactivation permits fresh login but never restores previous sessions. Serializable conflicts return 409; reload and explicitly retry, with no partial offboarding.
+
+## Reopening and Work-Cycle History
+
+An employee may cancel only their own NEW/ASSIGNED ticket. CANCELLED is permanently frozen. RESOLVED/CLOSED/CANCELLED reject ordinary metadata, ownership, and subtask changes. RESOLVED can still be explicitly closed. Only explicit reopening starts new work from RESOLVED/CLOSED; assignments never reopen implicitly.
+
+`POST /tickets/:ticketId/reopen` accepts `{ "reason": "The problem returned" }`. Only the requester or responsible manager may reopen; AGENT/Team Lead/ADMIN/SUPER_ADMIN do not gain that authority. There is no reopen time limit.
+
+Normal reopen preserves active manager, valid team, and eligible agent and moves to IN_PROGRESS. An inactive historical agent is automatically cleared without replacement. An inactive/missing manager returns the ticket to NEW with manager/team/agent NULL. Other invalid legacy routing requires an explicit `returnToIntake: true` request; that option is rejected for valid routing. Previous-cycle ownership and work are preserved.
+
+Each ticket has an ORIGINAL cycle followed by REOPENED cycles numbered 2, 3, etc. The greatest sequence is current; there is no current-cycle foreign key on Ticket. Resolution/cancellation ends a cycle and captures ending ownership. Closure annotates the same cycle. Ticket resolvedAt/closedAt describe the current attempt and clear on reopen, while historical times remain in their cycle. Reopening reasons and optional resolution summaries are requester-visible.
+
+Subtasks belong permanently to their creation cycle. Old incomplete subtasks keep their truthful status and remain frozen; repeated work requires a new subtask. completedById records the actual completion actor, independently from assignment. Unknown legacy actors/times remain NULL. Ending ownership represents responsibility when work stopped, not an exhaustive participant or reassignment log.
+
+Current responsibility controls ticket/history visibility. Historical participation never expands the current ticket queue. Employees receive public cycle history without support subtasks. Agents/leads receive independently authorized subtasks, and the responsible manager receives all subtasks. Intake-only managers have no subtask access. Subtask-only access never includes parent history. History returns `subtasksAccess: NONE/FILTERED/ALL` and newest-first cycles with `isCurrent`, `isEnded`, sequence, type, reasons, outcome, timestamps, ownership, and authorized work.
+
+`GET /tickets?active=true` filters current visible operational tickets; `status=RESOLVED` supports exact status filtering. Subtask list routes support `currentWork=true` to exclude ended-cycle or completed/cancelled work. Future React labels can derive ?Current Work ? Reopening #2?, ?Reopening #1?, and ?Original Investigation? directly from cycle sequence/type.
+
+Work-cycle history is implemented product history. A generic audit log, conversations, private notes, notifications, automatic closure, and frontend ticket pages remain deferred. Future conversations can reference the cycle ID.
 
 ---
 
@@ -976,7 +1008,7 @@ Ticket resolved
 Ticket closed
 ```
 
-This is important for an enterprise system because managers and administrators should be able to understand what happened to a ticket.
+This is important for an enterprise system for future security review. Audit authorization is a separate future design; administrative roles do not gain product-facing ticket or work-cycle history access.
 
 ---
 
@@ -1177,7 +1209,7 @@ Conceptual entities include:
 ```text
 User, Region, Department, Specialty
 Team, TeamMember, TeamManager, UserSpecialty, TeamSpecialty
-TicketCategory, TicketTag, Ticket, TicketRegion, TicketDepartment
+TicketCategory, TicketTag, Ticket, TicketWorkCycle, TicketRegion, TicketDepartment
 TicketTagOnTicket, TicketSuggestedTag, Subtask
 RefreshToken
 ```

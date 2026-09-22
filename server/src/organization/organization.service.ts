@@ -6,6 +6,11 @@ import {
 } from '@nestjs/common';
 import { Prisma, TeamScope, UserRole } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  lockUser,
+  requireActiveActor,
+  serializable,
+} from '../prisma/transactions';
 import { CreateTeamDto } from './dto/create-team.dto';
 
 @Injectable()
@@ -42,7 +47,11 @@ export class OrganizationService {
       include: {
         region: true,
         teamLead: { select: { id: true, username: true, role: true } },
-        managers: { include: { manager: { select: { id: true, username: true, role: true } } } },
+        managers: {
+          include: {
+            manager: { select: { id: true, username: true, role: true } },
+          },
+        },
         specialties: { include: { specialty: true } },
       },
     });
@@ -70,17 +79,25 @@ export class OrganizationService {
         },
       });
     } catch (error) {
-      this.throwConflict(error, 'A team with this name and region already exists');
+      this.throwConflict(
+        error,
+        'A team with this name and region already exists',
+      );
       throw error;
     }
   }
 
-  async addMember(teamId: number, userId: number) {
-    await this.requireTeam(teamId);
-    await this.requireUser(userId, UserRole.AGENT);
-
-    return this.prisma.teamMember.create({
-      data: { teamId, userId },
+  async addMember(
+    teamId: number,
+    userId: number,
+    actor: { id: number; role: UserRole; sessionVersion?: number },
+  ) {
+    return serializable(this.prisma, async (db) => {
+      await requireActiveActor(db, actor);
+      await this.requireActiveUser(db, userId, UserRole.AGENT);
+      if (!(await db.team.findUnique({ where: { id: teamId } })))
+        throw new NotFoundException('Team not found');
+      return db.teamMember.create({ data: { teamId, userId } });
     });
   }
 
@@ -88,7 +105,9 @@ export class OrganizationService {
     const team = await this.requireTeam(teamId);
 
     if (team.teamLeadId === userId) {
-      throw new BadRequestException('Remove the Team Lead assignment before removing this member');
+      throw new BadRequestException(
+        'Remove the Team Lead assignment before removing this member',
+      );
     }
 
     await this.prisma.teamMember.delete({
@@ -98,23 +117,30 @@ export class OrganizationService {
     return { message: 'Team member removed' };
   }
 
-  async assignManager(teamId: number, managerId: number) {
-    await this.requireTeam(teamId);
-    await this.requireUser(managerId, UserRole.MANAGER);
-
-    try {
-      return await this.prisma.teamManager.create({
-        data: { teamId, managerId },
-      });
-    } catch (error) {
-      this.throwConflict(error, 'This team already has a manager');
-      throw error;
-    }
+  async assignManager(
+    teamId: number,
+    managerId: number,
+    actor: { id: number; role: UserRole; sessionVersion?: number },
+  ) {
+    return serializable(this.prisma, async (db) => {
+      await requireActiveActor(db, actor);
+      await this.requireActiveUser(db, managerId, UserRole.MANAGER);
+      if (!(await db.team.findUnique({ where: { id: teamId } })))
+        throw new NotFoundException('Team not found');
+      try {
+        return await db.teamManager.create({ data: { teamId, managerId } });
+      } catch (error) {
+        this.throwConflict(error, 'This team already has a manager');
+        throw error;
+      }
+    });
   }
 
   async removeManager(teamId: number) {
     await this.requireTeam(teamId);
-    const manager = await this.prisma.teamManager.findUnique({ where: { teamId } });
+    const manager = await this.prisma.teamManager.findUnique({
+      where: { teamId },
+    });
 
     if (!manager) {
       throw new NotFoundException('Team manager not found');
@@ -124,27 +150,44 @@ export class OrganizationService {
     return { message: 'Team manager removed' };
   }
 
-  async assignTeamLead(teamId: number, userId: number) {
-    await this.requireTeam(teamId);
-    await this.requireUser(userId, UserRole.AGENT);
-
-    const membership = await this.prisma.teamMember.findUnique({
-      where: { teamId_userId: { teamId, userId } },
-    });
-
-    if (!membership) {
-      throw new BadRequestException('Team Lead must be a member of the team');
-    }
-
-    try {
-      return await this.prisma.team.update({
-        where: { id: teamId },
-        data: { teamLeadId: userId },
+  async assignTeamLead(
+    teamId: number,
+    userId: number,
+    actor: { id: number; role: UserRole; sessionVersion?: number },
+  ) {
+    return serializable(this.prisma, async (db) => {
+      await requireActiveActor(db, actor);
+      await this.requireActiveUser(db, userId, UserRole.AGENT);
+      const membership = await db.teamMember.findUnique({
+        where: { teamId_userId: { teamId, userId } },
       });
-    } catch (error) {
-      this.throwConflict(error, 'This agent is already Team Lead of another team');
-      throw error;
-    }
+      if (!membership)
+        throw new BadRequestException('Team Lead must be a member of the team');
+      try {
+        return await db.team.update({
+          where: { id: teamId },
+          data: { teamLeadId: userId },
+        });
+      } catch (error) {
+        this.throwConflict(
+          error,
+          'This agent is already Team Lead of another team',
+        );
+        throw error;
+      }
+    });
+  }
+
+  private async requireActiveUser(
+    db: Prisma.TransactionClient,
+    id: number,
+    role: UserRole,
+  ) {
+    const user = await lockUser(db, id);
+    if (!user) throw new NotFoundException('User not found');
+    if (user.status !== 'ACTIVE' || user.role !== role)
+      throw new BadRequestException(`User must be an active ${role}`);
+    return user;
   }
 
   async removeTeamLead(teamId: number) {
@@ -155,7 +198,10 @@ export class OrganizationService {
     });
   }
 
-  private async createNamedEntity(model: 'region' | 'department' | 'specialty', name: string) {
+  private async createNamedEntity(
+    model: 'region' | 'department' | 'specialty',
+    name: string,
+  ) {
     try {
       const data = { name: name.trim() };
 
@@ -185,17 +231,11 @@ export class OrganizationService {
     return team;
   }
 
-  private async requireUser(id: number, role: UserRole) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
-    if (user.role !== role) {
-      throw new BadRequestException(`User must have the ${role} role`);
-    }
-    return user;
-  }
-
   private throwConflict(error: unknown, message: string): void {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
       throw new ConflictException(message);
     }
   }

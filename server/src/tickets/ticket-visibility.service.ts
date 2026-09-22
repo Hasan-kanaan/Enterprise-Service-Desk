@@ -4,6 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, UserRole } from '../../generated/prisma/client';
+import { operationalStatuses } from '../prisma/transactions';
+import { ListTicketsDto } from './dto/list-tickets.dto';
+import { cycleInclude, mapCycle, mapTicket } from './ticket-response.mapper';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type TicketVisibilityUser = {
@@ -43,9 +46,20 @@ export class TicketVisibilityService {
     }
   }
 
-  listVisible(user: TicketVisibilityUser) {
+  listVisible(user: TicketVisibilityUser, query: ListTicketsDto = {}) {
     return this.prisma.ticket.findMany({
-      where: this.buildWhere(user),
+      where:
+        query.status !== undefined || query.active === 'true'
+          ? {
+              AND: [
+                this.buildWhere(user),
+                query.status === undefined ? {} : { status: query.status },
+                query.active === 'true'
+                  ? { status: { in: [...operationalStatuses] } }
+                  : {},
+              ],
+            }
+          : this.buildWhere(user),
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -53,13 +67,87 @@ export class TicketVisibilityService {
   async findVisibleById(ticketId: number, user: TicketVisibilityUser) {
     const ticket = await this.prisma.ticket.findFirst({
       where: { AND: [{ id: ticketId }, this.buildWhere(user)] },
+      include: {
+        workCycles: {
+          orderBy: { sequenceNumber: 'desc' },
+          take: 1,
+          include: cycleInclude,
+        },
+        assignedManager: { select: { id: true, username: true, status: true } },
+        assignedAgent: { select: { id: true, username: true, status: true } },
+        assignedTeam: { select: { id: true, name: true } },
+        tags: true,
+        affectedRegions: true,
+        affectedDepartments: true,
+      },
     });
 
     if (!ticket) {
       throw new NotFoundException('Ticket not found');
     }
 
-    return ticket;
+    return mapTicket(ticket);
+  }
+
+  async history(ticketId: number, user: TicketVisibilityUser) {
+    // One consistent snapshot for parent authorization and independently filtered work.
+    return this.prisma.$transaction(
+      async (db) => {
+        const ticket = await db.ticket.findFirst({
+          where: { AND: [{ id: ticketId }, this.buildWhere(user)] },
+          include: {
+            assignedManager: {
+              select: { id: true, username: true, status: true },
+            },
+            assignedAgent: {
+              select: { id: true, username: true, status: true },
+            },
+            assignedTeam: { select: { id: true, name: true } },
+          },
+        });
+        if (!ticket) throw new NotFoundException('Ticket not found');
+        const cycles = await db.ticketWorkCycle.findMany({
+          where: { ticketId },
+          orderBy: { sequenceNumber: 'desc' },
+          include: cycleInclude,
+        });
+        const subtasks =
+          user.role === UserRole.EMPLOYEE
+            ? []
+            : await db.subtask.findMany({
+                where: { AND: [{ ticketId }, this.buildSubtaskWhere(user)] },
+                orderBy: { createdAt: 'asc' },
+                include: {
+                  assignedAgent: { select: { id: true, username: true } },
+                  completedBy: { select: { id: true, username: true } },
+                },
+              });
+        const access =
+          user.role === UserRole.EMPLOYEE
+            ? 'NONE'
+            : user.role === UserRole.MANAGER
+              ? ticket.assignedManagerId === user.id
+                ? 'ALL'
+                : 'NONE'
+              : 'FILTERED';
+        return {
+          ticketId,
+          currentCycleId: cycles[0]?.id ?? null,
+          subtasksAccess: access,
+          cycles: cycles.map((cycle, index) => ({
+            ...mapCycle(cycle, index === 0, ticket),
+            ...(access === 'NONE'
+              ? {}
+              : {
+                  subtasks: subtasks.filter(
+                    (subtask) => subtask.createdInCycleId === cycle.id,
+                  ),
+                }),
+          })),
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 
   countVisible(user: TicketVisibilityUser) {
@@ -79,13 +167,28 @@ export class TicketVisibilityService {
     throw new ForbiddenException('This role has no support-subtask access');
   }
 
-  listVisibleSubtasks(user: TicketVisibilityUser, ticketId?: number) {
+  listVisibleSubtasks(
+    user: TicketVisibilityUser,
+    ticketId?: number,
+    currentWork = false,
+  ) {
     // No parent include: subtask-only access must not disclose parent-ticket data.
     return this.prisma.subtask.findMany({
       where: {
         AND: [
           this.buildSubtaskWhere(user),
           ticketId === undefined ? {} : { ticketId },
+          ...(currentWork
+            ? [
+                {
+                  status: {
+                    in: ['TODO', 'IN_PROGRESS'] as ('TODO' | 'IN_PROGRESS')[],
+                  },
+                  createdInCycle: { outcome: null },
+                  ticket: { status: { in: [...operationalStatuses] } },
+                },
+              ]
+            : []),
         ],
       },
       orderBy: { createdAt: 'asc' },

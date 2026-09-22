@@ -60,10 +60,11 @@ export class TicketAuthorizationService {
   assertActive(ticket: TicketAuthorizationSubject) {
     if (
       ticket.status === TicketStatus.RESOLVED ||
-      ticket.status === TicketStatus.CLOSED
+      ticket.status === TicketStatus.CLOSED ||
+      ticket.status === TicketStatus.CANCELLED
     ) {
       throw new ConflictException(
-        'Resolved and closed tickets freeze operational ownership and subtasks',
+        'Terminal tickets freeze metadata, ownership and subtasks',
       );
     }
   }
@@ -73,6 +74,7 @@ export class TicketAuthorizationService {
     ticket: TicketAuthorizationSubject,
   ) {
     this.assertServiceDeskUser(user);
+    this.assertActive(ticket);
     if (
       (user.role === UserRole.EMPLOYEE && ticket.requesterId === user.id) ||
       (user.role === UserRole.AGENT && ticket.assignedAgentId === user.id) ||
@@ -171,6 +173,38 @@ export class TicketAuthorizationService {
     );
   }
 
+  assertCanReopen(
+    user: TicketAuthorizationUser,
+    ticket: TicketAuthorizationSubject,
+  ) {
+    this.assertServiceDeskUser(user);
+    if (!(
+      (user.role === UserRole.EMPLOYEE && ticket.requesterId === user.id) ||
+      this.isResponsibleManager(user, ticket)
+    ))
+      throw new ForbiddenException(
+        'Only the requester or responsible manager may reopen',
+      );
+    if (
+      ticket.status !== TicketStatus.RESOLVED &&
+      ticket.status !== TicketStatus.CLOSED
+    )
+      throw new ConflictException('Only resolved or closed tickets may reopen');
+  }
+
+  assertCanCancel(
+    user: TicketAuthorizationUser,
+    ticket: TicketAuthorizationSubject,
+  ) {
+    if (user.role !== UserRole.EMPLOYEE || ticket.requesterId !== user.id)
+      throw new ForbiddenException('Only the employee requester may cancel');
+    if (
+      ticket.status !== TicketStatus.NEW &&
+      ticket.status !== TicketStatus.ASSIGNED
+    )
+      throw new ConflictException('Cancellation requires NEW or ASSIGNED');
+  }
+
   assertCanTransitionStatus(
     user: TicketAuthorizationUser,
     ticket: TicketAuthorizationSubject,
@@ -190,6 +224,7 @@ export class TicketAuthorizationService {
       BLOCKED: [TicketStatus.IN_PROGRESS],
       RESOLVED: [TicketStatus.CLOSED],
       CLOSED: [],
+      CANCELLED: [],
     };
     if (!transitions[ticket.status].includes(to)) {
       throw new ConflictException(

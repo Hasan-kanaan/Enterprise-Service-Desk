@@ -1,48 +1,49 @@
 # Project Status
 
-Verified on 2026-09-18. [README.md](README.md) describes the project and [docs/decision.md](docs/decision.md) records architectural decisions.
+Implementation verified on 2026-09-18; final documentation/review completed on 2026-09-22. [README.md](README.md) describes the project and [docs/decision.md](docs/decision.md) records architectural decisions.
 
 ## Current Phase
 
-Ticket authorization and lifecycle stabilization completed. The frontend ticket workflow and subsequent service-desk features remain separate work.
+Account lifecycle, administrative offboarding, cancellation, terminal immutability, explicit reopening, and work-cycle history implemented. Changes remain uncommitted pending user approval.
 
 ## Implemented
 
-- PostgreSQL-backed users, bcrypt passwords, JWT access tokens, serialized initial SUPER_ADMIN bootstrap, admin-provisioned account hierarchy, refresh-cookie rotation, and logout revocation.
-- Frontend login/setup, account directory/creation, profile identity, role-aware navigation, and logout. Dashboard/tickets/settings/notifications remain placeholder surfaces.
-- Region, Department, Specialty, Team, memberships, organizational TeamManager, and optional Team Lead models and administration foundation.
-- Ticket creation, general metadata editing, filtered list/detail, primary assignment, status transitions, subtask creation/update, and separately authorized subtask list/detail APIs.
-- Explicit nullable Ticket.assignedManagerId and restrictive manager deletion. TeamManager is organizational only and grants no ticket authority.
-- Shared MANAGER intake: NEW with NULL manager. Any manager can assign themselves or another real MANAGER. This leaves NEW; first primary-team assignment sets ASSIGNED with an optional agent.
-- Only the responsible manager has manager-level ticket authority, including manager transfer and any real destination-team selection. Transfer preserves team/agent/status/timestamps.
-- Team Leads can assign primary agents within their current primary team, but cannot change manager/team. Ordinary primary agents cannot reassign ownership.
-- ADMIN and SUPER_ADMIN denied every ticket/subtask API; account and organization administration preserved.
-- Employees have no support-subtask access. Direct subtask agents can work on their own subtasks; primary parent-agent assignment grants no additional access. Team Leads oversee their subtask team and may create explicitly team-assigned subtasks when they lead the parent primary team. Responsible managers manage all parent-ticket subtasks and cross-team delegation.
-- Omitted PATCH fields preserve values; explicit NULL clears only supported nullable ownership. Incompatible retained agents cause rejection unless explicitly cleared/replaced. Manager and primary-team clearing are unsupported.
-- RESOLVED/CLOSED reject manager transfer, team/agent reassignment, and all subtask mutations. Other reassignment preserves status/timestamps. No implicit reopening or parent-state changes from subtask status.
-- All existing-ticket/subtask mutations lock the parent Ticket row in serializable transactions. Stale writes return 409 without automatic retry. Claims use conditional ownership/status writes.
-- Controller-test dependency mismatch fixed. Unit/e2e Jest maps only relative .js imports; e2e uses Node VM modules for Prisma's dynamic imports. Separate no-output TypeScript checking includes tests.
+- Existing account provisioning, organization administration, explicit responsible-manager ownership, shared intake, and separate ticket/subtask authorization preserved.
+- UserStatus ACTIVE/INACTIVE with sessionVersion. SUPER_ADMIN manages ADMIN/MANAGER/AGENT/EMPLOYEE status; ADMIN manages MANAGER/AGENT/EMPLOYEE. No SUPER_ADMIN deactivation or user/ticket DELETE endpoints.
+- Atomic administrative offboarding: active manager-owned tickets return to NEW with manager/team/agent NULL; primary-agent assignments clear only the target agent; actionable current-cycle subtasks clear only that agent; Team Lead and TeamManager responsibilities are removed without replacement.
+- Historical/terminal ownership, prior-cycle subtasks, completed/cancelled work, and requester attribution remain unchanged. Offboarding returns only user ID/status and grants no service-desk visibility or ordinary ticket authority.
+- Inactive login/refresh rejected. Access JWTs are checked against database status, current role, and sessionVersion. Deactivation revokes refresh tokens and invalidates existing access; reactivation requires fresh login. Refresh consumption/replacement is atomic.
+- New manager/agent/subtask/Team Lead/TeamManager assignments require active eligible users. Operational mutations recheck actor status/version within their transaction.
+- Explicit requester cancellation from NEW/ASSIGNED. CANCELLED is permanent. All ordinary metadata, ownership, and subtask writes freeze on RESOLVED/CLOSED/CANCELLED.
+- Explicit requester/responsible-manager reopening with a required public reason and no time limit. Normal reopening preserves eligible ownership and sets IN_PROGRESS. Inactive agents clear automatically; inactive/missing managers return to empty NEW intake. Other invalid legacy routing needs explicit returnToIntake recovery.
+- TicketWorkCycle ORIGINAL/REOPENED attempts with sequence, reasons, outcomes, actors, timestamps, and ending-ownership snapshots. Resolution/cancellation ends work; closure annotates that same cycle. Reopening clears current ticket resolution/closure times while preserving previous cycles.
+- Required immutable Subtask.createdInCycleId with same-ticket FK, plus nullable completedById recording the actual completion actor. All old-cycle subtasks remain frozen, including unfinished work; repeating work requires a new subtask.
+- Current detail includes scope/tag IDs, ownership, and latest-cycle summary. History uses current ticket visibility with independent subtask filtering. Employees receive no support subtasks; subtask-only access never includes parent/history; historical participation never expands ticket visibility.
+- Active/status ticket filters and currentWork subtask filters. No currentCycleId on Ticket, assignment event stream, or generic audit infrastructure.
+- Serializable parent-ticket/user locking and 409 conflict mapping reused across lifecycle writes. Offboarding and ticket/cycle changes are atomic; stale requests reload and explicitly retry. Consistent-snapshot history reads.
 
 ## Migration
 
-`20260918090000_add_ticket_responsible_manager` adds nullable assignedManagerId, its FK with ON DELETE RESTRICT, and manager/intake indexes. Applied to the local development database and separate test database; all nine migrations are applied.
+`20260918120000_user_lifecycle_work_cycles` applied to the local development and isolated test databases. All ten migrations are applied. It adds user lifecycle/session version, CANCELLED, work cycles, subtask cycle/completion-actor references, and new historical foreign keys without changing unrelated existing SET NULL relationships.
 
-No manager inference/backfill occurred. Existing non-NEW managerless tickets intentionally remain outside manager visibility; reconcile development fixtures explicitly if needed. No return-to-intake or legacy-adoption endpoint exists.
+Backfill creates one ORIGINAL cycle per existing ticket and attaches existing subtasks without changing their work data. Known timestamps are retained; unknown actors/times remain NULL. Terminal ownership is explicitly marked RECORDED_AT_MIGRATION, not falsely represented as proven ownership at resolution. No inferred managers, earlier reopenings, or replacement people were created.
+
+Deploy with old application writers paused while migrating and switching backend versions. Existing nonterminal managerless fixtures still require explicit reconciliation; this phase does not invent historical owners or an ordinary legacy-adoption endpoint.
 
 ## Verification
 
-- Prisma schema validation: passed.
-- Migration status: up to date (nine migrations); database-to-schema diff reports no difference.
-- Git diff --check: passed.
-- Backend TypeScript including test sources: passed.
-- Backend Nest build: passed.
-- Unit tests: six suites, 62 tests passed.
-- PostgreSQL/HTTP e2e: two suites, 24 tests passed, including controlled concurrent claims, stale manager edits after transfer, and subtask work racing parent resolution.
-- Real HTTP tests exercise guards, DTO validation, relational visibility, administrative exclusion, preserved administration, strict NULLs, and terminal freezes.
-- Test fixtures use a separate database and are explicitly cleaned up; no development fixtures were rewritten.
-- No dependency installation. Prisma configuration uses Node's built-in loadEnvFile instead of undeclared dotenv.
-- E2e emits Node's experimental VM-modules warning and a pg concurrent-query deprecation warning; neither fails validation.
-- Frontend files/contracts were not changed; frontend validation is not required for this backend-only stabilization.
+- Prisma schema validation and client generation: passed.
+- Development and isolated-test migration status: ten migrations applied in each; both schema diffs report no difference.
+- Backend TypeScript, including tests: passed.
+- Nest build: passed.
+- Unit tests: eight suites, 80 tests passed.
+- PostgreSQL/HTTP e2e: three suites, 82 tests passed.
+- E2e includes existing authorization regressions, account/session lifecycle, atomic offboarding, cancellation/freeze/reopen matrices, repeated cycles, safe history projections, historical/current-work separation, and controlled concurrent reopen/close/assignment/offboarding races.
+- Migration test replays the nine previous migrations in a private schema in the test database, verifies truthful backfill and same-ticket/not-null constraints, and rolls everything back.
+- Injected database failures verify complete rollback of reopening and administrative offboarding. The corresponding expected HTTP 500 errors appear in test logs; both rollback tests pass.
+- Test fixtures are scoped and cleaned up. No dependency installation or frontend changes.
+- Node experimental VM-modules and pg concurrent-query deprecation warnings remain non-failing.
+- Git diff whitespace check and final scope review completed before the final report. No commit created.
 
 ## Validation Commands
 
@@ -81,16 +82,12 @@ git diff --check
 git status --short
 ```
 
-## Deferred Work
+## Deferred Work and Remaining Boundaries
 
-- Ticket/organization frontend integration and richer ticket read contracts/catalog APIs.
-- Frontend reload session restoration (refresh retry exists, but startup restoration is absent).
-- Employee/support conversations and separate historical support-only internal notes. Neither a note model nor messaging API exists.
-- AI analysis, recommendation review, and routing, deferred until the non-AI workflow is functional. Existing AI schema fields do not represent an implemented integration.
-- Notifications, email, audit history, three-business-day auto-close, attachments, explicit reopening, and return-to-intake/unrouted operations.
-
-## Remaining Boundaries
-
-General ticket metadata edits retain the existing requester/operational relationship policy, including terminal tickets; the terminal freeze implemented here covers ownership and subtask work. Subtask statuses retain no additional transition graph. Organization-role/membership lifecycle changes, pagination, and broader authentication hardening remain separate work.
-
-Use a real JWT_SECRET for deployment. Access JWTs remain valid until expiry after logout; refresh revocation does not invalidate existing access tokens. NULL organization/ownership values must never be replaced with fabricated records.
+- AI routing/recommendations; conversations/messages; internal notes; notifications/email; automatic RESOLVED -> CLOSED scheduling; generic audit log; frontend ticket pages; My Work History; SSO/SCIM remain deferred.
+- Ticket/organization catalog APIs, pagination, broader organization-role/membership lifecycle design, and frontend startup session restoration remain separate work.
+- Work-cycle snapshots capture ending responsibility, not every within-cycle assignment. Legacy unknown facts remain NULL; names are current display labels for stable user IDs.
+- Subtask statuses retain their existing within-cycle transition behavior; earlier-cycle work is permanently frozen.
+- Serialization conflicts require explicit reload/retry. Offboarding does not automatically retry or choose replacements.
+- Logout revokes the supplied refresh token; immediate access invalidation here applies to deactivation, not a new per-session logout scheme.
+- Use a real JWT_SECRET for deployment. NULL organization/ownership values must never be replaced with fabricated records.

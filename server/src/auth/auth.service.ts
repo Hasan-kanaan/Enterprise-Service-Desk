@@ -34,7 +34,9 @@ export class AuthService {
     const password = dto.password;
 
     if (!username || !email || !password) {
-      throw new BadRequestException('Username, email, and password are required');
+      throw new BadRequestException(
+        'Username, email, and password are required',
+      );
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -68,7 +70,9 @@ export class AuthService {
           : [];
 
     if (!allowedRoles.includes(dto.role)) {
-      throw new ForbiddenException('You do not have permission to create this role');
+      throw new ForbiddenException(
+        'You do not have permission to create this role',
+      );
     }
 
     const username = dto.username.trim().toLowerCase();
@@ -98,7 +102,7 @@ export class AuthService {
 
     const user = await this.usersService.findByEmail(email);
 
-    if (!user) {
+    if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -127,13 +131,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    const revoked = await this.usersService.revokeRefreshToken(tokenHash);
-
-    if (!revoked) {
+    if (storedToken.user.status !== 'ACTIVE')
       throw new UnauthorizedException('Invalid or expired refresh token');
-    }
-
-    return this.issueTokens(storedToken.user);
+    return this.issueTokens(storedToken.user, tokenHash);
   }
 
   async logout(refreshToken: string) {
@@ -141,30 +141,38 @@ export class AuthService {
       throw new BadRequestException('Refresh token is required');
     }
 
-    await this.usersService.revokeRefreshToken(this.hashRefreshToken(refreshToken));
+    await this.usersService.revokeRefreshToken(
+      this.hashRefreshToken(refreshToken),
+    );
 
     return { message: 'Logged out successfully' };
   }
 
-  private async issueTokens(user: {
-    id: number;
-    username: string;
-    email: string;
-    role: UserRole;
-  }) {
-    const accessToken = this.jwtService.sign({
-      sub: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-    });
+  private async issueTokens(
+    user: {
+      id: number;
+      username: string;
+      email: string;
+      role: UserRole;
+      sessionVersion: number;
+    },
+    consumedHash?: string,
+  ) {
     const refreshToken = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-    await this.usersService.createRefreshToken({
-      userId: user.id,
-      tokenHash: this.hashRefreshToken(refreshToken),
+    const current = await this.usersService.issueSession(
+      user.id,
+      user.sessionVersion,
+      this.hashRefreshToken(refreshToken),
       expiresAt,
+      consumedHash,
+    );
+    const accessToken = this.jwtService.sign({
+      sub: current.id,
+      username: current.username,
+      email: current.email,
+      role: current.role,
+      sessionVersion: current.sessionVersion,
     });
 
     return {

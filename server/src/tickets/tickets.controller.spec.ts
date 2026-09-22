@@ -31,10 +31,13 @@ describe('TicketsController', () => {
 
     await controller.list({ user: { sub: 10, role: UserRole.EMPLOYEE } });
 
-    expect(listVisible).toHaveBeenCalledWith({
-      id: 10,
-      role: UserRole.EMPLOYEE,
-    });
+    expect(listVisible).toHaveBeenCalledWith(
+      {
+        id: 10,
+        role: UserRole.EMPLOYEE,
+      },
+      {},
+    );
   });
 
   it('looks up ticket details through the visibility policy', async () => {

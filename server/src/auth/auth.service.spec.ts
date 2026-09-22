@@ -29,7 +29,10 @@ describe('AuthService', () => {
         {
           provide: JwtService,
           useValue: {
-            sign: jest.fn((payload) => `signed-${payload.email}-${payload.role}-${payload.sub}`),
+            sign: jest.fn(
+              (payload) =>
+                `signed-${payload.email}-${payload.role}-${payload.sub}`,
+            ),
           },
         },
       ],
@@ -46,9 +49,20 @@ describe('AuthService', () => {
         username: 'adminuser',
         email: 'admin@company.com',
         password: passwordHash,
+        status: 'ACTIVE',
+        sessionVersion: 0,
         role: UserRole.ADMIN,
       }),
-      createRefreshToken: jest.fn().mockResolvedValue({}),
+      issueSession: jest
+        .fn()
+        .mockResolvedValue({
+          id: 1,
+          username: 'adminuser',
+          email: 'admin@company.com',
+          role: UserRole.ADMIN,
+          status: 'ACTIVE',
+          sessionVersion: 0,
+        }),
     };
     const jwtService = {
       sign: jest.fn(() => 'signed-test-token'),
@@ -73,12 +87,26 @@ describe('AuthService', () => {
         username: 'employee',
         email: 'employee@company.com',
         password: passwordHash,
+        status: 'ACTIVE',
+        sessionVersion: 0,
         role: UserRole.EMPLOYEE,
       }),
-      createRefreshToken: jest.fn().mockResolvedValue({}),
+      issueSession: jest
+        .fn()
+        .mockResolvedValue({
+          id: 1,
+          username: 'adminuser',
+          email: 'admin@company.com',
+          role: UserRole.ADMIN,
+          status: 'ACTIVE',
+          sessionVersion: 0,
+        }),
     };
 
-    const auth = new AuthService(usersService as any, { sign: jest.fn() } as any);
+    const auth = new AuthService(
+      usersService as any,
+      { sign: jest.fn() } as any,
+    );
 
     await expect(
       auth.login({ email: 'employee@company.com', password: 'WrongPass123!' }),
@@ -126,7 +154,10 @@ describe('AuthService', () => {
     });
 
     expect(usersService.createInitialSuperAdmin).toHaveBeenCalledWith(
-      expect.objectContaining({ username: 'rootadmin', email: 'root@company.com' }),
+      expect.objectContaining({
+        username: 'rootadmin',
+        email: 'root@company.com',
+      }),
     );
   });
 
@@ -217,11 +248,22 @@ describe('AuthService', () => {
           username: 'adminuser',
           email: 'admin@company.com',
           password: 'hash',
+          status: 'ACTIVE',
+          sessionVersion: 0,
           role: UserRole.ADMIN,
         },
       }),
       revokeRefreshToken: jest.fn().mockResolvedValue(true),
-      createRefreshToken: jest.fn().mockResolvedValue({}),
+      issueSession: jest
+        .fn()
+        .mockResolvedValue({
+          id: 1,
+          username: 'adminuser',
+          email: 'admin@company.com',
+          role: UserRole.ADMIN,
+          status: 'ACTIVE',
+          sessionVersion: 0,
+        }),
     };
     const jwtService = {
       verifyAsync: jest.fn().mockResolvedValue({ sub: 1 }),
@@ -233,10 +275,14 @@ describe('AuthService', () => {
 
     expect(result.accessToken).toBe('new-access-token');
     expect(result.refreshToken).toBeDefined();
-    expect(usersService.revokeRefreshToken).toHaveBeenCalledWith(expect.any(String));
-    expect(usersService.createRefreshToken).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 1, tokenHash: expect.any(String) }),
+    expect(usersService.issueSession).toHaveBeenCalledWith(
+      1,
+      0,
+      expect.any(String),
+      expect.any(Date),
+      expect.any(String),
     );
+    expect(usersService.revokeRefreshToken).not.toHaveBeenCalled();
   });
 
   it('rejects a refresh token that was already revoked', async () => {
@@ -268,6 +314,8 @@ describe('AuthService', () => {
     await expect(auth.logout('refresh-token')).resolves.toEqual({
       message: 'Logged out successfully',
     });
-    expect(usersService.revokeRefreshToken).toHaveBeenCalledWith(expect.any(String));
+    expect(usersService.revokeRefreshToken).toHaveBeenCalledWith(
+      expect.any(String),
+    );
   });
 });

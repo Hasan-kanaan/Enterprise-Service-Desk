@@ -13,6 +13,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAuthorizationService } from './ticket-authorization.service';
 import { TicketAuthorizationUser } from './ticket-authorization.types';
+import {
+  lockUser,
+  requireActiveActor,
+  serializable,
+} from '../prisma/transactions';
+import { ReopenTicketDto } from './dto/reopen-ticket.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { UpdateTicketManagerDto } from './dto/update-ticket-manager.dto';
 import { CreateSubtaskDto } from './dto/create-subtask.dto';
@@ -23,6 +29,7 @@ import { UpdateTicketDto } from './dto/update-ticket.dto';
 type Database = Prisma.TransactionClient;
 const ticketInclude = {
   assignedTeam: { select: { teamLeadId: true } },
+  workCycles: { orderBy: { sequenceNumber: 'desc' }, take: 1 },
   affectedRegions: true,
   affectedDepartments: true,
 } satisfies Prisma.TicketInclude;
@@ -53,29 +60,42 @@ export class TicketsService {
     await this.requireDepartments(dto.affectedDepartmentIds);
     await this.requireTags(dto.tagIds ?? []);
 
-    return this.prisma.ticket.create({
-      data: {
-        title: dto.title,
-        description: dto.description,
-        requesterId: user.id,
-        assignedManagerId: null,
-        assignedTeamId: null,
-        assignedAgentId: null,
-        status: TicketStatus.NEW,
-        categoryId: dto.categoryId,
-        priority: dto.priority,
-        allRegions,
-        allDepartments,
-        affectedRegions: {
-          create: dto.affectedRegionIds.map((regionId) => ({ regionId })),
+    return serializable(this.prisma, async (db) => {
+      await requireActiveActor(db, user);
+      const now = new Date();
+      return db.ticket.create({
+        data: {
+          createdAt: now,
+          workCycles: {
+            create: {
+              sequenceNumber: 1,
+              type: 'ORIGINAL',
+              startedAt: now,
+              startedById: user.id,
+            },
+          },
+          title: dto.title,
+          description: dto.description,
+          requesterId: user.id,
+          assignedManagerId: null,
+          assignedTeamId: null,
+          assignedAgentId: null,
+          status: TicketStatus.NEW,
+          categoryId: dto.categoryId,
+          priority: dto.priority,
+          allRegions,
+          allDepartments,
+          affectedRegions: {
+            create: dto.affectedRegionIds.map((regionId) => ({ regionId })),
+          },
+          affectedDepartments: {
+            create: dto.affectedDepartmentIds.map((departmentId) => ({
+              departmentId,
+            })),
+          },
+          tags: { create: (dto.tagIds ?? []).map((tagId) => ({ tagId })) },
         },
-        affectedDepartments: {
-          create: dto.affectedDepartmentIds.map((departmentId) => ({
-            departmentId,
-          })),
-        },
-        tags: { create: (dto.tagIds ?? []).map((tagId) => ({ tagId })) },
-      },
+      });
     });
   }
 
@@ -152,12 +172,11 @@ export class TicketsService {
   ) {
     return this.withTicket(ticketId, user, async (db, ticket) => {
       this.authorization.assertCanAssignManager(user, ticket);
-      const manager = await db.user.findUnique({
-        where: { id: dto.assignedManagerId },
-        select: { role: true },
-      });
+      const manager = await lockUser(db, dto.assignedManagerId);
       if (!manager) throw new NotFoundException('Manager not found');
-      if (manager.role !== UserRole.MANAGER)
+      if (manager.status !== 'ACTIVE')
+        throw new BadRequestException('Responsible manager must be active');
+      if (manager?.role !== UserRole.MANAGER)
         throw new BadRequestException('Responsible user must be a MANAGER');
       const result = await db.ticket.updateMany({
         where: {
@@ -209,17 +228,35 @@ export class TicketsService {
     ticketId: number,
     user: TicketAuthorizationUser,
     status: TicketStatus,
+    resolutionSummary?: string,
   ) {
     return this.withTicket(ticketId, user, async (db, ticket) => {
       this.authorization.assertCanTransitionStatus(user, ticket, status);
+      if (resolutionSummary !== undefined && status !== TicketStatus.RESOLVED)
+        throw new BadRequestException(
+          'Resolution summary is only accepted when resolving',
+        );
+      const now = new Date();
+      if (status === TicketStatus.RESOLVED)
+        await this.endCycle(
+          db,
+          ticket,
+          user.id,
+          'RESOLVED',
+          now,
+          resolutionSummary,
+        );
+      if (status === TicketStatus.CLOSED)
+        await db.ticketWorkCycle.update({
+          where: { id: this.currentCycle(ticket).id },
+          data: { outcome: 'CLOSED', closedAt: now, closedById: user.id },
+        });
       return db.ticket.update({
         where: { id: ticketId },
         data: {
           status,
-          ...(status === TicketStatus.RESOLVED
-            ? { resolvedAt: new Date() }
-            : {}),
-          ...(status === TicketStatus.CLOSED ? { closedAt: new Date() } : {}),
+          ...(status === TicketStatus.RESOLVED ? { resolvedAt: now } : {}),
+          ...(status === TicketStatus.CLOSED ? { closedAt: now } : {}),
         },
       });
     });
@@ -238,6 +275,7 @@ export class TicketsService {
       return db.subtask.create({
         data: {
           ticketId,
+          createdInCycleId: this.currentCycle(ticket).id,
           title: dto.title,
           description: dto.description,
           assignedTeamId,
@@ -265,6 +303,10 @@ export class TicketsService {
         include: { assignedTeam: { select: { teamLeadId: true } } },
       });
       if (!subtask) throw new NotFoundException('Subtask not found');
+      if (subtask.createdInCycleId !== this.currentCycle(ticket).id)
+        throw new ConflictException(
+          'Historical cycle subtasks are permanently frozen',
+        );
       const subject = { ...subtask, ticket };
       this.authorization.assertCanMutateSubtask(user, subject);
       const assignedTeamId =
@@ -297,6 +339,12 @@ export class TicketsService {
           ...(dto.status === undefined
             ? {}
             : {
+                completedById:
+                  dto.status === SubtaskStatus.COMPLETED
+                    ? subtask.status === SubtaskStatus.COMPLETED
+                      ? subtask.completedById
+                      : user.id
+                    : null,
                 completedAt:
                   dto.status === SubtaskStatus.COMPLETED
                     ? (subtask.completedAt ?? new Date())
@@ -325,6 +373,9 @@ export class TicketsService {
     });
     if (!team) throw new NotFoundException('Team not found');
     if (agentId !== null) {
+      const agent = await lockUser(db, agentId);
+      if (!agent || agent.status !== 'ACTIVE')
+        throw new BadRequestException('Assigned agent must be active');
       const member = await db.teamMember.findUnique({
         where: { teamId_userId: { teamId, userId: agentId } },
         select: { user: { select: { role: true } } },
@@ -343,42 +394,137 @@ export class TicketsService {
     action: (db: Database, ticket: EditableTicket) => Promise<T>,
   ): Promise<T> {
     this.authorization.assertServiceDeskUser(user);
-    try {
-      return await this.prisma.$transaction(
-        async (db) => {
-          // All ticket/subtask mutations use this same parent lock. Ownership, status,
-          // and authorization are checked in the transaction that performs the write.
-          const rows = await db.$queryRaw<
-            Array<{ id: number }>
-          >`SELECT id FROM "Ticket" WHERE id = ${id} FOR UPDATE`;
-          if (rows.length === 0)
-            throw new NotFoundException('Ticket not found');
-          const ticket = await db.ticket.findUniqueOrThrow({
-            where: { id },
-            include: ticketInclude,
-          });
-          return action(db, ticket);
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
-    } catch (error) {
-      // Do not automatically retry a stale claim as a transfer or reauthorize it
-      // under changed ownership. The caller must explicitly reload and retry.
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        const adapterError = error.meta?.driverAdapterError as
-          { cause?: { originalCode?: string } } | undefined;
-        const sqlState = adapterError?.cause?.originalCode ?? error.meta?.code;
-        const rawWriteConflict =
-          error.code === 'P2010' &&
-          (sqlState === '40001' || sqlState === '40P01');
-        if (error.code === 'P2034' || rawWriteConflict) {
-          throw new ConflictException(
-            'Ticket changed concurrently; reload before retrying',
-          );
+    return serializable(this.prisma, async (db) => {
+      const rows = await db.$queryRaw<
+        Array<{ id: number }>
+      >`SELECT id FROM "Ticket" WHERE id = ${id} FOR UPDATE`;
+      if (rows.length === 0) throw new NotFoundException('Ticket not found');
+      await requireActiveActor(db, user);
+      const ticket = await db.ticket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
+      return action(db, ticket);
+    });
+  }
+
+  private currentCycle(ticket: EditableTicket) {
+    const cycle = ticket.workCycles[0];
+    if (!cycle)
+      throw new ConflictException('Ticket requires work-cycle migration');
+    return cycle;
+  }
+
+  private async endCycle(
+    db: Database,
+    ticket: EditableTicket,
+    actorId: number,
+    outcome: 'RESOLVED' | 'CANCELLED',
+    now: Date,
+    resolutionSummary?: string,
+  ) {
+    await db.ticketWorkCycle.update({
+      where: { id: this.currentCycle(ticket).id },
+      data: {
+        outcome,
+        endedAt: now,
+        endedById: actorId,
+        resolutionSummary,
+        endingManagerId: ticket.assignedManagerId,
+        endingTeamId: ticket.assignedTeamId,
+        endingAgentId: ticket.assignedAgentId,
+        ownershipSnapshotBasis: 'END_OF_WORK',
+        ownershipCapturedAt: now,
+      },
+    });
+  }
+
+  cancel(ticketId: number, user: TicketAuthorizationUser) {
+    return this.withTicket(ticketId, user, async (db, ticket) => {
+      this.authorization.assertCanCancel(user, ticket);
+      const now = new Date();
+      await this.endCycle(db, ticket, user.id, 'CANCELLED', now);
+      return db.ticket.update({
+        where: { id: ticketId },
+        data: { status: 'CANCELLED' },
+      });
+    });
+  }
+
+  reopen(
+    ticketId: number,
+    user: TicketAuthorizationUser,
+    dto: ReopenTicketDto,
+  ) {
+    return this.withTicket(ticketId, user, async (db, ticket) => {
+      this.authorization.assertCanReopen(user, ticket);
+      const previous = this.currentCycle(ticket);
+      const manager =
+        ticket.assignedManagerId === null
+          ? null
+          : await lockUser(db, ticket.assignedManagerId);
+      let intake = !manager || manager.status !== 'ACTIVE';
+      let agentId = ticket.assignedAgentId;
+      if (!intake) {
+        if (manager?.role !== UserRole.MANAGER)
+          throw new ConflictException('Invalid retained manager');
+        const team =
+          ticket.assignedTeamId === null
+            ? null
+            : await db.team.findUnique({
+                where: { id: ticket.assignedTeamId },
+              });
+        if (!team) {
+          if (!dto.returnToIntake)
+            throw new ConflictException(
+              'Invalid legacy team; explicitly request returnToIntake',
+            );
+          intake = true;
+        } else if (agentId !== null) {
+          const agent = await lockUser(db, agentId);
+          if (agent?.status === 'INACTIVE') agentId = null;
+          else {
+            const member = await db.teamMember.findUnique({
+              where: { teamId_userId: { teamId: team.id, userId: agentId } },
+            });
+            if (!agent || agent.role !== UserRole.AGENT || !member) {
+              if (!dto.returnToIntake)
+                throw new ConflictException(
+                  'Invalid legacy agent; explicitly request returnToIntake',
+                );
+              intake = true;
+            }
+          }
         }
       }
-      throw error;
-    }
+      if (dto.returnToIntake && !intake)
+        throw new BadRequestException(
+          'Intake restart is reserved for invalid historical routing',
+        );
+      const now = new Date();
+      await db.ticketWorkCycle.create({
+        data: {
+          ticketId,
+          sequenceNumber: previous.sequenceNumber + 1,
+          type: 'REOPENED',
+          startedAt: now,
+          startedById: user.id,
+          startReason: dto.reason,
+          startDisposition: intake ? 'RETURN_TO_INTAKE' : 'CONTINUE',
+        },
+      });
+      return db.ticket.update({
+        where: { id: ticketId },
+        data: {
+          status: intake ? 'NEW' : 'IN_PROGRESS',
+          resolvedAt: null,
+          closedAt: null,
+          assignedManagerId: intake ? null : ticket.assignedManagerId,
+          assignedTeamId: intake ? null : ticket.assignedTeamId,
+          assignedAgentId: intake ? null : agentId,
+        },
+      });
+    });
   }
 
   private async requireCategory(id: number, db: Database = this.prisma) {

@@ -31,6 +31,7 @@ describe('TicketsService', () => {
     jest.resetAllMocks();
     current = {
       id: 1,
+      workCycles: [{ id: 3, sequenceNumber: 1, outcome: null }],
       requesterId: 10,
       assignedManagerId: 31,
       assignedTeamId: 30,
@@ -52,7 +53,12 @@ describe('TicketsService', () => {
     db.teamMember.findUnique.mockResolvedValue({
       user: { role: UserRole.AGENT },
     });
-    db.user.findUnique.mockResolvedValue({ role: UserRole.MANAGER });
+    db.user.findUnique.mockImplementation(async ({ where }) => ({
+      id: where.id,
+      role: where.id === 20 ? UserRole.AGENT : UserRole.MANAGER,
+      status: 'ACTIVE',
+      sessionVersion: 0,
+    }));
   });
 
   it('preserves an omitted agent and active status on reassignment', async () => {
@@ -111,6 +117,7 @@ describe('TicketsService', () => {
     db.subtask.findUnique.mockResolvedValue({
       id: 2,
       ticketId: 1,
+      createdInCycleId: 3,
       assignedTeamId: 30,
       assignedAgentId: 20,
       assignedTeam: { teamLeadId: 21 },

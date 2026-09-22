@@ -153,12 +153,19 @@ describe('TicketVisibilityService', () => {
   });
 
   it('combines the ticket id with the visibility filter for detail queries', async () => {
-    findFirst.mockResolvedValue({ id: 99 });
+    findFirst.mockResolvedValue({
+      id: 99,
+      workCycles: [],
+      tags: [],
+      affectedRegions: [],
+      affectedDepartments: [],
+    });
 
     await service.findVisibleById(99, employee(10));
 
     expect(findFirst).toHaveBeenCalledWith({
       where: { AND: [{ id: 99 }, { requesterId: 10 }] },
+      include: expect.objectContaining({ workCycles: expect.any(Object) }),
     });
   });
 
