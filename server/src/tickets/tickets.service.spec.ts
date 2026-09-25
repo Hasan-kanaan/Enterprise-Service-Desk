@@ -16,8 +16,8 @@ describe('TicketsService', () => {
       update: jest.fn(),
       updateMany: jest.fn(),
     },
-    user: { findUnique: jest.fn() },
-    team: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn(), findMany: jest.fn() },
+    team: { findUnique: jest.fn(), findFirst: jest.fn() },
     teamMember: { findUnique: jest.fn() },
     subtask: { findUnique: jest.fn(), update: jest.fn() },
   };
@@ -29,6 +29,7 @@ describe('TicketsService', () => {
   let current: any;
   beforeEach(() => {
     jest.resetAllMocks();
+    db.user.findMany.mockResolvedValue([]);
     current = {
       id: 1,
       workCycles: [{ id: 3, sequenceNumber: 1, outcome: null }],
@@ -50,6 +51,7 @@ describe('TicketsService', () => {
     }));
     db.ticket.updateMany.mockResolvedValue({ count: 1 });
     db.team.findUnique.mockResolvedValue({ id: 30 });
+    db.team.findFirst.mockResolvedValue({ id: 30 });
     db.teamMember.findUnique.mockResolvedValue({
       user: { role: UserRole.AGENT },
     });

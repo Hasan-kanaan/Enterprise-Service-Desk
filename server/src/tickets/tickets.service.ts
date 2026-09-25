@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -25,6 +26,7 @@ import { CreateSubtaskDto } from './dto/create-subtask.dto';
 import { UpdateSubtaskDto } from './dto/update-subtask.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
+import { notify, supportRecipients } from '../notifications/notification-events';
 
 type Database = Prisma.TransactionClient;
 const ticketInclude = {
@@ -190,6 +192,15 @@ export class TicketsService {
         throw new ConflictException(
           'Ticket ownership changed; reload before retrying',
         );
+      if (
+        ticket.assignedManagerId !== null &&
+        ticket.assignedManagerId !== dto.assignedManagerId
+      )
+        await notify(db, [dto.assignedManagerId], {
+          type: 'MANAGER_TRANSFERRED',
+          actorUserId: user.id,
+          ticketId,
+        });
       return db.ticket.findUniqueOrThrow({ where: { id: ticketId } });
     });
   }
@@ -209,8 +220,26 @@ export class TicketsService {
           'Primary team must be explicitly assigned and cannot be cleared',
         );
       this.authorization.assertCanAssignTicket(user, ticket, teamId);
+      if (this.authorization.isResponsibleManager(user, ticket)) {
+        // Hold organizational responsibility through this assignment, including
+        // when an administrator concurrently removes the TeamManager relation.
+        await db.$queryRaw`SELECT "teamId" FROM "TeamManager" WHERE "teamId" = ${teamId} FOR SHARE`;
+      }
       await this.validateAssignment(db, teamId, agentId);
-      return db.ticket.update({
+      if (
+        this.authorization.isResponsibleManager(user, ticket) &&
+        !(await db.team.findFirst({
+          where: {
+            id: teamId,
+            ...this.authorization.responsibleManagerTeamWhere(user.id),
+          },
+          select: { id: true },
+        }))
+      )
+        throw new ForbiddenException(
+          'Responsible managers may select only their organizationally managed teams or GLOBAL teams',
+        );
+      const result = await db.ticket.update({
         where: { id: ticketId },
         data: {
           assignedTeamId: teamId,
@@ -221,6 +250,11 @@ export class TicketsService {
               : ticket.status,
         },
       });
+      if (agentId !== null && agentId !== ticket.assignedAgentId)
+        await notify(db, [agentId], {
+          type: 'PRIMARY_AGENT_ASSIGNED', actorUserId: user.id, ticketId,
+        });
+      return result;
     });
   }
 
@@ -251,7 +285,7 @@ export class TicketsService {
           where: { id: this.currentCycle(ticket).id },
           data: { outcome: 'CLOSED', closedAt: now, closedById: user.id },
         });
-      return db.ticket.update({
+      const result = await db.ticket.update({
         where: { id: ticketId },
         data: {
           status,
@@ -259,6 +293,11 @@ export class TicketsService {
           ...(status === TicketStatus.CLOSED ? { closedAt: now } : {}),
         },
       });
+      if (status === 'WAITING_FOR_EMPLOYEE' || status === 'RESOLVED')
+        await notify(db, [ticket.requesterId], {
+          type: status, actorUserId: user.id, ticketId,
+        });
+      return result;
     });
   }
 
@@ -272,7 +311,7 @@ export class TicketsService {
       const assignedAgentId = dto.assignedAgentId ?? null;
       this.authorization.assertCanCreateSubtask(user, ticket, assignedTeamId);
       await this.validateAssignment(db, assignedTeamId, assignedAgentId);
-      return db.subtask.create({
+      const result = await db.subtask.create({
         data: {
           ticketId,
           createdInCycleId: this.currentCycle(ticket).id,
@@ -282,6 +321,11 @@ export class TicketsService {
           assignedAgentId,
         },
       });
+      if (assignedAgentId !== null)
+        await notify(db, [assignedAgentId], {
+          type: 'SUBTASK_ASSIGNED', actorUserId: user.id, ticketId, subtaskId: result.id,
+        });
+      return result;
     });
   }
 
@@ -328,7 +372,7 @@ export class TicketsService {
         );
         await this.validateAssignment(db, assignedTeamId, assignedAgentId);
       }
-      return db.subtask.update({
+      const result = await db.subtask.update({
         where: { id: subtaskId },
         data: {
           title: dto.title,
@@ -352,6 +396,11 @@ export class TicketsService {
               }),
         },
       });
+      if (assignedAgentId !== null && assignedAgentId !== subtask.assignedAgentId)
+        await notify(db, [assignedAgentId], {
+          type: 'SUBTASK_ASSIGNED', actorUserId: user.id, ticketId: ticket.id, subtaskId,
+        });
+      return result;
     });
   }
 
@@ -513,7 +562,7 @@ export class TicketsService {
           startDisposition: intake ? 'RETURN_TO_INTAKE' : 'CONTINUE',
         },
       });
-      return db.ticket.update({
+      const result = await db.ticket.update({
         where: { id: ticketId },
         data: {
           status: intake ? 'NEW' : 'IN_PROGRESS',
@@ -524,6 +573,14 @@ export class TicketsService {
           assignedAgentId: intake ? null : agentId,
         },
       });
+      const recipients =
+        user.role === UserRole.EMPLOYEE
+          ? await supportRecipients(db, ticketId, false)
+          : [ticket.requesterId];
+      await notify(db, recipients, {
+        type: 'REOPENED', actorUserId: user.id, ticketId,
+      });
+      return result;
     });
   }
 

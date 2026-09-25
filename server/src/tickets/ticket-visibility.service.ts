@@ -27,6 +27,7 @@ export class TicketVisibilityService {
           OR: [
             { assignedAgentId: user.id },
             { assignedTeam: { teamLeadId: user.id } },
+            this.collaboratorWhere(user.id),
           ],
         };
       case UserRole.MANAGER:
@@ -46,7 +47,64 @@ export class TicketVisibilityService {
     }
   }
 
+  collaboratorWhere(userId: number): Prisma.TicketWhereInput {
+    // Only the latest cycle can be unfinished: creation/reopen/end are atomic.
+    // Completion (or cancellation) of a subtask does not end collaboration.
+    return {
+      status: { in: [...operationalStatuses] },
+      subtasks: {
+        some: { assignedAgentId: userId, createdInCycle: { outcome: null } },
+      },
+    };
+  }
+
+  supportWhere(user: TicketVisibilityUser): Prisma.TicketWhereInput {
+    if (user.role === UserRole.AGENT) return this.buildWhere(user);
+    if (user.role === UserRole.MANAGER) return { assignedManagerId: user.id };
+    throw new ForbiddenException(
+      'Support communication requires current support responsibility',
+    );
+  }
+
   listVisible(user: TicketVisibilityUser, query: ListTicketsDto = {}) {
+    if (user.role === UserRole.AGENT) {
+      return this.prisma.$transaction(
+        (db) =>
+          db.ticket
+            .findMany({
+              where: {
+                AND: [
+                  this.buildWhere(user),
+                  query.status === undefined ? {} : { status: query.status },
+                  query.active === 'true'
+                    ? { status: { in: [...operationalStatuses] } }
+                    : {},
+                ],
+              },
+              include: {
+                subtasks: {
+                  where: {
+                    assignedAgentId: user.id,
+                    createdInCycle: { outcome: null },
+                  },
+                  select: { id: true },
+                },
+              },
+              orderBy: { createdAt: 'desc' },
+            })
+            .then((rows) =>
+              rows.map(({ subtasks, ...ticket }) => ({
+                ...ticket,
+                isCurrentCollaborator:
+                  subtasks.length > 0 &&
+                  operationalStatuses.includes(
+                    ticket.status as (typeof operationalStatuses)[number],
+                  ),
+              })),
+            ),
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+      );
+    }
     return this.prisma.ticket.findMany({
       where:
         query.status !== undefined || query.active === 'true'
@@ -65,28 +123,37 @@ export class TicketVisibilityService {
   }
 
   async findVisibleById(ticketId: number, user: TicketVisibilityUser) {
-    const ticket = await this.prisma.ticket.findFirst({
-      where: { AND: [{ id: ticketId }, this.buildWhere(user)] },
-      include: {
-        workCycles: {
-          orderBy: { sequenceNumber: 'desc' },
-          take: 1,
-          include: cycleInclude,
-        },
-        assignedManager: { select: { id: true, username: true, status: true } },
-        assignedAgent: { select: { id: true, username: true, status: true } },
-        assignedTeam: { select: { id: true, name: true } },
-        tags: true,
-        affectedRegions: true,
-        affectedDepartments: true,
+    return this.prisma.$transaction(
+      async (db) => {
+        const ticket = await db.ticket.findFirst({
+          where: { AND: [{ id: ticketId }, this.buildWhere(user)] },
+          include: {
+            workCycles: {
+              orderBy: { sequenceNumber: 'desc' },
+              take: 1,
+              include: cycleInclude,
+            },
+            assignedManager: {
+              select: { id: true, username: true, status: true },
+            },
+            assignedAgent: {
+              select: { id: true, username: true, status: true },
+            },
+            assignedTeam: { select: { id: true, name: true } },
+            tags: true,
+            affectedRegions: true,
+            affectedDepartments: true,
+          },
+        });
+
+        if (!ticket) {
+          throw new NotFoundException('Ticket not found');
+        }
+
+        return mapTicket(ticket);
       },
-    });
-
-    if (!ticket) {
-      throw new NotFoundException('Ticket not found');
-    }
-
-    return mapTicket(ticket);
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 
   async history(ticketId: number, user: TicketVisibilityUser) {

@@ -22,7 +22,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
   let app: INestApplication;
   let db: PrismaService;
   let users: Record<string, User>;
-  let teamA: Team, teamB: Team;
+  let teamA: Team, teamB: Team, teamC: Team;
   let owned: Ticket, intake: Ticket;
   let subtask: Subtask;
   let categoryId: number, regionId: number, departmentId: number;
@@ -115,6 +115,9 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         teamLeadId: users.otherLead.id,
       },
     });
+    teamC = await db.team.create({
+      data: { name: `Other-regional-${prefix}`, scope: 'REGION', regionId },
+    });
     await db.teamMember.createMany({
       data: [
         ...['agent', 'member', 'lead'].map((name) => ({
@@ -127,12 +130,13 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         })),
       ],
     });
-    // Another manager manages BOTH teams, but does not own the ticket.
+    // Organizational management restricts primary routing, not ticket visibility.
     await db.teamManager.createMany({
-      data: [teamA, teamB].map((team) => ({
-        teamId: team.id,
-        managerId: users.otherManager.id,
-      })),
+      data: [
+        { teamId: teamA.id, managerId: users.manager.id },
+        { teamId: teamB.id, managerId: users.otherManager.id },
+        { teamId: teamC.id, managerId: users.otherManager.id },
+      ],
     });
     categoryId = (
       await db.ticketCategory.create({ data: { name: `category-${prefix}` } })
@@ -193,17 +197,207 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     if (!db || !users) return;
     // Delete only this test's explicit fixtures, never truncate shared data.
     const ids = Object.values(users).map((user) => user.id);
+    await db.notification.deleteMany({ where: { OR: [{ recipientUserId: { in: ids } }, { actorUserId: { in: ids } }] } });
+    await db.ticketMessage.deleteMany({ where: { authorId: { in: ids } } });
+    await db.ticketInternalNote.deleteMany({ where: { authorId: { in: ids } } });
     await db.subtask.deleteMany({
       where: { ticket: { requesterId: { in: ids } } },
     });
     await db.ticket.deleteMany({ where: { requesterId: { in: ids } } });
-    await db.team.deleteMany({ where: { id: { in: [teamA.id, teamB.id] } } });
+    await db.team.deleteMany({ where: { id: { in: [teamA.id, teamB.id, teamC.id] } } });
     await db.user.deleteMany({ where: { id: { in: ids } } });
     await db.ticketCategory.delete({ where: { id: categoryId } });
     await db.region.delete({ where: { id: regionId } });
     await db.department.delete({ where: { id: departmentId } });
   });
 
+
+  const communicate = async (name: string, kind = 'messages', content = 'New communication') =>
+    post(`/tickets/${owned.id}/${kind}`, name, {
+      content, expectedCycleId: subtask.createdInCycleId, clientRequestId: randomUUID(),
+    });
+
+  it('grants current collaborators parent context but no ownership or ticket mutations', async () => {
+    await get(`/tickets/${owned.id}`, 'otherAgent').expect(200);
+    await get(`/tickets/${owned.id}/history`, 'otherAgent').expect(200);
+    const actions = (await get(`/ticket-workspace/tickets/${owned.id}`, 'otherAgent').expect(200)).body;
+    expect(Object.values(actions.permissions).every(value => value === false || Array.isArray(value) && value.length === 0)).toBe(true);
+    await patch(`/tickets/${owned.id}`, 'otherAgent', { title: 'No' }).expect(403);
+    await patch(`/tickets/${owned.id}/status`, 'otherAgent', { status: 'RESOLVED' }).expect(403);
+    await patch(`/tickets/${owned.id}/assignment`, 'otherAgent', { agentId: users.otherAgent.id }).expect(403);
+    await post(`/tickets/${owned.id}/reopen`, 'otherAgent', { reason: 'No' }).expect(403);
+    await get(`/tickets/${owned.id}`, 'member').expect(404);
+    expect((await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).assignedAgentId).toBe(users.agent.id);
+    expect(await db.subtask.count({ where: { ticketId: owned.id, assignedAgentId: users.agent.id } })).toBe(0);
+    await get(`/tickets/${owned.id}`, 'agent').expect(200);
+    await db.ticket.update({ where: { id: owned.id }, data: { assignedAgentId: null } });
+    await get(`/tickets/${owned.id}`, 'otherAgent').expect(200);
+  });
+
+  it('retains completed collaboration, removes the last reassigned relationship, and ends it with the cycle', async () => {
+    await patch(`/tickets/subtasks/${subtask.id}`, 'otherAgent', { status: 'COMPLETED' }).expect(200);
+    await get(`/tickets/${owned.id}`, 'otherAgent').expect(200);
+    const extra = await db.subtask.create({ data: { ticketId: owned.id, createdInCycleId: subtask.createdInCycleId, title: 'Extra', description: '', assignedAgentId: users.otherAgent.id } });
+    await patch(`/tickets/subtasks/${subtask.id}`, 'manager', { assignedAgentId: null }).expect(200);
+    await get(`/tickets/${owned.id}`, 'otherAgent').expect(200);
+    await patch(`/tickets/subtasks/${extra.id}`, 'manager', { assignedAgentId: null }).expect(200);
+    await get(`/tickets/${owned.id}`, 'otherAgent').expect(404);
+    await patch(`/tickets/subtasks/${subtask.id}`, 'manager', { assignedAgentId: users.otherAgent.id }).expect(200);
+    await patch(`/tickets/${owned.id}/status`, 'manager', { status: 'RESOLVED' }).expect(200);
+    await get(`/tickets/${owned.id}`, 'otherAgent').expect(404);
+    await post(`/tickets/${owned.id}/reopen`, 'employee', { reason: 'Again' }).expect(201);
+    await get(`/tickets/${owned.id}`, 'otherAgent').expect(404);
+    await get(`/tickets/subtasks/${subtask.id}`, 'otherAgent').expect(200);
+  });
+
+  it('enforces the complete conversation and internal-note participation matrix', async () => {
+    for (const name of ['employee', 'agent', 'lead', 'manager', 'otherAgent']) {
+      await communicate(name).then(response => expect(response.status).toBe(201));
+      await get(`/tickets/${owned.id}/messages`, name).expect(200);
+      if (name !== 'employee') {
+        await communicate(name, 'internal-notes', 'Private support text').then(response => expect(response.status).toBe(201));
+        await get(`/tickets/${owned.id}/internal-notes`, name).expect(200);
+      }
+    }
+    for (const name of ['otherEmployee', 'member', 'otherLead', 'otherManager']) {
+      await get(`/tickets/${owned.id}/messages`, name).expect(404);
+      await communicate(name).then(response => expect(response.status).toBe(404));
+    }
+    for (const name of ['admin', 'superAdmin']) {
+      await get(`/tickets/${owned.id}/messages`, name).expect(403);
+      await get(`/tickets/${owned.id}/internal-notes`, name).expect(403);
+      await communicate(name).then(response => expect(response.status).toBe(403));
+    }
+    await get(`/tickets/${owned.id}/internal-notes`, 'employee').expect(403);
+    await communicate('employee', 'internal-notes').then(response => expect(response.status).toBe(403));
+    for (const suffix of ['', '/history', '/messages']) {
+      const response = await get(`/tickets/${owned.id}${suffix}`, 'employee').expect(200);
+      expect(JSON.stringify(response.body)).not.toContain('Private support text');
+      expect(JSON.stringify(response.body)).not.toContain('creationHash');
+    }
+    await get(`/tickets/${intake.id}/messages`, 'otherManager').expect(200);
+    await get(`/tickets/${intake.id}/internal-notes`, 'otherManager').expect(404);
+    await post(`/tickets/${intake.id}/messages`, 'otherManager', { content: 'No', expectedCycleId: subtask.createdInCycleId, clientRequestId: randomUUID() }).expect(403);
+  });
+
+  it.each(['messages', 'internal-notes'])('allows only current authors to edit %s and preserves attribution', async kind => {
+    const created = await communicate('otherAgent', kind);
+    expect(created.status).toBe(201);
+    const path = `/tickets/${owned.id}/${kind}/${created.body.id}`;
+    const dto = { content: 'Corrected', expectedCycleId: subtask.createdInCycleId };
+    await patch(path, 'manager', dto).expect(403);
+    const edited = await patch(path, 'otherAgent', dto).expect(200);
+    expect(edited.body).toMatchObject({ authorId: users.otherAgent.id, createdAt: created.body.createdAt, createdInCycleId: subtask.createdInCycleId, content: 'Corrected', editedAt: expect.any(String) });
+    await patch(`/tickets/${owned.id}/status`, 'manager', { status: 'RESOLVED' }).expect(200);
+    await patch(path, 'otherAgent', dto).expect(404);
+    await post(`/tickets/${owned.id}/reopen`, 'employee', { reason: 'Again' }).expect(201);
+    await db.ticket.update({ where: { id: owned.id }, data: { assignedAgentId: users.otherAgent.id } });
+    const current = (await get(`/tickets/${owned.id}`, 'otherAgent').expect(200)).body.currentCycle.id;
+    await patch(path, 'otherAgent', { ...dto, expectedCycleId: current }).expect(409);
+    const history = (await get(`/tickets/${owned.id}/${kind}`, 'otherAgent').expect(200)).body;
+    expect(history.records[0].canEdit).toBe(false);
+    await db.user.update({ where: { id: users.otherAgent.id }, data: { status: 'INACTIVE' } });
+    const preserved = (await get(`/tickets/${owned.id}/${kind}`, 'manager').expect(200)).body.records[0];
+    expect(preserved.author).toEqual({ id: users.otherAgent.id, username: users.otherAgent.username });
+    await get(`/tickets/${owned.id}/${kind}`, 'otherAgent').expect(401);
+  });
+
+  it('only NEW requester messages resume waiting work; edits, support, notes and duplicate retries do not', async () => {
+    const first = await communicate('employee');
+    await patch(`/tickets/${owned.id}/status`, 'agent', { status: 'WAITING_FOR_EMPLOYEE' }).expect(200);
+    await patch(`/tickets/${owned.id}/messages/${first.body.id}`, 'employee', { content: 'Edited', expectedCycleId: subtask.createdInCycleId }).expect(200);
+    await communicate('agent');
+    await communicate('manager', 'internal-notes');
+    expect((await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).status).toBe('WAITING_FOR_EMPLOYEE');
+    const dto = { content: 'Reply', expectedCycleId: subtask.createdInCycleId, clientRequestId: randomUUID() };
+    const reply = await post(`/tickets/${owned.id}/messages`, 'employee', dto).expect(201);
+    expect((await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).status).toBe('IN_PROGRESS');
+    await patch(`/tickets/${owned.id}/status`, 'agent', { status: 'WAITING_FOR_EMPLOYEE' }).expect(200);
+    const duplicate = await post(`/tickets/${owned.id}/messages`, 'employee', dto).expect(201);
+    expect(duplicate.body.id).toBe(reply.body.id);
+    expect((await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).status).toBe('WAITING_FOR_EMPLOYEE');
+    await patch(`/tickets/${owned.id}/messages/${reply.body.id}`, 'employee', { content: 'New wording', expectedCycleId: subtask.createdInCycleId }).expect(200);
+    expect((await post(`/tickets/${owned.id}/messages`, 'employee', dto).expect(201)).body.content).toBe('New wording');
+    await post(`/tickets/${owned.id}/messages`, 'employee', { ...dto, content: 'Reused key' }).expect(409);
+  });
+
+  it.each(['RESOLVED', 'CLOSED', 'CANCELLED'] as const)('freezes both streams in %s', async status => {
+    const message = await communicate('employee');
+    const note = await communicate('manager', 'internal-notes');
+    await db.ticket.update({ where: { id: owned.id }, data: { status } });
+    await db.ticketWorkCycle.update({ where: { id: subtask.createdInCycleId }, data: { outcome: status, endedAt: new Date() } });
+    for (const [kind, name, id] of [['messages', 'employee', message.body.id], ['internal-notes', 'manager', note.body.id]] as const) {
+      await communicate(name, kind).then(response => expect(response.status).toBe(409));
+      await patch(`/tickets/${owned.id}/${kind}/${id}`, name, { content: 'No', expectedCycleId: subtask.createdInCycleId }).expect(409);
+      expect((await get(`/tickets/${owned.id}/${kind}`, name).expect(200)).body.records[0].canEdit).toBe(false);
+    }
+  });
+
+  it('rejects invalid content, stale cycles, and creation fields on edits', async () => {
+    for (const content of ['', '   ', 'x'.repeat(4001)]) await communicate('employee', 'messages', content).then(response => expect(response.status).toBe(400));
+    await post(`/tickets/${owned.id}/messages`, 'employee', { content: 'Stale', expectedCycleId: subtask.createdInCycleId + 10000, clientRequestId: randomUUID() }).expect(409);
+    const created = await communicate('employee');
+    await patch(`/tickets/${owned.id}/messages/${created.body.id}`, 'employee', { content: 'No', expectedCycleId: subtask.createdInCycleId, authorId: users.agent.id }).expect(400);
+    await request(app.getHttpServer()).delete(`/tickets/${owned.id}/messages/${created.body.id}`).set('Authorization', `Bearer ${token('employee')}`).expect(404);
+  });
+
+  it('deduplicates concurrent creation and denies duplicate recovery after collaboration is lost', async () => {
+    const dto = { content: 'Once', expectedCycleId: subtask.createdInCycleId, clientRequestId: randomUUID() };
+    const results = await Promise.all([post(`/tickets/${owned.id}/messages`, 'otherAgent', dto), post(`/tickets/${owned.id}/messages`, 'otherAgent', dto)]);
+    expect(results.some(result => result.status === 201)).toBe(true);
+    expect(results.every(result => [201, 409].includes(result.status))).toBe(true);
+    expect(await db.ticketMessage.count({ where: { authorId: users.otherAgent.id } })).toBe(1);
+    await patch(`/tickets/subtasks/${subtask.id}`, 'manager', { assignedAgentId: null }).expect(200);
+    await post(`/tickets/${owned.id}/messages`, 'otherAgent', dto).expect(404);
+  });
+
+  it.each(['resolution', 'reassignment', 'deactivation', 'reopening', 'lead-removal'] as const)('rejects communication blocked behind %s', async change => {
+    if (change === 'reopening') await patch(`/tickets/${owned.id}/status`, 'manager', { status: 'RESOLVED' }).expect(200);
+    let release!: () => void;
+    let ready!: () => void;
+    const locked = new Promise<void>(resolve => { ready = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const blocker = db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Ticket" WHERE id = ${owned.id} FOR UPDATE`;
+      ready();
+      await gate;
+      if (change === 'resolution') {
+        await tx.ticket.update({ where: { id: owned.id }, data: { status: 'RESOLVED' } });
+        await tx.ticketWorkCycle.update({ where: { id: subtask.createdInCycleId }, data: { outcome: 'RESOLVED', endedAt: new Date() } });
+      } else if (change === 'reassignment') {
+        await tx.subtask.update({ where: { id: subtask.id }, data: { assignedAgentId: null } });
+      } else if (change === 'deactivation') {
+        await tx.user.update({ where: { id: users.otherAgent.id }, data: { status: 'INACTIVE', sessionVersion: { increment: 1 } } });
+      } else if (change === 'lead-removal') {
+        await tx.team.update({ where: { id: teamA.id }, data: { teamLeadId: null } });
+      } else {
+        await tx.ticketWorkCycle.create({ data: { ticketId: owned.id, sequenceNumber: 2, type: 'REOPENED', startedAt: new Date(), startedById: users.employee.id, startReason: 'Concurrent reopen' } });
+        await tx.ticket.update({ where: { id: owned.id }, data: { status: 'IN_PROGRESS', resolvedAt: null } });
+      }
+    }, { timeout: 15000 });
+    await locked;
+    const stale = communicate(change === 'reopening' ? 'employee' : change === 'lead-removal' ? 'lead' : 'otherAgent').then(response => response);
+    try { await waitForBlocked(1); } finally { release(); await blocker; }
+    const result = await stale;
+    expect([401, 404, 409]).toContain(result.status);
+    expect(await db.ticketMessage.count({ where: { ticketId: owned.id } })).toBe(0);
+  });
+
+  it('rolls back the new employee message when the waiting transition fails', async () => {
+    await db.ticket.update({ where: { id: owned.id }, data: { status: 'WAITING_FOR_EMPLOYEE' } });
+    const name = `fail_message_${owned.id}`;
+    await db.$executeRawUnsafe(`CREATE FUNCTION "${name}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id = ${owned.id} AND NEW.status = 'IN_PROGRESS' THEN RAISE EXCEPTION 'test message rollback'; END IF; RETURN NEW; END $$`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER "${name}" BEFORE UPDATE ON "Ticket" FOR EACH ROW EXECUTE FUNCTION "${name}"()`);
+    try {
+      const response = await communicate('employee');
+      expect(response.status).toBe(500);
+      expect(await db.ticketMessage.count({ where: { ticketId: owned.id } })).toBe(0);
+      expect((await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).status).toBe('WAITING_FOR_EMPLOYEE');
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER "${name}" ON "Ticket"`);
+      await db.$executeRawUnsafe(`DROP FUNCTION "${name}"()`);
+    }
+  });
   it('exposes only real ticket reference options to operational roles', async () => {
     await request(app.getHttpServer()).get('/ticket-options').expect(401);
     for (const name of ['employee', 'agent', 'manager']) {
@@ -280,6 +474,8 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         { id: teamB.id, name: teamB.name, agents: expect.any(Array) },
       ]),
     );
+    expect(own.teams.map((team: { id: number }) => team.id)).not.toContain(teamC.id);
+    expect(own.subtaskTeams.map((team: { id: number }) => team.id)).toContain(teamC.id);
     expect(
       own.teams.find((team: { id: number }) => team.id === teamA.id).agents,
     ).not.toEqual(
@@ -312,6 +508,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         statuses: [],
       },
       teams: [],
+      subtaskTeams: [],
       managers: [],
     });
     await get(`/ticket-workspace/tickets/${owned.id}`, 'otherManager').expect(
@@ -319,7 +516,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     );
     await get(`/ticket-workspace/tickets/${owned.id}`, 'member').expect(401);
     await get(`/ticket-workspace/tickets/${owned.id}`, 'otherAgent').expect(
-      404,
+      200,
     );
     await get(`/ticket-workspace/tickets/${owned.id}`, 'admin').expect(403);
   });
@@ -382,9 +579,9 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       username: users.otherAgent.username,
     });
     await get(`/ticket-workspace/tickets/${owned.id}`, 'otherAgent').expect(
-      404,
+      200,
     );
-    await get(`/tickets/${owned.id}/history`, 'otherAgent').expect(404);
+    await get(`/tickets/${owned.id}/history`, 'otherAgent').expect(200);
     const lead = (
       await get(`/ticket-workspace/subtasks/${subtask.id}`, 'otherLead').expect(
         200,
@@ -565,7 +762,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       agent: [owned.id],
       lead: [owned.id],
       member: [],
-      otherAgent: [],
+      otherAgent: [owned.id],
       otherLead: [],
     };
     for (const [name, ids] of Object.entries(expected)) {
@@ -575,7 +772,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       );
     }
     await get(`/tickets/${owned.id}`, 'otherManager').expect(404);
-    await get(`/tickets/${owned.id}`, 'otherAgent').expect(404);
+    await get(`/tickets/${owned.id}`, 'otherAgent').expect(200);
     // Scope, home organization, TeamManager and ordinary membership grant nothing.
     await db.ticket.update({
       where: { id: intake.id },
@@ -672,6 +869,10 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
   });
 
   it('transfers only manager responsibility and immediately changes manager authorization', async () => {
+    const management = await db.teamManager.findMany({
+      where: { teamId: { in: [teamA.id, teamB.id, teamC.id] } },
+      orderBy: { teamId: 'asc' },
+    });
     await patch(`/tickets/${owned.id}/manager`, 'otherManager', {
       assignedManagerId: users.otherManager.id,
     }).expect(403);
@@ -696,6 +897,119 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     await patch(`/tickets/${owned.id}/manager`, 'thirdManager', {
       assignedManagerId: null,
     }).expect(400);
+    expect(await db.teamManager.findMany({
+      where: { teamId: { in: [teamA.id, teamB.id, teamC.id] } },
+      orderBy: { teamId: 'asc' },
+    })).toEqual(management);
+    const choices = (await get(`/ticket-workspace/tickets/${owned.id}`, 'thirdManager').expect(200)).body;
+    expect(choices.teams.map((team: { id: number }) => team.id)).not.toContain(teamA.id);
+    await patch(`/tickets/${owned.id}/assignment`, 'thirdManager', {
+      teamId: teamA.id, agentId: null,
+    }).expect(403);
+  });
+
+  it('allows a responsible manager to select their managed regional team', async () => {
+    await patch(`/tickets/${intake.id}/manager`, 'manager', {
+      assignedManagerId: users.manager.id,
+    }).expect(200);
+    const result = await patch(`/tickets/${intake.id}/assignment`, 'manager', {
+      teamId: teamA.id, agentId: users.agent.id,
+    }).expect(200);
+    expect(result.body).toMatchObject({
+      assignedManagerId: users.manager.id, assignedTeamId: teamA.id,
+      assignedAgentId: users.agent.id, status: 'ASSIGNED',
+    });
+  });
+
+  it('forbids another manager regional team without changing responsibility or assignments', async () => {
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', {
+      teamId: teamC.id, agentId: null,
+    }).expect(403);
+    expect(await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).toEqual(owned);
+    // Removing organizational management does not make a regional team eligible.
+    await db.teamManager.delete({ where: { teamId: teamC.id } });
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', {
+      teamId: teamC.id, agentId: null,
+    }).expect(403);
+    const choices = (await get(`/ticket-workspace/tickets/${owned.id}`, 'manager').expect(200)).body;
+    expect(choices.teams.map((team: { id: number }) => team.id)).not.toContain(teamC.id);
+  });
+
+  it('forbids a matching regional specialty under another manager and offers GLOBAL routing', async () => {
+    // Tickets have categories rather than a Specialty FK; match the problem's
+    // category/title and affected region to the destination specialty explicitly.
+    const specialty = await db.specialty.create({ data: { name: `Cybersecurity-${randomUUID()}` } });
+    try {
+      await db.ticketCategory.update({ where: { id: categoryId }, data: { name: specialty.name } });
+      await db.ticket.update({ where: { id: owned.id }, data: {
+        title: `${specialty.name} incident`, allRegions: false,
+        affectedRegions: { create: { regionId } },
+      } });
+      await db.teamSpecialty.createMany({ data: [teamB, teamC].map(team => ({ teamId: team.id, specialtyId: specialty.id })) });
+      await patch(`/tickets/${owned.id}/assignment`, 'manager', {
+        teamId: teamC.id, agentId: null,
+      }).expect(403);
+      const choices = (await get(`/ticket-workspace/tickets/${owned.id}`, 'manager').expect(200)).body;
+      expect(choices.teams.map((team: { id: number }) => team.id)).not.toContain(teamC.id);
+      expect(choices.teams.map((team: { id: number }) => team.id)).toContain(teamB.id);
+      const result = await patch(`/tickets/${owned.id}/assignment`, 'manager', {
+        teamId: teamB.id, agentId: users.otherAgent.id,
+      }).expect(200);
+      expect(result.body).toMatchObject({ assignedManagerId: users.manager.id, assignedTeamId: teamB.id, assignedAgentId: users.otherAgent.id });
+      expect(await db.teamManager.findUnique({ where: { teamId: teamB.id } })).toMatchObject({ managerId: users.otherManager.id });
+    } finally {
+      await db.specialty.delete({ where: { id: specialty.id } });
+    }
+  });
+
+  it.each(['REGION', 'GLOBAL'] as const)('requires an active member AGENT for primary %s assignment', async scope => {
+    const team = scope === 'REGION' ? teamA : teamB;
+    const member = scope === 'REGION' ? users.agent : users.otherAgent;
+    const outsider = scope === 'REGION' ? users.otherAgent : users.agent;
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', { teamId: team.id, agentId: outsider.id }).expect(400);
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', { teamId: team.id, agentId: users.manager.id }).expect(400);
+    await db.user.update({ where: { id: member.id }, data: { status: 'INACTIVE' } });
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', { teamId: team.id, agentId: member.id }).expect(400);
+    await db.user.update({ where: { id: member.id }, data: { status: 'ACTIVE' } });
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', { teamId: team.id, agentId: null }).expect(200);
+    // A current subtask collaborator never fills the explicit NULL primary agent.
+    expect((await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).assignedAgentId).toBeNull();
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', { agentId: member.id }).expect(200);
+  });
+
+  it('rejects primary routing after organizational management is removed', async () => {
+    await db.teamManager.delete({ where: { teamId: teamA.id } });
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', { agentId: null }).expect(403);
+    const choices = (await get(`/ticket-workspace/tickets/${owned.id}`, 'manager').expect(200)).body;
+    expect(choices.teams.map((team: { id: number }) => team.id)).not.toContain(teamA.id);
+    // The existing lead's within-team powers do not depend on TeamManager.
+    await patch(`/tickets/${owned.id}/assignment`, 'lead', { agentId: users.member.id }).expect(200);
+    await patch(`/tickets/${owned.id}/assignment`, 'lead', { teamId: teamB.id, agentId: null }).expect(403);
+  });
+
+  it('rejects primary routing waiting behind removal of organizational management', async () => {
+    let unlock!: () => void;
+    let locked!: () => void;
+    const ready = new Promise<void>(resolve => { locked = resolve; });
+    const release = new Promise<void>(resolve => { unlock = resolve; });
+    const removal = db.$transaction(async tx => {
+      await tx.teamManager.delete({ where: { teamId: teamA.id } });
+      locked();
+      await release;
+    }, { timeout: 15000 });
+    await ready;
+    const assignment = patch(`/tickets/${owned.id}/assignment`, 'manager', {
+      teamId: teamA.id, agentId: null,
+    }).then(response => response);
+    try {
+      await waitForBlocked(1, 'SELECT "teamId" FROM "TeamManager"%');
+    } finally {
+      unlock();
+      await removal;
+    }
+    expect((await assignment).status).toBe(409);
+    expect(await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).toEqual(owned);
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', { agentId: null }).expect(403);
   });
 
   it('preserves omitted agents and requires explicit correction when changing teams', async () => {
@@ -983,13 +1297,13 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     }).expect(403);
   });
 
-  async function waitForBlocked(count: number) {
+  async function waitForBlocked(count: number, query = 'SELECT id FROM "Ticket"%') {
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
       const rows = await db.$queryRaw<Array<{ count: bigint }>>`
         SELECT count(*) FROM pg_stat_activity
         WHERE datname = current_database() AND wait_event_type = 'Lock'
-        AND query LIKE 'SELECT id FROM "Ticket"%'
+        AND query LIKE ${query}
       `;
       if (Number(rows[0].count) >= count) return;
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1405,7 +1719,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       },
     });
     const managed = await db.teamManager.findFirstOrThrow({
-      where: { managerId: users.manager.id },
+      where: { managerId: users.manager.id, teamId: { not: teamA.id } },
     });
     try {
       await resolveOwned(true);

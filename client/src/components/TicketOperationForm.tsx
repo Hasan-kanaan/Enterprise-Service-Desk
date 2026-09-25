@@ -30,7 +30,11 @@ export function TicketOperationForm({
   onDone: (leftTicket: boolean) => void
   onReload: () => void
 }) {
-  const [team, setTeam] = useState(ticket.assignedTeamId)
+  const [team, setTeam] = useState(
+    operations.teams.some((choice) => choice.id === ticket.assignedTeamId)
+      ? ticket.assignedTeamId
+      : null,
+  )
   const [agent, setAgent] = useState(ticket.assignedAgentId)
   const [manager, setManager] = useState<number | null>(null)
   const [status, setStatus] = useState<TicketStatus | ''>('')
@@ -110,14 +114,22 @@ export function TicketOperationForm({
         </>
       )}
       {action === 'assignment' && (
-        <AssignmentFields
-          teams={operations.teams}
-          teamId={team}
-          agentId={agent}
-          setTeam={setTeam}
-          setAgent={setAgent}
-          changeTeam={operations.permissions.assignTeam}
-        />
+        <>
+          {operations.permissions.assignTeam && (
+            <p className="quiet-note">
+              Choose a team you manage or a GLOBAL team. Transferring manager
+              responsibility is a separate action.
+            </p>
+          )}
+          <AssignmentFields
+            teams={operations.teams}
+            teamId={team}
+            agentId={agent}
+            setTeam={setTeam}
+            setAgent={setAgent}
+            changeTeam={operations.permissions.assignTeam}
+          />
+        </>
       )}
       {action === 'status' && (
         <>

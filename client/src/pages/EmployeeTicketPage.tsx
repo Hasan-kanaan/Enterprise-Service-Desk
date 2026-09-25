@@ -23,6 +23,7 @@ import {
 import { ErrorState, LoadingState, StatusBadge } from '@/components/TicketUI'
 import { TicketForm } from '@/components/TicketForm'
 import { TicketHistory } from '@/components/TicketHistory'
+import { TicketCommunication } from '@/components/TicketCommunication'
 import { Modal } from '@/components/Modal'
 import type { NamedOption, TicketInput } from '@/types/tickets'
 
@@ -203,8 +204,8 @@ function TicketContent({ id }: { id: number }) {
       )}
       {ticket.status === 'WAITING_FOR_EMPLOYEE' && (
         <div className="notice">
-          Support is waiting for your input. Use your usual support channel to
-          contact the team.
+          Support is waiting for your input. Send a new message in the conversation
+          below to resume work.
         </div>
       )}
       <div className="ticket-detail-grid">
@@ -314,7 +315,7 @@ function TicketContent({ id }: { id: number }) {
             ) : history.error ? (
               <ErrorState error={history.error} onRetry={history.reload} />
             ) : (
-              history.data && <TicketHistory cycles={history.data.cycles} />
+              history.data && <><TicketCommunication ticketId={id} cycles={history.data.cycles} onChanged={reload} /><TicketHistory cycles={history.data.cycles} /></>
             )}
           </section>
         </div>

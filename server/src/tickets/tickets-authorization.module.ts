@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { TicketCommunicationController } from './ticket-communication.controller';
+import { TicketCommunicationService } from './ticket-communication.service';
 import { TicketAuthorizationService } from './ticket-authorization.service';
 import { TicketVisibilityService } from './ticket-visibility.service';
 import { AuthGuard } from '../auth/auth.guard';
@@ -13,11 +15,13 @@ import { TicketOptionsController } from './ticket-options.controller';
 @Module({
   imports: [JwtModule.register({ secret: jwtConstants.secret })],
   controllers: [
+    TicketCommunicationController,
     TicketsController,
     TicketOptionsController,
     TicketWorkspaceController,
   ],
   providers: [
+    TicketCommunicationService,
     TicketAuthorizationService,
     TicketVisibilityService,
     TicketsService,

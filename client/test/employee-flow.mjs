@@ -1,6 +1,10 @@
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
+import { communicationFixture } from './communication-fixture.mjs'
+import { notificationFixture } from './notification-fixture.mjs'
+const notifications = notificationFixture()
+const communication = communicationFixture()
 import { spawn } from 'node:child_process'
 import {
   existsSync,
@@ -179,6 +183,7 @@ function response(request) {
     loggedIn = false
     return [201, {}]
   }
+  if (path.startsWith('/notifications')) return notifications.respond(request, 10)
   if (path === '/ticket-options')
     return [
       200,
@@ -220,6 +225,9 @@ function response(request) {
     tickets.push(ticket)
     return [201, ticket]
   }
+  const communicationTicket = tickets.find(item => item.id === Number(path.split('/')[2]))
+  if (communicationTicket && /\/(messages|internal-notes)/.test(path))
+    return communication.respond(request, communicationTicket, cycles[0], { id: 10, username: 'Maya', role: 'EMPLOYEE' }, true, false)
   const match = path.match(
     /^\/tickets\/(\d+)(?:\/(history|cancel|status|reopen))?$/,
   )
@@ -357,6 +365,9 @@ try {
   await waitText('Your next request starts here')
   assert.equal(refreshCount, 1)
   console.log('PASS: restored employee session and empty list')
+  await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
+  await waitText('No notifications yet.')
+  await evaluate(`document.querySelector('[aria-label="Close dialog"]').click()`)
   await click('New ticket')
   await waitText('New support request')
   await click('Submit ticket')
@@ -373,14 +384,40 @@ try {
   console.log(
     'PASS: validated form submits real category/scope IDs and opens detail',
   )
+  const supportNotice = notifications.add(10, 'SUPPORT_MESSAGE', 142)
+  notifications.add(10, 'WAITING_FOR_EMPLOYEE', 142)
+  await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
+  await waitText('Support replied on ticket #142.')
+  await until(() => evaluate(`!!document.querySelector('[aria-label="2 unread notifications"]')`), 'unread badge')
+  await evaluate(`document.querySelector('[aria-label="Mark notification ${supportNotice.id} read"]').click()`)
+  await until(() => evaluate(`!!document.querySelector('[aria-label="1 unread notifications"]')`), 'mark one read')
+  assert(supportNotice.readAt)
+  await click('Mark all read')
+  await until(() => evaluate(`!document.querySelector('.notification-badge')`), 'mark all read')
+  await click('Support replied on ticket #142.')
+  await waitText('Request #142')
+  assert.equal(await evaluate('location.pathname'), '/tickets/142')
+  notifications.add(10, 'RESOLVED', 999)
+  await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
+  await waitText('Ticket #999 was resolved.')
+  await click('Ticket #999 was resolved.')
+  await waitText('This ticket could not be found')
+  await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
+  await waitText('Ticket #999 was resolved.')
+  await evaluate(`document.querySelector('[aria-label="Close dialog"]').click()`)
+  await navigate('/tickets/142')
+  await waitText('Request #142')
+  console.log('PASS: employee notification empty/list/badge, mark one/all read, ticket navigation and retained history after unavailable destination')
   await click('Edit details')
   await fill('#ticket-title', 'VPN disconnects repeatedly')
+  notifications.add(10, 'SUPPORT_MESSAGE', 142)
   await click('Save changes')
   await waitText('VPN disconnects repeatedly')
   await until(
     () => evaluate(`!document.querySelector('#ticket-title')`),
     'saved edit',
   )
+  await until(() => evaluate(`!!document.querySelector('[aria-label="1 unread notifications"]')`), 'notification refresh after mutation')
   conflict = true
   await click('Edit details')
   await fill('#ticket-title', 'Stale change')
@@ -394,6 +431,37 @@ try {
   await click('Reload ticket')
   await waitText('VPN disconnects repeatedly')
   console.log('PASS: edit and explicit conflict reload without write retry')
+  await waitText('No messages yet.')
+  await fill('[aria-label="Message content"]', 'Employee context')
+  communication.fail(503)
+  await click('Send message')
+  await waitText('Temporary server failure')
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Message content"]').value`), 'Employee context')
+  await click('Send message')
+  await waitText('Employee context')
+  await until(() => evaluate(`!![...document.querySelectorAll('button')].find(el => el.textContent === 'Edit message')`), 'message posted')
+  tickets[0].status = 'WAITING_FOR_EMPLOYEE'
+  await click('Edit message')
+  await fill('[aria-label="Message content"]', 'Employee corrected context')
+  await click('Save edit')
+  await waitText('edited')
+  assert.equal(tickets[0].status, 'WAITING_FOR_EMPLOYEE')
+  await fill('[aria-label="Message content"]', 'The requested result')
+  communication.fail(409)
+  await click('Send message')
+  await waitText('Reload the latest information')
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Message content"]').value`), 'The requested result')
+  await click('Refresh conversation')
+  await until(() => evaluate(`!!document.querySelector('[aria-label="Message content"]')`), 'draft restored after reload')
+  await click('Send message')
+  await waitText('The requested result')
+  assert.equal(tickets[0].status, 'IN_PROGRESS')
+  assert(!requests.some(path => path.includes('internal-notes')))
+  assert(!await evaluate(`document.body.textContent.includes('Internal notes — support only')`))
+  console.log('PASS: requester conversation, own editing, edited marker, waiting reply, private-note exclusion and preserved 503/409 drafts')
+  tickets[0].status = 'NEW'
+  await click('Refresh')
+  await waitText('Cancel ticket')
   await click('Cancel ticket')
   await waitText('Cancel this ticket?')
   await click('Keep ticket')
@@ -433,7 +501,26 @@ try {
   assert.equal(cycles.length, 2)
   assert.equal(cycles[1].outcome, 'CLOSED')
   assert.equal(tickets[0].closedAt, null)
+  await waitText('Employee corrected context')
+  assert(!await evaluate(`[...document.querySelectorAll('button')].some(el => el.textContent === 'Edit message')`))
   assert(!requests.some((item) => /subtasks/.test(item)))
+  await fill('[aria-label="Message content"]', 'Draft written before another reopening')
+  cycles[0].isCurrent = false
+  cycles[0].isEnded = true
+  cycles[0].outcome = 'RESOLVED'
+  cycles.unshift({ ...cycles[0], id: cycles[0].id + 1, sequenceNumber: cycles[0].sequenceNumber + 1, isCurrent: true, isEnded: false, outcome: null })
+  tickets[0].currentCycle = cycles[0]
+  await click('Send message')
+  await waitText('Reload the latest information')
+  await click('Refresh conversation')
+  await waitText('This draft belongs to an earlier cycle')
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Message content"]').value`), 'Draft written before another reopening')
+  assert(await evaluate(`[...document.querySelectorAll('button')].find(el => el.textContent === 'Send message').disabled`))
+  await click('Use reviewed text as new message')
+  await click('Send message')
+  await waitText('Reopening #2')
+  assert.equal(communication.records.at(-1).createdInCycleId, cycles[0].id)
+  console.log('PASS: stale-cycle draft remains blocked until explicit review and new-cycle submission')
   const screenshot = await send('Page.captureScreenshot', { format: 'png' })
   writeFileSync(
     join(tmpdir(), 'eds-employee-desktop.png'),
@@ -486,6 +573,10 @@ try {
   console.log(
     'PASS: mobile navigation opens/closes and layout has no horizontal overflow',
   )
+  await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
+  await waitText('Support replied on ticket #142.')
+  assert(await evaluate(`document.querySelector('dialog').getBoundingClientRect().right <= innerWidth && document.querySelector('dialog').getBoundingClientRect().left >= 0`))
+  await evaluate(`document.querySelector('[aria-label="Close dialog"]').click()`)
   await navigate('/tickets/142')
   await waitText('Reopening #1')
   console.log('PASS: detail deep link survives reload')
@@ -568,7 +659,7 @@ try {
     rmSync(profile, {
       recursive: true,
       force: true,
-      maxRetries: 10,
+      maxRetries: 30,
       retryDelay: 200,
     })
   }

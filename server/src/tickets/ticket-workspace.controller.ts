@@ -82,10 +82,11 @@ export class TicketWorkspaceController {
     db: Prisma.TransactionClient,
     all: boolean,
     teamId: number | null,
+    eligibility: Prisma.TeamWhereInput = {},
   ) {
     if (!all && teamId === null) return [];
     const teams = await db.team.findMany({
-      where: all ? {} : { id: teamId! },
+      where: all ? eligibility : { id: teamId! },
       orderBy: { name: 'asc' },
       select: {
         id: true,
@@ -150,7 +151,16 @@ export class TicketWorkspaceController {
             ),
           },
           teams:
-            assignAgent || createSubtask
+            assignAgent
+              ? await this.teams(
+                  db,
+                  owned,
+                  ticket.assignedTeamId,
+                  this.policy.responsibleManagerTeamWhere(user.id),
+                )
+              : [],
+          subtaskTeams:
+            createSubtask
               ? await this.teams(db, owned, ticket.assignedTeamId)
               : [],
           managers:
@@ -206,7 +216,12 @@ export class TicketWorkspaceController {
         const assignTeam =
           assignAgent && this.policy.isResponsibleManager(user, record.ticket);
         const { ticket: _ticket, assignedTeam, ...subtask } = record;
+        const parentVisible = !!await db.ticket.findFirst({
+          where: { AND: [{ id: record.ticketId }, this.visibility.buildWhere(user)] },
+          select: { id: true },
+        });
         return {
+          parentVisible,
           subtask: {
             ...subtask,
             assignedTeam: assignedTeam

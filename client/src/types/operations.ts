@@ -13,6 +13,7 @@ export type TicketOperations = {
     statuses: TicketStatus[]
   }
   teams: AssignmentTeam[]
+  subtaskTeams: AssignmentTeam[]
   managers: Person[]
 }
 export const subtaskStatuses = [
@@ -40,6 +41,7 @@ export type Subtask = {
   completedBy?: Person | null
 }
 export type SubtaskOperations = {
+  parentVisible: boolean
   subtask: Subtask
   historical: boolean
   frozen: boolean

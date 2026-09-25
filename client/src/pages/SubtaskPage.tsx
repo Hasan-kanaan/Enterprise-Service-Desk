@@ -59,6 +59,11 @@ function SubtaskContent({ id }: { id: number }) {
           Refresh subtask
         </button>
       </header>
+      {resource.data.parentVisible && (
+        <Link className="button secondary" to={`/work/tickets/${task.ticketId}`}>
+          Open parent ticket
+        </Link>
+      )}
       {frozen && (
         <p className="notice">
           {historical

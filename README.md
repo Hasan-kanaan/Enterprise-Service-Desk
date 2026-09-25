@@ -27,7 +27,7 @@ The goal is not only to build a functional application, but also to gain practic
 - [Email System](#email-system)
 - [Departments](#departments)
 - [Comments](#comments)
-- [Internal Notes (Planned)](#internal-notes-planned)
+- [Internal Notes](#internal-notes)
 - [Attachments](#attachments)
 - [Audit History](#audit-history)
 - [Backend Architecture](#backend-architecture)
@@ -64,7 +64,6 @@ The project should provide experience with:
 - API validation
 - Frontend/backend communication
 - Internal notifications
-- Email notifications
 - AI integration
 - File uploads
 - Error handling
@@ -257,7 +256,6 @@ They can:
 - Comment on their tickets
 - Respond when support staff request information
 - Receive internal notifications
-- Receive relevant email notifications
 - Close tickets after they are resolved
 
 They cannot:
@@ -282,11 +280,11 @@ They can:
 - Resolve tickets
 - Receive internal notifications
 
-Agents see tickets assigned directly to them. Team membership alone does not grant access to every ticket belonging to the team. An AGENT may optionally be designated as Team Lead for one team; Team Lead is a responsibility, not a new role, and grants team-level operational visibility for that team.
+Agents see primary assignments and tickets where they currently collaborate through a subtask in the current unfinished work cycle. Completed current-cycle subtasks retain collaboration until reassignment or cycle end. Historical assignments and ordinary team membership grant no current parent access. An AGENT may optionally lead one team; that responsibility grants visibility for its current primary-team tickets.
 
 Agents should receive an internal notification when a ticket is assigned to them.
 
-Agents do NOT need email notifications when a ticket is assigned.
+Assignment notifications use persistent in-app notifications only.
 
 Ordinary agents cannot assign/reassign ownership. A Team Lead may assign/reassign the primary agent within their currently led primary team, but cannot change the responsible manager or primary team.
 
@@ -311,7 +309,7 @@ The responsible manager controls team assignment and manager transfer. Any manag
 
 Managers see shared intake (NEW tickets with NULL assignedManagerId) and tickets explicitly assigned to them as responsible manager. TeamManager is an organizational relationship and grants no ticket authority. Home organization and affected scope do not grant access.
 
-Employee/support conversation participation is planned, subject to ticket authorization; conversations are not implemented.
+Employee/support conversation and separate support-only internal notes are implemented with current relationship authorization and work-cycle boundaries.
 
 ### ADMIN
 
@@ -670,7 +668,9 @@ Employee creates NEW (manager/team/agent all NULL)
   -> RESOLVED -> CLOSED
 ```
 
-The responsible manager may select any real team, independent of TeamManager. Only that manager may transfer responsibility to another manager. Transfer changes no team, agent, status, or timestamps. Team Leads can assign agents only within their ticket's currently led primary team.
+The responsible manager may select only teams they organizationally manage through TeamManager or teams with GLOBAL coverage. Another manager's regional team is forbidden even when its region or specialty matches the ticket; an unmanaged regional team is also ineligible. GLOBAL is team coverage, not an Agent role, and a GLOBAL team may have its own organizational manager. Cross-organizational primary routing uses GLOBAL teams.
+
+Only the responsible manager may explicitly transfer ticket responsibility to another manager. Transfer changes no primary team, agent, status, timestamps, or organizational TeamManager relationships. Existing assignments remain after transfer; subsequent primary-assignment writes must select a team eligible for the new responsible manager. Team Leads can assign agents only within their ticket's currently led primary team. Primary agents must be active AGENT members of the selected primary team, including GLOBAL teams, and are never inferred from subtasks.
 
 PATCH omission preserves ownership; explicit NULL clears only where permitted. Changing teams with an incompatible retained agent is rejected unless the caller explicitly clears/replaces the agent. Ordinary assignment cannot clear manager or primary team. Special reopening and administrative manager offboarding can explicitly return a ticket to empty NEW intake. No defaults or automatic routing are created.
 
@@ -690,6 +690,10 @@ All routes require authentication. ADMIN and SUPER_ADMIN are denied all ticket/s
 | POST /tickets/:ticketId/cancel | Employee requester; NEW/ASSIGNED only |
 | POST /tickets/:ticketId/reopen | Requester/responsible manager; required reason |
 | GET /tickets/:ticketId/history | Currently authorized cycle history with separately filtered subtasks |
+| GET/POST /tickets/:ticketId/messages | Read public conversation / create a requester-visible message |
+| PATCH /tickets/:ticketId/messages/:recordId | Author-only current unfinished-cycle editing |
+| GET/POST /tickets/:ticketId/internal-notes | Authorized support reads / note creation |
+| PATCH /tickets/:ticketId/internal-notes/:recordId | Author-only current unfinished-cycle note editing |
 | GET /tickets/subtasks | Caller-visible subtask list |
 | GET /tickets/subtasks/:subtaskId | Caller-visible subtask detail |
 | GET /tickets/:ticketId/subtasks | Caller-visible subset under a parent |
@@ -728,7 +732,7 @@ Current responsibility controls ticket/history visibility. Historical participat
 
 `GET /tickets?active=true` filters current visible operational tickets; `status=RESOLVED` supports exact status filtering. Subtask list routes support `currentWork=true` to exclude ended-cycle or completed/cancelled work. Future React labels can derive ?Current Work ? Reopening #2?, ?Reopening #1?, and ?Original Investigation? directly from cycle sequence/type.
 
-Work-cycle history is implemented product history and is displayed in the employee ticket detail page. A generic audit log, conversations, private notes, notifications, and automatic closure remain deferred. Future conversations can reference the cycle ID.
+Work-cycle history, requester-visible conversations, separate internal notes and persistent in-app notifications are implemented. Communication belongs to its actual work cycle; reopening never moves or resets old records. Automatic RESOLVED -> CLOSED behavior remains on the roadmap; generic audit logs remain deferred.
 
 ---
 
@@ -866,52 +870,40 @@ The exact threshold and automation rules will be decided later.
 
 ## Notifications
 
-The application will contain an internal notification system.
+Persistent in-app notifications are implemented. The authenticated shell has a bell, unread badge, recent list, timestamps, individual mark-read and mark-all-read actions. Opening a notification marks it read before navigating to the existing ticket or subtask route. Historical notification links never grant access: normal destination authorization still applies.
 
-Examples include:
+| Event | Active recipients |
+| --- | --- |
+| New primary-agent assignment | Newly assigned Agent |
+| New/reassigned subtask Agent | Newly assigned Agent |
+| New requester public message | Responsible Manager, primary Agent, current primary-team Lead and current-cycle collaborators, deduplicated |
+| New support public message | Requesting Employee |
+| Transition to WAITING_FOR_EMPLOYEE | Requesting Employee |
+| Transition to RESOLVED | Requesting Employee |
+| Employee reopens RESOLVED/CLOSED | Post-reopen responsible Manager, primary Agent and primary-team Lead, deduplicated |
+| Responsible Manager reopens | Requesting Employee |
+| Explicit transfer to a different responsible Manager | New responsible Manager |
 
-```text
-Ticket assigned
-Ticket reassigned
-Employee commented
-Agent commented
-Ticket resolved
-Ticket closed
-AI recommendation requires manager review
-```
+Completed current-cycle collaborators remain eligible for requester-message notifications. Previous-cycle/historical collaborators, reassigned-away collaborators, ordinary team members and inactive users are excluded. Reopening does not carry old collaborators into recipients. Assignment no-ops/clearing, initial Manager claim, message edits/replays and internal notes produce no notifications. A later real A -> B -> A assignment creates separate events. Closure, cancellation and administrative offboarding have no notification events in this phase.
 
-Agents should receive an internal notification when a ticket is assigned.
+`Notification` stores recipient, type, optional actor/ticket/subtask references, createdAt and nullable readAt with restrictive foreign keys. It stores no message/note bodies, ticket titles/descriptions, resolution summaries or previews. The UI receives only IDs, type, resource IDs and timestamps. Notifications are inserted inside the successful domain mutation's existing Serializable transaction; failure rolls back the mutation and its notifications together. No silent retry, event bus, generic audit log or event-sourcing framework is introduced.
 
-Email should NOT be used for agent assignment notifications.
+| API | Behavior |
+| --- | --- |
+| GET /notifications | Own latest 50, newest first (createdAt, then ID) |
+| GET /notifications/unread-count | Own unread count across all history |
+| PATCH /notifications/:notificationId/read | Idempotently mark own record read; another recipient's ID returns 404 |
+| PATCH /notifications/read-all | Idempotently mark all own unread records read, including older records |
+
+All endpoints require current ACTIVE/sessionVersion authentication. ADMIN/SUPER_ADMIN can access only their own empty notification UI and gain no ticket authority or access to other recipients. No notification DELETE endpoint exists.
+
+Refresh is explicit REST: initial authenticated load, opening the panel, the refresh button, after mark-read operations, and after successful local ticket/subtask/communication mutations. No polling, email, WebSockets, SSE, browser notifications or realtime delivery. Migration `20260923150000_in_app_notifications` creates an empty table; it does not fabricate notifications from existing tickets or messages.
 
 ---
 
 ## Email System
 
-Email will be used for important ticket lifecycle events.
-
-Planned examples include:
-
-```text
-Ticket created
-Ticket resolved
-Ticket closed
-Potentially other important lifecycle notifications
-```
-
-Internal notifications and email have different purposes.
-
-```text
-Internal Notification
-=
-Application activity / real-time awareness
-
-Email
-=
-Important lifecycle communication
-```
-
-The exact email events will be finalized during implementation.
+Email notifications are intentionally out of scope. The application uses persistent in-app notifications only.
 
 ---
 
@@ -937,9 +929,9 @@ Departments are independent organizational entities and are not tied to a single
 
 ## Comments
 
-A ticket conversation/comment system is planned and not implemented.
+A cycle-bound ticket conversation is implemented in Employee and authorized operational ticket views.
 
-Employees and agents can communicate through ticket comments. Responsible managers may participate subject to the future conversation policy. ADMIN and SUPER_ADMIN have no ticket conversation access.
+The requesting employee, primary agent, current collaborators, primary-team lead and responsible manager can post while the current cycle is unfinished and the ticket is operational. Intake-only managers can read conversation but must claim responsibility before posting. ADMIN/SUPER_ADMIN have no access. Historical authorship grants no visibility.
 
 Example:
 
@@ -961,17 +953,21 @@ Employee:
 It works now.
 ```
 
-Comments are part of the ticket history.
+Messages remain grouped with their original work cycle. Plain text is trimmed and limited to 4,000 characters. Authors can edit only their own current unfinished-cycle records while still authorized; edits show an edited indicator. No deletion or revision-history endpoint exists. Terminal and previous-cycle records are permanently read-only.
 
-Comments may also trigger notifications.
+Only a NEW requester message while WAITING_FOR_EMPLOYEE atomically resumes IN_PROGRESS. Edits, support messages, internal notes and duplicate retries never change status. RESOLVED/CLOSED require explicit reopening before further communication; CANCELLED never reopens. New public messages create the in-app notifications documented above in the same transaction. Real-time transport remains deferred.
+
+POST requires `{ content, expectedCycleId, clientRequestId }`, with a UUID request key. PATCH requires `{ content, expectedCycleId }`. The server assigns author and cycle. GET returns the current cycle ID, lightweight cycle summaries, posting permissions, and ordered records with author ID/username, createdAt, editedAt and canEdit. Current support can read authorized communication from older cycles. No internal notes are embedded in public conversation or history responses.
+
+Transactions reuse ticket/user locks, active-account checks and serializable conflict handling. Relationship-row locks also protect collaborator/Team Lead writes against concurrent loss of authority. Creation keys deduplicate retries; a private original-request fingerprint permits recovery even after editing without storing a revision stream. Conflicts require explicit reload/review, and stale drafts never silently move into another cycle. The frontend preserves recoverable drafts and separates public and internal composers.
 
 ---
 
-## Internal Notes (Planned)
+## Internal Notes
 
-Internal notes are separate from employee-visible conversations. They will be multiple historical records with id, ticketId, authorId, content, and createdAt, not a mutable note string on Ticket. Editing/revision history and terminal-ticket behavior still need design.
+TicketInternalNote is separate from TicketMessage, with the same cycle, authorship, timestamp, length, idempotency and author-editing rules. Notes are multiple records, not a mutable string on Ticket. They never change ticket status.
 
-Notes are general-purpose, not tied to BLOCKED. Authorized agents, Team Leads, and managers will have support-only access. Employee, ADMIN, and SUPER_ADMIN responses must never contain note contents. Authorization is server-side. No note model or API is implemented; intake-only manager write permissions remain a future design question.
+Primary agents, current collaborators, primary-team leads and responsible managers may read/add notes. Current authorized support may read prior-cycle notes. Intake-only managers must claim responsibility first. Employees, ADMIN/SUPER_ADMIN, ordinary team members and historical subtask-only users receive no note access. Notes are general-purpose, not tied to BLOCKED. Authorization is enforced server-side on every read/write.
 
 ---
 
@@ -1193,7 +1189,7 @@ The operational frontend consumes the existing ticket, assignment, lifecycle, su
 | --- | --- |
 | `/dashboard` | Manager/agent counts derived from authorized current work |
 | `/work/intake` | MANAGER-only shared unowned NEW queue |
-| `/work/tickets` | Current responsible-manager or direct primary-agent assignments; optional terminal records |
+| `/work/tickets` | Current manager ownership, primary-agent assignments or unfinished-cycle collaboration; optional authorized terminal records |
 | `/work/team` | Tickets whose primary team the current AGENT actually leads |
 | `/work/tickets/:ticketId` | Authorized current state, actions, current-cycle subtasks, and history |
 | `/work/subtasks` | Authorized current incomplete subtasks; optional completed/historical records |
@@ -1201,11 +1197,11 @@ The operational frontend consumes the existing ticket, assignment, lifecycle, su
 
 Managers can claim intake, route owned tickets, choose/clear primary agents, transfer responsibility, edit metadata, perform allowed status transitions, close resolved work, reopen, and create/manage authorized subtasks. Transfer returns to the owned-ticket list, since the former owner loses visibility. Intake alone exposes claim but no metadata, routing, or subtask management controls.
 
-Agents see their current direct assignments and can edit/work them under existing permissions. Team Lead remains a relationship, not an RBAC role. Current leads also see a led-team queue, can select primary agents from their own team, and create/manage authorized own-team subtasks. Ordinary primary assignment grants no extra subtask authority. TeamManager still grants no ticket authority.
+Agents see primary assignments and current collaborating tickets. Collaboration permits parent/history/communication access and work on their own subtask; it grants no ticket metadata/status/routing, resolve/close/reopen or arbitrary subtask powers. The primary agent remains explicitly assigned and needs no subtask. A ticket may have NULL primary agent and several collaborators. Team Lead remains a relationship with existing led-team powers. Ordinary primary assignment grants no extra subtask authority. TeamManager still grants no ticket authority.
 
-Assignment dialogs list real eligible active users. Team changes retain the previous agent selection and require explicit clearing/replacement if incompatible; no silent reassignment is introduced. Managers may explicitly leave subtasks unassigned. Team Leads cannot move work across teams, change responsible managers, or reopen tickets. Confirmations cover assignment, transfer, status, reopening, and subtask updates. Resolution summaries and reopening reasons are requester-visible. Standard 409 conflicts freeze submission and require explicit reload; no write is automatically retried on conflict.
+Assignment dialogs list real eligible active users. The primary-team picker offers responsible managers only their organizationally managed teams and GLOBAL teams; the API independently enforces the same rule within the assignment transaction. An existing team that is no longer eligible requires explicit selection of an eligible team. Team changes retain the previous agent selection and require explicit clearing/replacement if incompatible; no silent reassignment is introduced. Subtask creation uses separate choices, preserving existing cross-team delegation and collaborator rules. Managers may explicitly leave subtasks unassigned. Team Leads cannot move work across teams, change responsible managers, or reopen tickets. Confirmations cover assignment, transfer, status, reopening, and subtask updates. Resolution summaries and reopening reasons are requester-visible. Standard 409 conflicts freeze submission and require explicit reload; no write is automatically retried on conflict.
 
-History reuses the employee cycle renderer with authorized support-work content. Current-cycle work is separate from earlier frozen cycles. Subtask detail displays assignment, completion timestamp/actor, and frozen state, including incomplete historical subtasks. It never fetches parent-ticket details or history. Initial subtask lists may show existing assignment IDs when the existing list response has no names; the limited detail projection supplies display names. Historical participation does not expand any active queue.
+History reuses the employee cycle renderer with independently authorized support work. Communication streams show current and frozen historical records. Standalone subtask detail exposes no parent content, but offers an Open parent ticket link when the server's parentVisible hint authorizes it. Historical subtask-only access remains limited. Subtask assignment never changes the explicit primary agent, and previous-cycle participation never expands active queues.
 
 The existing administrative organization/user APIs are not called for operational pickers. Three small read-only projections fill the missing UI context:
 
@@ -1217,9 +1213,9 @@ The existing administrative organization/user APIs are not called for operationa
 
 All three require MANAGER or AGENT authentication. Resource projections reuse existing visibility predicates and authorization methods. Ticket/subtask context reads use a consistent database snapshot. Options contain only team IDs/names and active eligible user IDs/usernames; ordinary agents get no assignee directory and Team Leads get only the authorized team. Terminal work returns no assignment choices. These are current presentation hints, not grants: existing transactional mutation checks remain authoritative after any concurrent change.
 
-`pnpm test:browser` runs the accepted Employee suite followed by Manager/Agent/Team Lead acceptance. The operational suite covers claim/routing/transfer, metadata/status/reopen, authorized subtask work, historical freezing, filtered history, unauthorized exclusion, mobile layout, 401/403/404/409 handling, and network retry. Browser tests use isolated API fixtures; PostgreSQL e2e tests separately exercise the actual projection and mutation authorization. No browser-to-live-database coverage is claimed.
+`pnpm test:browser` runs Employee, operational and administration suites. Communication coverage includes requester/support posting, own editing, internal-note separation, collaborator controls, frozen history, waiting replies and draft recovery across failures/reopening. Existing lifecycle, organization, mobile, session and error flows remain covered. Browser tests use isolated API fixtures; PostgreSQL e2e separately exercises actual authorization and atomicity. No browser-to-live-database coverage is claimed.
 
-ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Conversations, notes, notifications, attachments, AI, automatic closure, generic audits, and SSO/SCIM remain deferred.
+ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Persistent in-app notifications are implemented in the shared shell. The remaining roadmap, in order, is attachments, My Work History, automatic RESOLVED -> CLOSED behavior, general polish/stabilization, and AI routing/recommendations. Generic audits and SSO/SCIM remain deferred.
 
 ---
 
@@ -1280,7 +1276,6 @@ The backend is responsible for:
 - Authorization
 - Database access
 - AI integration
-- Email integration
 - Notifications
 - Validation
 
@@ -1322,10 +1317,6 @@ DATABASE_URL
 JWT_SECRET
 JWT_REFRESH_SECRET
 AI_API_KEY
-EMAIL_HOST
-EMAIL_PORT
-EMAIL_USER
-EMAIL_PASSWORD
 ```
 
 Secrets must never be committed to Git.
@@ -1393,7 +1384,6 @@ Focus on:
 - Comments
 - Ticket lifecycle
 - Subtasks and managed tags
-- Ticket conversation and internal notes
 
 ### Phase 4 — Notifications
 
@@ -1403,55 +1393,22 @@ Focus on:
 - Notification database model
 - Read/unread state
 - Notification UI
-- Real-time updates if appropriate
+- Implemented with explicit REST refresh; realtime delivery remains deferred
 
-### Phase 5 — Email
+### Remaining Roadmap
 
-Focus on:
+1. Attachments
+2. My Work History
+3. Automatic RESOLVED -> CLOSED behavior
+4. General polish/stabilization
+5. AI routing/recommendations
 
-- Email provider
-- Ticket creation emails
-- Resolution emails
-- Closure emails
-- Important lifecycle notifications
+AI recommendations include categorization, priority and agent suggestions, confidence scores, reasoning, and manager review. Attachments are the next planned feature and are not implemented yet.
 
-### Phase 6 — AI
+### Optional Deferred Features
 
-Focus on:
+Realtime transport, generic audit infrastructure, SSO/SCIM, notification preferences and retention, pagination, analytics, SLA tracking, advanced permissions, and further AI automation remain deferred.
 
-- AI ticket assistant
-- Ticket categorization
-- Priority suggestions
-- Agent recommendations
-- Confidence score
-- Recommendation reasoning
-- Manager approval workflow
-
-### Phase 7 — AI Automation
-
-Focus on:
-
-- Automatic assignment
-- Confidence thresholds
-- AI decision logging
-- Manager overrides
-- Monitoring AI recommendations
-
-### Phase 8 — Enterprise Features
-
-Potential features:
-
-- Attachments
-- Audit logs
-- Search
-- Filtering
-- Pagination
-- Analytics
-- Dashboards
-- SLA tracking
-- Advanced permissions
-- Testing
-- Performance improvements
 
 ---
 

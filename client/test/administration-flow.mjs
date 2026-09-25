@@ -173,6 +173,8 @@ function response(request) {
     refreshCount++
     return [201, { accessToken: `token-${refreshCount}`, user }]
   }
+  if (path === '/notifications') return [200, []]
+  if (path === '/notifications/unread-count') return [200, { count: 0 }]
   if (expired) {
     expired = false
     return [401, { message: 'Expired access' }]
@@ -807,7 +809,7 @@ try {
     rmSync(profile, {
       recursive: true,
       force: true,
-      maxRetries: 10,
+      maxRetries: 30,
       retryDelay: 200,
     })
   }

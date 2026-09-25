@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { TicketStatus, UserRole } from '../../generated/prisma/client';
+import { Prisma, TicketStatus, UserRole } from '../../generated/prisma/client';
 import { TicketAuthorizationUser } from './ticket-authorization.types';
 
 export type TicketAuthorizationSubject = {
@@ -24,6 +24,12 @@ export type SubtaskAuthorizationSubject = {
 
 @Injectable()
 export class TicketAuthorizationService {
+  responsibleManagerTeamWhere(managerId: number): Prisma.TeamWhereInput {
+    return {
+      OR: [{ managers: { some: { managerId } } }, { scope: 'GLOBAL' }],
+    };
+  }
+
   assertServiceDeskUser(user: TicketAuthorizationUser) {
     if (
       user.role !== UserRole.EMPLOYEE &&

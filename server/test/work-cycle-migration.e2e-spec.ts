@@ -19,7 +19,7 @@ describe('Work-cycle migration from the nine-migration schema', () => {
       await client.query(`SET LOCAL search_path TO "${schema}"`);
       const root = join(__dirname, '../prisma/migrations');
       const migrations = readdirSync(root)
-        .filter((name) => /^\d/.test(name))
+        .filter((name) => /^\d/.test(name) && name <= '20260918120000_user_lifecycle_work_cycles')
         .sort();
       for (const name of migrations.slice(0, -1))
         await client.query(
@@ -128,6 +128,27 @@ describe('Work-cycle migration from the nine-migration schema', () => {
           'UPDATE "Subtask" SET "createdInCycleId" = NULL WHERE id = 1',
         ),
       ).rejects.toMatchObject({ code: '23502' });
+      await client.query('ROLLBACK TO SAVEPOINT invalid_reference');
+      await client.query(readFileSync(join(root, '20260923120000_ticket_communication', 'migration.sql'), 'utf8'));
+      for (const table of ['TicketMessage', 'TicketInternalNote']) {
+        expect((await client.query(`SELECT count(*)::int AS count FROM "${table}"`)).rows[0].count).toBe(0);
+        await client.query('SAVEPOINT communication_reference');
+        await expect(client.query(`INSERT INTO "${table}" ("ticketId", "createdInCycleId", "authorId", content, "clientRequestId", "creationHash") VALUES (1, $1, 1, 'Invalid cycle', $2, $3)`, [cycles[1].id, randomUUID(), 'a'.repeat(64)])).rejects.toMatchObject({ code: '23503' });
+        await client.query('ROLLBACK TO SAVEPOINT communication_reference');
+      }
+      await client.query(readFileSync(join(root, '20260923150000_in_app_notifications', 'migration.sql'), 'utf8'));
+      expect((await client.query('SELECT count(*)::int AS count FROM "Notification"')).rows[0].count).toBe(0);
+      // No content columns or historical notification fabrication.
+      expect((await client.query('SELECT * FROM "Ticket" ORDER BY id')).rows).toEqual(beforeTickets);
+      await client.query(`INSERT INTO "User" (id, username, email, password, role, "updatedAt") VALUES
+        (4, 'notification-actor', 'actor@test.invalid', 'hash', 'MANAGER', NOW()),
+        (5, 'notification-recipient', 'recipient@test.invalid', 'hash', 'AGENT', NOW())`);
+      await client.query(`INSERT INTO "Notification" ("recipientUserId", "actorUserId", "ticketId", "subtaskId", type) VALUES (5, 4, 1, 1, 'SUBTASK_ASSIGNED')`);
+      for (const [table, id] of [['User', 4], ['User', 5], ['Subtask', 1]] as const) {
+        await client.query('SAVEPOINT notification_reference');
+        await expect(client.query(`DELETE FROM "${table}" WHERE id = $1`, [id])).rejects.toMatchObject({ code: '23503' });
+        await client.query('ROLLBACK TO SAVEPOINT notification_reference');
+      }
     } finally {
       await client.query('ROLLBACK');
       await client.end();

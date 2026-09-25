@@ -1,6 +1,10 @@
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
+import { communicationFixture } from './communication-fixture.mjs'
+import { notificationFixture } from './notification-fixture.mjs'
+const notifications = notificationFixture()
+const communication = communicationFixture()
 import { spawn } from 'node:child_process'
 import {
   existsSync,
@@ -88,9 +92,12 @@ const teams = [
   {
     id: 8,
     name: 'Network support',
+    scope: 'REGION',
+    managerId: 20,
     agents: people.filter((p) => [31, 32].includes(p.id)),
   },
-  { id: 9, name: 'Infrastructure', agents: people.filter((p) => p.id === 33) },
+  { id: 9, name: 'Infrastructure', scope: 'GLOBAL', managerId: 21, agents: people.filter((p) => p.id === 33) },
+  { id: 10, name: 'Other manager regional network', scope: 'REGION', managerId: 21, agents: people.filter((p) => p.id === 33) },
 ]
 const now = '2026-09-22T08:00:00.000Z'
 const person = (id) => people.find((p) => p.id === id) ?? null
@@ -186,7 +193,8 @@ const visible = (t) =>
   user.role === 'MANAGER'
     ? owned(t) || (t.status === 'NEW' && t.assignedManagerId === null)
     : user.role === 'AGENT' &&
-      (t.assignedAgentId === user.id || leads(t.assignedTeamId))
+      (t.assignedAgentId === user.id || leads(t.assignedTeamId) ||
+        (!terminal(t) && subtasks.some(s => s.ticketId === t.id && s.assignedAgentId === user.id && s.createdInCycleId === history[t.id][0].id)))
 const taskVisible = (s) =>
   owned(tickets.find((t) => t.id === s.ticketId)) ||
   (user.role === 'AGENT' &&
@@ -247,6 +255,7 @@ function response(request) {
     return [401, { message: 'Token expired' }]
   }
   if (!loggedIn) return [401, { message: 'Inactive account' }]
+  if (path.startsWith('/notifications')) return notifications.respond(request, user.id)
   if (failure) return [503, { message: 'Service temporarily unavailable' }]
   if (path === '/ticket-options') return [200, options]
   if (path === '/ticket-workspace')
@@ -255,7 +264,7 @@ function response(request) {
       { ledTeams: leads(8) ? [{ id: 8, name: 'Network support' }] : [] },
     ]
   if (path === '/tickets' && request.method === 'GET')
-    return [200, tickets.filter(visible)]
+    return [200, tickets.filter(visible).map(t => ({ ...t, isCurrentCollaborator: user.role === 'AGENT' && !terminal(t) && subtasks.some(s => s.ticketId === t.id && s.assignedAgentId === user.id && s.createdInCycleId === history[t.id][0].id) }))]
   if (path === '/tickets/subtasks')
     return [
       200,
@@ -284,6 +293,7 @@ function response(request) {
         200,
         {
           subtask: taskView(s),
+          parentVisible: visible(t),
           historical,
           frozen,
           permissions: {
@@ -313,6 +323,9 @@ function response(request) {
     s.completedById = s.status === 'COMPLETED' ? user.id : null
     return [200, s]
   }
+  const communicationTicket = tickets.find(t => t.id === Number(path.split('/')[2]))
+  if (communicationTicket && /\/(messages|internal-notes)/.test(path))
+    return communication.respond(request, communicationTicket, history[communicationTicket.id][0], user, visible(communicationTicket), user.role === 'AGENT' || owned(communicationTicket))
   const match = path.match(
     /^\/(?:ticket-workspace\/)?tickets\/(\d+)(?:\/(history|manager|assignment|status|reopen|subtasks))?$/,
   )
@@ -327,8 +340,11 @@ function response(request) {
           permissions: p,
           teams: p.assignAgent
             ? owned(t)
-              ? teams
+              ? teams.filter((team) => team.managerId === user.id || team.scope === 'GLOBAL')
               : teams.filter((team) => team.id === t.assignedTeamId)
+            : [],
+          subtaskTeams: p.createSubtask
+            ? owned(t) ? teams : teams.filter((team) => team.id === t.assignedTeamId)
             : [],
           managers: p.transfer
             ? people.filter((p) => [20, 21].includes(p.id))
@@ -589,6 +605,25 @@ try {
   await waitText('Support overview')
   await waitText('Owned network issue')
   await absent('Private infrastructure issue')
+  notifications.add(20, 'REQUESTER_MESSAGE', 143)
+  await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
+  await waitText('The requester replied on ticket #143.')
+  await click('The requester replied on ticket #143.')
+  await waitText('Owned network issue')
+  assert.equal(await evaluate('location.pathname'), '/work/tickets/143')
+  console.log('PASS: manager notification panel and authorized ticket navigation')
+  // A transfer can retain a team the new responsible manager cannot select.
+  tickets[1].assignedTeamId = 10
+  tickets[1].assignedAgentId = null
+  await navigate('/work/tickets/143')
+  await action('Change assignment')
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Assignment team"]').value`), '')
+  assert(await evaluate(`[...document.querySelectorAll('button')].find(el => el.textContent === 'Confirm').disabled`))
+  assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="Assignment team"]').options].filter(o => o.value).map(o => Number(o.value))`), [8, 9])
+  await click('Cancel')
+  tickets[1].assignedTeamId = 8
+  tickets[1].assignedAgentId = 31
+  console.log('PASS: retained ineligible primary team requires explicit eligible selection')
   await navigate('/work/intake')
   await waitText('VPN intake')
   await absent('Owned network issue')
@@ -597,6 +632,9 @@ try {
   )
   await navigate('/work/tickets/142')
   await waitText('Shared intake.')
+  await waitText('Posting is unavailable')
+  assert(!(await button('Send message')))
+  assert(!await evaluate(`document.body.textContent.includes('Internal notes — support only')`))
   assert(!(await button('Edit details')))
   assert(!(await button('Create subtask')))
   await action('Take responsibility')
@@ -621,6 +659,7 @@ try {
   await click('Confirm')
   await waitText('Change assignment')
   await action('Change assignment')
+  assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="Assignment team"]').options].filter(o => o.value).map(o => Number(o.value))`), [8, 9])
   await fill('[aria-label="Assignment team"]', '8')
   await fill('[aria-label="Assignment agent"]', '31')
   await click('Confirm')
@@ -651,9 +690,26 @@ try {
   await click('Confirm')
   await waitText('Network support')
   console.log(
-    'PASS: manager intake, claim, real routing, explicit incompatible-agent clearing, status and metadata',
+    'PASS: manager intake, managed regional/GLOBAL choices, other-manager regional exclusion, explicit incompatible-agent clearing, status and metadata',
   )
+  await waitText('Internal notes — support only')
+  await fill('[aria-label="Message content"]', 'Manager public update')
+  await fill('[aria-label="Internal note content"]', 'Private draft survives public posting')
+  await click('Send message')
+  await waitText('Manager public update')
+  await until(() => evaluate(`!!document.querySelector('[aria-label="Internal note content"]')`), 'notes loaded')
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Internal note content"]').value`), 'Private draft survives public posting')
+  await fill('[aria-label="Internal note content"]', 'Private diagnosis')
+  await click('Add internal note')
+  await waitText('Private diagnosis')
+  await click('Edit note')
+  await fill('[aria-label="Internal note content"]', 'Private corrected diagnosis')
+  await click('Save edit')
+  await waitText('Private corrected diagnosis')
+  await waitText('edited')
+  console.log('PASS: manager public conversation and separate author-editable internal notes')
   await action('Create subtask')
+  assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="Assignment team"]').options].filter(o => o.value).map(o => Number(o.value))`), [8, 9, 10])
   await fill('[aria-label="Subtask title"]', 'Manager-created work')
   await fill('[aria-label="Subtask description"]', 'Review logs')
   await fill('[aria-label="Assignment team"]', '9')
@@ -719,11 +775,27 @@ try {
     'PASS: explicit 409 reload without write retry, 403 handling, transfer removes former-owner access',
   )
   user = { ...user, id: 31, username: 'Ali', role: 'AGENT' }
+  notifications.add(31, 'SUBTASK_ASSIGNED', 144, 604)
+  notifications.add(31, 'PRIMARY_AGENT_ASSIGNED', 145)
   await navigate('/work/tickets')
-  await waitText('My assigned tickets')
+  await waitText('My assigned and collaborating tickets')
   await waitText('Owned network issue')
-  await absent('Private infrastructure issue')
+  await waitText('Private infrastructure issue')
   await absent('Former Ali assignment')
+  await until(() => evaluate(`!!document.querySelector('[aria-label="2 unread notifications"]')`), 'agent initial badge')
+  await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
+  await waitText('You were assigned a subtask on ticket #144.')
+  await click('You were assigned a subtask on ticket #144.')
+  await waitText('Private parent delegated work')
+  assert.equal(await evaluate('location.pathname'), '/work/subtasks/604')
+  await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
+  await waitText('You were assigned ticket #145.')
+  await click('You were assigned ticket #145.')
+  await waitText('could not be found')
+  await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
+  await waitText('You were assigned ticket #145.')
+  await evaluate(`document.querySelector('[aria-label="Close dialog"]').click()`)
+  console.log('PASS: agent unread badge, subtask notification navigation and lost-access history without restored authority')
   await navigate('/work/tickets/143')
   await waitText('Owned network issue')
   await absent('Delegated firewall check')
@@ -760,7 +832,20 @@ try {
   await waitText('permanently frozen')
   assert(!(await button('Update subtask')))
   await navigate('/work/tickets/144')
-  await waitText('could not be found')
+  await waitText('Private infrastructure issue')
+  assert(!(await button('Change status')))
+  assert(!(await button('Change assignment')))
+  assert(!(await button('Edit details')))
+  await waitText('Internal notes — support only')
+  await fill('[aria-label="Message content"]', 'Collaborator public update')
+  await click('Send message')
+  await waitText('Collaborator public update')
+  await until(() => evaluate(`!!document.querySelector('[aria-label="Internal note content"]')`), 'collaborator notes')
+  await fill('[aria-label="Internal note content"]', 'Collaborator internal finding')
+  await click('Add internal note')
+  await waitText('Collaborator internal finding')
+  assert(!(await button('Reopen ticket')))
+  console.log('PASS: completed current-cycle collaborator reads parent and participates without primary-agent authority')
   console.log(
     'PASS: agent current assignments, lifecycle work, filtered history, subtask-only work without parent requests',
   )
@@ -893,7 +978,7 @@ try {
     rmSync(profile, {
       recursive: true,
       force: true,
-      maxRetries: 10,
+      maxRetries: 30,
       retryDelay: 200,
     })
   }

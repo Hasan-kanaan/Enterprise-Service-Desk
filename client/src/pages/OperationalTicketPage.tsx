@@ -17,6 +17,7 @@ import { getApiStatus } from '@/services/api'
 import { cycleLabel, formatDate, isTerminal } from '@/types/ticketPresentation'
 import { TicketForm } from '@/components/TicketForm'
 import { TicketHistory } from '@/components/TicketHistory'
+import { TicketCommunication } from '@/components/TicketCommunication'
 import { SubtaskRows } from '@/components/SubtaskUI'
 import { SubtaskForm } from '@/components/SubtaskForm'
 import {
@@ -250,6 +251,7 @@ function OperationalTicket({ id }: { id: number }) {
             <div className="list-heading">
               <h2>Work history</h2>
             </div>
+            <TicketCommunication ticketId={id} cycles={history.cycles} onChanged={reload} />
             <TicketHistory
               cycles={history.cycles}
               renderWork={(cycle) => {
@@ -362,7 +364,7 @@ function OperationalTicket({ id }: { id: number }) {
       )}
       {creating && (
         <SubtaskForm
-          teams={operations.teams}
+          teams={operations.subtaskTeams}
           canAssignTeam={p.assignTeam}
           canAssignAgent
           initialTeam={p.assignTeam ? null : ticket.assignedTeamId}

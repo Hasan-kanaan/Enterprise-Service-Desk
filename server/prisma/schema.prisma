@@ -76,7 +76,41 @@ enum SubtaskStatus {
   CANCELLED
 }
 
+enum NotificationType {
+  PRIMARY_AGENT_ASSIGNED
+  SUBTASK_ASSIGNED
+  REQUESTER_MESSAGE
+  SUPPORT_MESSAGE
+  WAITING_FOR_EMPLOYEE
+  RESOLVED
+  REOPENED
+  MANAGER_TRANSFERRED
+}
+
+model Notification {
+  id              Int              @id @default(autoincrement())
+  recipientUserId Int
+  type            NotificationType
+  actorUserId     Int?
+  ticketId        Int?
+  subtaskId       Int?
+  createdAt       DateTime         @default(now())
+  readAt          DateTime?
+  recipient       User             @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  actor           User?            @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  ticket          Ticket?          @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  subtask         Subtask?         @relation(fields: [subtaskId], references: [id], onDelete: Restrict)
+
+  @@index([recipientUserId, createdAt, id])
+  @@index([recipientUserId, readAt])
+  @@index([actorUserId])
+  @@index([ticketId])
+  @@index([subtaskId])
+}
+
 model User {
+  notifications     Notification[] @relation("NotificationRecipient")
+  causedNotifications Notification[] @relation("NotificationActor")
   id                Int             @id @default(autoincrement())
   username          String          @unique @db.VarChar(50)
   email             String          @unique @db.VarChar(255)
@@ -102,6 +136,8 @@ model User {
   suggestedTickets  Ticket[]        @relation("TicketSuggestedAgent")
   aiReviewedTickets Ticket[]        @relation("TicketAiReviewer")
   startedCycles     TicketWorkCycle[] @relation("CycleStarter")
+  ticketMessages   TicketMessage[]
+  ticketInternalNotes TicketInternalNote[]
   endedCycles       TicketWorkCycle[] @relation("CycleEnder")
   closedCycles      TicketWorkCycle[] @relation("CycleCloser")
   managedCycles     TicketWorkCycle[] @relation("CycleManager")
@@ -241,6 +277,7 @@ model TicketTag {
 }
 
 model Ticket {
+  notifications Notification[]
   id                    Int                @id @default(autoincrement())
   title                 String             @db.VarChar(200)
   description           String             @db.Text
@@ -333,6 +370,7 @@ model TicketDepartment {
 }
 
 model Subtask {
+  notifications Notification[]
   id              Int           @id @default(autoincrement())
   ticketId        Int
   createdInCycleId Int
@@ -385,7 +423,43 @@ model TicketWorkCycle {
   endingAgent            User? @relation("CycleAgent", fields: [endingAgentId], references: [id], onDelete: Restrict)
   endingTeam             Team? @relation(fields: [endingTeamId], references: [id], onDelete: Restrict)
   subtasks               Subtask[]
+  messages               TicketMessage[]
+  internalNotes          TicketInternalNote[]
 
   @@unique([ticketId, sequenceNumber])
   @@unique([id, ticketId])
+}
+
+model TicketMessage {
+  id Int @id @default(autoincrement())
+  ticketId Int
+  createdInCycleId Int
+  authorId Int
+  content String @db.VarChar(4000)
+  createdAt DateTime @default(now())
+  editedAt DateTime?
+  clientRequestId String @db.Uuid
+  creationHash String @db.Char(64)
+  createdInCycle TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  @@unique([authorId, clientRequestId])
+  @@index([ticketId, id])
+  @@index([createdInCycleId, ticketId])
+}
+
+model TicketInternalNote {
+  id Int @id @default(autoincrement())
+  ticketId Int
+  createdInCycleId Int
+  authorId Int
+  content String @db.VarChar(4000)
+  createdAt DateTime @default(now())
+  editedAt DateTime?
+  clientRequestId String @db.Uuid
+  creationHash String @db.Char(64)
+  createdInCycle TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  @@unique([authorId, clientRequestId])
+  @@index([ticketId, id])
+  @@index([createdInCycleId, ticketId])
 }

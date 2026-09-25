@@ -15,6 +15,7 @@ import { useState, useCallback } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { BrandMark } from '@/components/BrandMark'
+import { NotificationBell } from '@/components/NotificationBell'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { logout } from '@/services/auth.service'
 import { clearSession } from '@/services/api'
@@ -38,7 +39,7 @@ const navigation = {
     { label: 'Subtasks', to: '/work/subtasks', icon: Ticket },
   ],
   AGENT: [
-    { label: 'My assigned tickets', to: '/work/tickets', icon: Ticket },
+    { label: 'Assigned & collaborating', to: '/work/tickets', icon: Ticket },
     { label: 'Subtasks', to: '/work/subtasks', icon: Ticket },
     { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
     { label: 'Profile', to: '/profile', icon: Shield },
@@ -186,6 +187,7 @@ export function AppLayout() {
             </span>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <NotificationBell key={user!.id} role={userRole} />
             <div className="hidden h-6 w-px bg-[var(--border)] sm:block" />
             <span className="hidden text-sm font-medium sm:block">
               {user?.username ?? 'Account'}

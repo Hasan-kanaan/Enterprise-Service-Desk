@@ -23,6 +23,7 @@ describe('TicketVisibilityService', () => {
   const findFirst = jest.fn();
   const count = jest.fn();
   const service = new TicketVisibilityService({
+    $transaction: (action: (db: any) => unknown) => action({ ticket: { findMany, findFirst, count } }),
     ticket: { findMany, findFirst, count },
   } as any);
 
@@ -38,7 +39,7 @@ describe('TicketVisibilityService', () => {
 
   it('filters agents to direct assignment or their current Team Lead team', () => {
     expect(service.buildWhere(agent(20))).toEqual({
-      OR: [{ assignedAgentId: 20 }, { assignedTeam: { teamLeadId: 20 } }],
+      OR: [{ assignedAgentId: 20 }, { assignedTeam: { teamLeadId: 20 } }, service.collaboratorWhere(20)],
     });
   });
 
@@ -80,7 +81,7 @@ describe('TicketVisibilityService', () => {
 
   it('uses the same team-lead relationship for global team leads', () => {
     expect(service.buildWhere(agent(20))).toEqual({
-      OR: [{ assignedAgentId: 20 }, { assignedTeam: { teamLeadId: 20 } }],
+      OR: [{ assignedAgentId: 20 }, { assignedTeam: { teamLeadId: 20 } }, service.collaboratorWhere(20)],
     });
   });
 
@@ -99,7 +100,7 @@ describe('TicketVisibilityService', () => {
 
   it('does not grant operational visibility to unassigned agents', () => {
     expect(service.buildWhere(agent(20))).toEqual({
-      OR: [{ assignedAgentId: 20 }, { assignedTeam: { teamLeadId: 20 } }],
+      OR: [{ assignedAgentId: 20 }, { assignedTeam: { teamLeadId: 20 } }, service.collaboratorWhere(20)],
     });
   });
 
@@ -133,6 +134,20 @@ describe('TicketVisibilityService', () => {
   it('does not grant intake managers subtask visibility', () => {
     expect(service.buildSubtaskWhere(manager(30))).toEqual({
       ticket: { assignedManagerId: 30 },
+    });
+  });
+
+  it('restricts notes to current support relationships, never requester or administration', () => {
+    expect(service.supportWhere(manager(30))).toEqual({ assignedManagerId: 30 });
+    expect(service.supportWhere(agent(20))).toEqual(service.buildWhere(agent(20)));
+    for (const role of [UserRole.EMPLOYEE, UserRole.ADMIN, UserRole.SUPER_ADMIN])
+      expect(() => service.supportWhere({ id: 1, role })).toThrow(ForbiddenException);
+  });
+
+  it('requires an unfinished operational cycle for collaboration without filtering completed subtasks', () => {
+    expect(service.collaboratorWhere(20)).toEqual({
+      status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_FOR_EMPLOYEE', 'BLOCKED'] },
+      subtasks: { some: { assignedAgentId: 20, createdInCycle: { outcome: null } } },
     });
   });
 

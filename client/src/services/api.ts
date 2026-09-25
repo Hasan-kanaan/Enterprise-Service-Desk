@@ -73,7 +73,11 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config
 })
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.config.method !== 'get' && response.config.url?.startsWith('/tickets'))
+      window.dispatchEvent(new Event('service-desk:mutation'))
+    return response
+  },
   async (error: AxiosError) => {
     const original = error.config as
       (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined

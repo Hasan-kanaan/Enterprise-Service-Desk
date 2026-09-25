@@ -23,6 +23,7 @@ export type Ownership = {
   agent: Person | null
 }
 export type TicketSummary = {
+  isCurrentCollaborator?: boolean
   id: number
   title: string
   description: string

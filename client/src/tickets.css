@@ -736,3 +736,8 @@ button:disabled {
     padding: 18px;
   }
 }
+.communication { margin-block: 1rem; }
+.communication-records { list-style: none; padding: 0; }
+.communication-records li { padding-block: 1rem; border-bottom: 1px solid var(--border, #dbe2ea); overflow-wrap: anywhere; }
+.communication textarea { width: 100%; min-height: 6rem; }
+.communication-cycle h3 { margin-top: 1.5rem; }

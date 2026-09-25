@@ -49,7 +49,7 @@ export function OperationalWorkspacePage({
   const mine = rows.filter((ticket) =>
     manager
       ? ticket.assignedManagerId === user.id
-      : ticket.assignedAgentId === user.id,
+      : ticket.assignedAgentId === user.id || ticket.isCurrentCollaborator,
   )
   const team = rows.filter((ticket) =>
     led.some((item) => item.id === ticket.assignedTeamId),
@@ -72,7 +72,7 @@ export function OperationalWorkspacePage({
           ? 'Subtask workspace'
           : manager
             ? 'My tickets'
-            : 'My assigned tickets'
+            : 'My assigned and collaborating tickets'
   const resource = view === 'subtasks' ? tasks : tickets
   const loading = resource.loading || workspace.loading
   const error = resource.error || workspace.error
@@ -97,7 +97,7 @@ export function OperationalWorkspacePage({
             {view === 'intake'
               ? 'Take responsibility before routing or working a request.'
               : view === 'subtasks'
-                ? 'Your authorized subtasks. Access to a subtask does not open its parent ticket.'
+                ? 'Current-cycle assignees can open the parent ticket while its cycle remains unfinished. Historical subtask access remains limited.'
                 : 'Current responsibility determines the work shown here.'}
           </p>
         </div>
@@ -116,7 +116,7 @@ export function OperationalWorkspacePage({
           </Link>
         )}
         <Link className="button secondary" to="/work/tickets">
-          {manager ? 'My tickets' : 'My assigned tickets'}
+          {manager ? 'My tickets' : 'Assigned and collaborating tickets'}
         </Link>
         {led.length > 0 && (
           <Link className="button secondary" to="/work/team">
@@ -131,7 +131,7 @@ export function OperationalWorkspacePage({
         <section className="ticket-stats" aria-label="Operational counts">
           <div className="stat-card">
             <span>
-              {manager ? 'Unowned intake' : 'Active direct assignments'}
+              {manager ? 'Unowned intake' : 'Active assigned and collaborating work'}
             </span>
             <strong>
               {tickets.data
