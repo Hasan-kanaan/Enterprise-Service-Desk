@@ -1,3 +1,4 @@
+import { TicketAttachments } from '@/components/Attachments'
 import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Check, Pencil, RefreshCw, RotateCcw, X } from 'lucide-react'
@@ -315,7 +316,7 @@ function TicketContent({ id }: { id: number }) {
             ) : history.error ? (
               <ErrorState error={history.error} onRetry={history.reload} />
             ) : (
-              history.data && <><TicketCommunication ticketId={id} cycles={history.data.cycles} onChanged={reload} /><TicketHistory cycles={history.data.cycles} /></>
+              history.data && <><TicketAttachments ticketId={id} /><TicketCommunication ticketId={id} cycles={history.data.cycles} onChanged={reload} /><TicketHistory cycles={history.data.cycles} /></>
             )}
           </section>
         </div>

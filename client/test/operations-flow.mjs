@@ -1,7 +1,7 @@
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
-import { communicationFixture } from './communication-fixture.mjs'
+import { communicationFixture, submission } from './communication-fixture.mjs'
 import { notificationFixture } from './notification-fixture.mjs'
 const notifications = notificationFixture()
 const communication = communicationFixture()
@@ -239,11 +239,18 @@ function permissions(t) {
     statuses: work ? transitions[t.status] : [],
   }
 }
+
+async function selectAttachment(selector, name) {
+  await evaluate(`(() => { const input = document.querySelector(${JSON.stringify(selector)}); const transfer = new DataTransfer(); transfer.items.add(new File(['service desk'], ${JSON.stringify(name)}, { type: 'text/plain' })); input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true })); })()`)
+}
+
 function response(request) {
   const url = new URL(request.url),
     path = url.pathname,
-    body = request.postData ? JSON.parse(request.postData) : {}
+    body = submission(request).body
   requests.push(`${request.method} ${path}`)
+  if (/^\/tickets\/\d+\/attachments$/.test(path)) return [200, []]
+  if (/^\/tickets\/attachments\/\d+\/download$/.test(path)) return [200, { file: 'downloaded' }]
   if (path === '/auth/refresh') {
     refreshCount++
     return loggedIn
@@ -563,7 +570,7 @@ try {
             },
             {
               name: 'Access-Control-Allow-Methods',
-              value: 'GET,POST,PATCH,OPTIONS',
+              value: 'GET,POST,PATCH,DELETE,OPTIONS',
             },
           ],
           body: Buffer.from(JSON.stringify(body)).toString('base64'),
@@ -575,6 +582,7 @@ try {
     }
   })
   await send('Page.enable')
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.attachmentConfirmations = []; window.confirm = text => { window.attachmentConfirmations.push(text); return true }' })
   await send('Runtime.enable')
   await send('Fetch.enable', {
     patterns: [{ urlPattern: 'http://localhost:8000/*' }],
@@ -694,12 +702,14 @@ try {
   )
   await waitText('Internal notes — support only')
   await fill('[aria-label="Message content"]', 'Manager public update')
+  await selectAttachment('[aria-label="Conversation"] input[type=file]', 'support.txt')
   await fill('[aria-label="Internal note content"]', 'Private draft survives public posting')
   await click('Send message')
   await waitText('Manager public update')
   await until(() => evaluate(`!!document.querySelector('[aria-label="Internal note content"]')`), 'notes loaded')
   assert.equal(await evaluate(`document.querySelector('[aria-label="Internal note content"]').value`), 'Private draft survives public posting')
   await fill('[aria-label="Internal note content"]', 'Private diagnosis')
+  await selectAttachment('.communication:last-of-type input[type=file]', 'note.txt')
   await click('Add internal note')
   await waitText('Private diagnosis')
   await click('Edit note')
@@ -707,7 +717,12 @@ try {
   await click('Save edit')
   await waitText('Private corrected diagnosis')
   await waitText('edited')
-  console.log('PASS: manager public conversation and separate author-editable internal notes')
+  await evaluate(`document.querySelector('[aria-label="Internal note content"]').closest('section').querySelector('.attachment-list button:last-child').click()`)
+  await waitText('Attachment deleted')
+  await click('Delete note')
+  await waitText('Note deleted')
+  assert(!await evaluate(`document.body.textContent.includes('Private corrected diagnosis')`))
+  console.log('PASS: manager message/note uploads, editing, confirmed attachment and note deletion/tombstones')
   await action('Create subtask')
   assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="Assignment team"]').options].filter(o => o.value).map(o => Number(o.value))`), [8, 9, 10])
   await fill('[aria-label="Subtask title"]', 'Manager-created work')

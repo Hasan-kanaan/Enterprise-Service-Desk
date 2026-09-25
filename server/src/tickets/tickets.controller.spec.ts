@@ -9,6 +9,7 @@ describe('TicketsController', () => {
   const controller = new TicketsController(
     { listVisible, findVisibleById } as any,
     { assignManager } as any,
+    {} as any,
   );
 
   beforeEach(() => jest.clearAllMocks());

@@ -10,3 +10,5 @@ server/dist
 .vscode/settings.json
 
 *.log
+# Private local attachment storage
+.attachments/

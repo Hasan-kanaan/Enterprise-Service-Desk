@@ -24,3 +24,9 @@ export class CreateCommunicationDto extends EditCommunicationDto {
   @IsUUID()
   clientRequestId!: string;
 }
+
+export class DeleteCommunicationDto {
+  @IsInt()
+  @Min(1)
+  expectedCycleId!: number;
+}

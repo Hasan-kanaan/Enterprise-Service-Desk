@@ -338,7 +338,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     await post(`/tickets/${owned.id}/messages`, 'employee', { content: 'Stale', expectedCycleId: subtask.createdInCycleId + 10000, clientRequestId: randomUUID() }).expect(409);
     const created = await communicate('employee');
     await patch(`/tickets/${owned.id}/messages/${created.body.id}`, 'employee', { content: 'No', expectedCycleId: subtask.createdInCycleId, authorId: users.agent.id }).expect(400);
-    await request(app.getHttpServer()).delete(`/tickets/${owned.id}/messages/${created.body.id}`).set('Authorization', `Bearer ${token('employee')}`).expect(404);
+    await request(app.getHttpServer()).delete(`/tickets/${owned.id}/messages/${created.body.id}`).set('Authorization', `Bearer ${token('employee')}`).expect(400);
   });
 
   it('deduplicates concurrent creation and denies duplicate recovery after collaboration is lost', async () => {

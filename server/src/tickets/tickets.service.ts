@@ -1,3 +1,4 @@
+import { UploadBatch } from './attachment-storage';
 import {
   BadRequestException,
   ConflictException,
@@ -26,7 +27,10 @@ import { CreateSubtaskDto } from './dto/create-subtask.dto';
 import { UpdateSubtaskDto } from './dto/update-subtask.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
-import { notify, supportRecipients } from '../notifications/notification-events';
+import {
+  notify,
+  supportRecipients,
+} from '../notifications/notification-events';
 
 type Database = Prisma.TransactionClient;
 const ticketInclude = {
@@ -46,7 +50,11 @@ export class TicketsService {
     private readonly authorization: TicketAuthorizationService,
   ) {}
 
-  async create(user: TicketAuthorizationUser, dto: CreateTicketDto) {
+  async create(
+    user: TicketAuthorizationUser,
+    dto: CreateTicketDto,
+    batch?: UploadBatch,
+  ) {
     this.authorization.assertCanCreateTicket(user);
 
     const allRegions = dto.allRegions ?? false;
@@ -65,8 +73,16 @@ export class TicketsService {
     return serializable(this.prisma, async (db) => {
       await requireActiveActor(db, user);
       const now = new Date();
-      return db.ticket.create({
+      const ticket = await db.ticket.create({
         data: {
+          attachments: {
+            create: (batch?.files ?? []).map(
+              ({ digest: _digest, ...file }) => ({
+                ...file,
+                uploaderId: user.id,
+              }),
+            ),
+          },
           createdAt: now,
           workCycles: {
             create: {
@@ -98,6 +114,8 @@ export class TicketsService {
           tags: { create: (dto.tagIds ?? []).map((tagId) => ({ tagId })) },
         },
       });
+      if (batch) batch.used = true;
+      return ticket;
     });
   }
 
@@ -252,7 +270,9 @@ export class TicketsService {
       });
       if (agentId !== null && agentId !== ticket.assignedAgentId)
         await notify(db, [agentId], {
-          type: 'PRIMARY_AGENT_ASSIGNED', actorUserId: user.id, ticketId,
+          type: 'PRIMARY_AGENT_ASSIGNED',
+          actorUserId: user.id,
+          ticketId,
         });
       return result;
     });
@@ -295,7 +315,9 @@ export class TicketsService {
       });
       if (status === 'WAITING_FOR_EMPLOYEE' || status === 'RESOLVED')
         await notify(db, [ticket.requesterId], {
-          type: status, actorUserId: user.id, ticketId,
+          type: status,
+          actorUserId: user.id,
+          ticketId,
         });
       return result;
     });
@@ -323,7 +345,10 @@ export class TicketsService {
       });
       if (assignedAgentId !== null)
         await notify(db, [assignedAgentId], {
-          type: 'SUBTASK_ASSIGNED', actorUserId: user.id, ticketId, subtaskId: result.id,
+          type: 'SUBTASK_ASSIGNED',
+          actorUserId: user.id,
+          ticketId,
+          subtaskId: result.id,
         });
       return result;
     });
@@ -396,9 +421,15 @@ export class TicketsService {
               }),
         },
       });
-      if (assignedAgentId !== null && assignedAgentId !== subtask.assignedAgentId)
+      if (
+        assignedAgentId !== null &&
+        assignedAgentId !== subtask.assignedAgentId
+      )
         await notify(db, [assignedAgentId], {
-          type: 'SUBTASK_ASSIGNED', actorUserId: user.id, ticketId: ticket.id, subtaskId,
+          type: 'SUBTASK_ASSIGNED',
+          actorUserId: user.id,
+          ticketId: ticket.id,
+          subtaskId,
         });
       return result;
     });
@@ -578,7 +609,9 @@ export class TicketsService {
           ? await supportRecipients(db, ticketId, false)
           : [ticket.requesterId];
       await notify(db, recipients, {
-        type: 'REOPENED', actorUserId: user.id, ticketId,
+        type: 'REOPENED',
+        actorUserId: user.id,
+        ticketId,
       });
       return result;
     });

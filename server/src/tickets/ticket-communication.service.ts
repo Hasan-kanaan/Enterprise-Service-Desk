@@ -1,4 +1,9 @@
 import {
+  attachmentSelect,
+  attachmentView,
+  UploadBatch,
+} from './attachment-storage';
+import {
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -14,7 +19,10 @@ import {
 } from '../prisma/transactions';
 import { TicketVisibilityService } from './ticket-visibility.service';
 import { TicketAuthorizationUser } from './ticket-authorization.types';
-import { notify, supportRecipients } from '../notifications/notification-events';
+import {
+  notify,
+  supportRecipients,
+} from '../notifications/notification-events';
 import {
   CreateCommunicationDto,
   EditCommunicationDto,
@@ -28,8 +36,36 @@ const projection = {
   content: true,
   createdAt: true,
   editedAt: true,
+  deletedAt: true,
+  attachments: { select: attachmentSelect, orderBy: { id: 'asc' as const } },
   author: { select: { id: true, username: true } },
 } as const;
+function publicRecord<
+  T extends {
+    content: string;
+    deletedAt: Date | null;
+    attachments: Array<{
+      id: number;
+      filename: string;
+      contentType: string;
+      byteSize: number;
+      createdAt: Date;
+      deletedAt: Date | null;
+    }>;
+  },
+>(record: T) {
+  return {
+    ...record,
+    content: record.deletedAt ? null : record.content,
+    attachments: record.attachments.map((file) =>
+      attachmentView(
+        record.deletedAt
+          ? { ...file, deletedAt: file.deletedAt ?? record.deletedAt }
+          : file,
+      ),
+    ),
+  };
+}
 export type CommunicationKind = 'messages' | 'internal-notes';
 
 @Injectable()
@@ -103,8 +139,14 @@ export class TicketCommunicationService {
           canPost: context.canPost,
           canReadNotes: context.canReadNotes,
           records: records.map((record) => ({
-            ...record,
+            ...publicRecord(record),
+            canDelete:
+              context.canPost &&
+              !record.deletedAt &&
+              record.authorId === user.id &&
+              record.createdInCycleId === context.cycle?.id,
             canEdit:
+              !record.deletedAt &&
               context.canPost &&
               record.authorId === user.id &&
               record.createdInCycleId === context.cycle?.id,
@@ -121,6 +163,9 @@ export class TicketCommunicationService {
     kind: CommunicationKind,
     dto: EditCommunicationDto | CreateCommunicationDto,
     recordId?: number,
+    batch?: UploadBatch,
+    deleting = false,
+    attachmentId?: number,
   ) {
     return serializable(this.prisma, async (db) => {
       const rows = await db.$queryRaw<
@@ -147,7 +192,25 @@ export class TicketCommunicationService {
         );
       const creation = 'clientRequestId' in dto ? dto : null;
       const creationHash = createHash('sha256')
-        .update(JSON.stringify([ticketId, dto.expectedCycleId, dto.content]))
+        .update(
+          JSON.stringify([
+            ticketId,
+            dto.expectedCycleId,
+            dto.content,
+            ...(batch?.files.length
+              ? [
+                  batch.files.map(
+                    ({ filename, contentType, byteSize, digest }) => ({
+                      filename,
+                      contentType,
+                      byteSize,
+                      digest,
+                    }),
+                  ),
+                ]
+              : []),
+          ]),
+        )
         .digest('hex');
       if (creation) {
         const args = {
@@ -168,9 +231,11 @@ export class TicketCommunicationService {
               'Request key was already used for different content',
             );
           const select = { where: { id: existing.id }, select: projection };
-          return kind === 'messages'
-            ? db.ticketMessage.findUniqueOrThrow(select)
-            : db.ticketInternalNote.findUniqueOrThrow(select);
+          return publicRecord(
+            await (kind === 'messages'
+              ? db.ticketMessage.findUniqueOrThrow(select)
+              : db.ticketInternalNote.findUniqueOrThrow(select)),
+          );
         }
       }
       if (!context.canPost || context.cycle?.id !== dto.expectedCycleId)
@@ -185,19 +250,52 @@ export class TicketCommunicationService {
             : await db.ticketInternalNote.findFirst(args);
         if (!record) throw new NotFoundException('Communication not found');
         if (record.authorId !== user.id)
-          throw new ForbiddenException('Only the author may edit this record');
+          throw new ForbiddenException(
+            'Only the author may change this record',
+          );
         if (record.createdInCycleId !== context.cycle.id)
           throw new ConflictException(
             'Previous-cycle communication is permanently read-only',
           );
+        if (deleting) {
+          if (attachmentId !== undefined) {
+            if (record.deletedAt)
+              throw new ConflictException('Parent communication was deleted');
+            const file = record.attachments.find(
+              (file) => file.id === attachmentId,
+            );
+            if (!file) throw new NotFoundException('Attachment not found');
+            return attachmentView(
+              await db.attachment.update({
+                where: { id: attachmentId },
+                data: { deletedAt: file.deletedAt ?? new Date() },
+                select: attachmentSelect,
+              }),
+            );
+          }
+          const args = {
+            where: { id: recordId },
+            data: { deletedAt: record.deletedAt ?? new Date() },
+            select: projection,
+          };
+          return publicRecord(
+            await (kind === 'messages'
+              ? db.ticketMessage.update(args)
+              : db.ticketInternalNote.update(args)),
+          );
+        }
+        if (record.deletedAt)
+          throw new ConflictException('Deleted communication cannot be edited');
         const update = {
           where: { id: recordId },
           data: { content: dto.content, editedAt: new Date() },
           select: projection,
         };
-        return kind === 'messages'
-          ? db.ticketMessage.update(update)
-          : db.ticketInternalNote.update(update);
+        return publicRecord(
+          await (kind === 'messages'
+            ? db.ticketMessage.update(update)
+            : db.ticketInternalNote.update(update)),
+        );
       }
       if (!creation)
         throw new ConflictException('Creation request key is required');
@@ -210,6 +308,14 @@ export class TicketCommunicationService {
           createdAt: new Date(),
           clientRequestId: creation.clientRequestId,
           creationHash,
+          attachments: {
+            create: (batch?.files ?? []).map(
+              ({ digest: _digest, ...file }) => ({
+                ...file,
+                uploaderId: user.id,
+              }),
+            ),
+          },
         },
         select: projection,
       };
@@ -229,7 +335,8 @@ export class TicketCommunicationService {
         });
       if (kind === 'messages') {
         const requester =
-          user.role === UserRole.EMPLOYEE && context.ticket.requesterId === user.id;
+          user.role === UserRole.EMPLOYEE &&
+          context.ticket.requesterId === user.id;
         await notify(
           db,
           requester
@@ -242,7 +349,8 @@ export class TicketCommunicationService {
           },
         );
       }
-      return record;
+      if (batch) batch.used = true;
+      return publicRecord(record);
     }).catch((error) => {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

@@ -741,3 +741,8 @@ button:disabled {
 .communication-records li { padding-block: 1rem; border-bottom: 1px solid var(--border, #dbe2ea); overflow-wrap: anywhere; }
 .communication textarea { width: 100%; min-height: 6rem; }
 .communication-cycle h3 { margin-top: 1.5rem; }
+
+.attachment-list { list-style: none; padding: 0; display: grid; gap: .5rem; }
+.attachment-list li { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.attachment-list span { overflow-wrap: anywhere; min-width: 0; }
+.attachment-picker input { max-width: 100%; }

@@ -1,3 +1,9 @@
+import { AttachmentsController } from './attachments.controller';
+import {
+  AttachmentStorage,
+  LocalAttachmentStorage,
+  AttachmentUploads,
+} from './attachment-storage';
 import { Module } from '@nestjs/common';
 import { TicketCommunicationController } from './ticket-communication.controller';
 import { TicketCommunicationService } from './ticket-communication.service';
@@ -15,12 +21,15 @@ import { TicketOptionsController } from './ticket-options.controller';
 @Module({
   imports: [JwtModule.register({ secret: jwtConstants.secret })],
   controllers: [
+    AttachmentsController,
     TicketCommunicationController,
     TicketsController,
     TicketOptionsController,
     TicketWorkspaceController,
   ],
   providers: [
+    { provide: AttachmentStorage, useClass: LocalAttachmentStorage },
+    AttachmentUploads,
     TicketCommunicationService,
     TicketAuthorizationService,
     TicketVisibilityService,

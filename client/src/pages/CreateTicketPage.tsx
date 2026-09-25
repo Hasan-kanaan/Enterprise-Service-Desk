@@ -12,10 +12,10 @@ export function CreateTicketPage() {
   const navigate = useNavigate()
   const options = useResource(getTicketOptions)
   const [error, setError] = useState<unknown>()
-  const save = async (input: TicketInput) => {
+  const save = async (input: TicketInput, files: File[] = []) => {
     setError(undefined)
     try {
-      const ticket = await createTicket(input)
+      const ticket = await createTicket(input, files)
       toast.success(`Ticket #${ticket.id} submitted`)
       navigate(`/tickets/${ticket.id}`, { replace: true })
     } catch (failure) {
@@ -58,6 +58,7 @@ export function CreateTicketPage() {
                 />
               )}
               <TicketForm
+                allowAttachments
                 options={options.data}
                 onSave={save}
                 onCancel={() => navigate('/tickets')}

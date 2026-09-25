@@ -1,3 +1,4 @@
+import { TicketAttachments } from '@/components/Attachments'
 import { useCallback, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -251,7 +252,7 @@ function OperationalTicket({ id }: { id: number }) {
             <div className="list-heading">
               <h2>Work history</h2>
             </div>
-            <TicketCommunication ticketId={id} cycles={history.cycles} onChanged={reload} />
+            <TicketAttachments ticketId={id} /><TicketCommunication ticketId={id} cycles={history.cycles} onChanged={reload} />
             <TicketHistory
               cycles={history.cycles}
               renderWork={(cycle) => {

@@ -1,3 +1,4 @@
+import { postWithAttachments } from './attachments.service'
 import api from '@/services/api'
 import type {
   TicketDetail,
@@ -15,8 +16,8 @@ export const getTicketHistory = async (id: number, signal?: AbortSignal) =>
   (await api.get<TicketHistory>(`/tickets/${id}/history`, { signal })).data
 export const getTicketOptions = async (signal?: AbortSignal) =>
   (await api.get<TicketOptions>('/ticket-options', { signal })).data
-export const createTicket = async (input: TicketInput) =>
-  (await api.post<TicketSummary>('/tickets', input)).data
+export const createTicket = async (input: TicketInput, files: File[] = []) =>
+  (await postWithAttachments<TicketSummary>('/tickets', input, files)).data
 export const updateTicket = async (id: number, input: TicketInput) =>
   (await api.patch<TicketSummary>(`/tickets/${id}`, input)).data
 export const cancelTicket = async (id: number) =>

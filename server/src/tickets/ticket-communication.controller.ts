@@ -1,3 +1,10 @@
+import { Delete, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { AttachmentUploads, Upload } from './attachment-storage';
+import {
+  AttachmentFilesInterceptor,
+  AttachmentPayloadInterceptor,
+} from './attachment-upload.interceptor';
+import { DeleteCommunicationDto } from './dto/ticket-communication.dto';
 import {
   Body,
   Controller,
@@ -31,7 +38,10 @@ type Request = {
 @UseGuards(AuthGuard, RolesGuard)
 @Roles(UserRole.EMPLOYEE, UserRole.AGENT, UserRole.MANAGER)
 export class TicketCommunicationController {
-  constructor(private readonly communication: TicketCommunicationService) {}
+  constructor(
+    private readonly communication: TicketCommunicationService,
+    private readonly uploads: AttachmentUploads,
+  ) {}
   private actor(request: Request): TicketAuthorizationUser {
     return {
       id: request.user.sub,
@@ -48,13 +58,25 @@ export class TicketCommunicationController {
     return this.communication.read(id, this.actor(request), 'messages');
   }
   @Post(':ticketId/messages')
+  @UseInterceptors(AttachmentFilesInterceptor, AttachmentPayloadInterceptor)
   createMessages(
     @Param('ticketId', ParseIntPipe) id: number,
     @Req() request: Request,
     @Body() dto: CreateCommunicationDto,
+    @UploadedFiles() files: Upload[] = [],
   ) {
-    return this.communication.write(id, this.actor(request), 'messages', dto);
+    return this.uploads.run(files, (batch) =>
+      this.communication.write(
+        id,
+        this.actor(request),
+        'messages',
+        dto,
+        undefined,
+        batch,
+      ),
+    );
   }
+
   @Patch(':ticketId/messages/:recordId')
   editMessages(
     @Param('ticketId', ParseIntPipe) id: number,
@@ -79,18 +101,25 @@ export class TicketCommunicationController {
     return this.communication.read(id, this.actor(request), 'internal-notes');
   }
   @Post(':ticketId/internal-notes')
+  @UseInterceptors(AttachmentFilesInterceptor, AttachmentPayloadInterceptor)
   createNotes(
     @Param('ticketId', ParseIntPipe) id: number,
     @Req() request: Request,
     @Body() dto: CreateCommunicationDto,
+    @UploadedFiles() files: Upload[] = [],
   ) {
-    return this.communication.write(
-      id,
-      this.actor(request),
-      'internal-notes',
-      dto,
+    return this.uploads.run(files, (batch) =>
+      this.communication.write(
+        id,
+        this.actor(request),
+        'internal-notes',
+        dto,
+        undefined,
+        batch,
+      ),
     );
   }
+
   @Patch(':ticketId/internal-notes/:recordId')
   editNotes(
     @Param('ticketId', ParseIntPipe) id: number,
@@ -104,6 +133,84 @@ export class TicketCommunicationController {
       'internal-notes',
       dto,
       recordId,
+    );
+  }
+
+  @Delete(':ticketId/messages/:recordId')
+  deleteMessage(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Param('recordId', ParseIntPipe) recordId: number,
+    @Req() request: Request,
+    @Body() dto: DeleteCommunicationDto,
+  ) {
+    return this.communication.write(
+      id,
+      this.actor(request),
+      'messages',
+      { ...dto, content: '' },
+      recordId,
+      undefined,
+      true,
+      undefined,
+    );
+  }
+
+  @Delete(':ticketId/messages/:recordId/attachments/:attachmentId')
+  deleteMessageAttachment(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Param('recordId', ParseIntPipe) recordId: number,
+    @Req() request: Request,
+    @Body() dto: DeleteCommunicationDto,
+    @Param('attachmentId', ParseIntPipe) attachmentId: number,
+  ) {
+    return this.communication.write(
+      id,
+      this.actor(request),
+      'messages',
+      { ...dto, content: '' },
+      recordId,
+      undefined,
+      true,
+      attachmentId,
+    );
+  }
+
+  @Delete(':ticketId/internal-notes/:recordId')
+  deleteNote(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Param('recordId', ParseIntPipe) recordId: number,
+    @Req() request: Request,
+    @Body() dto: DeleteCommunicationDto,
+  ) {
+    return this.communication.write(
+      id,
+      this.actor(request),
+      'internal-notes',
+      { ...dto, content: '' },
+      recordId,
+      undefined,
+      true,
+      undefined,
+    );
+  }
+
+  @Delete(':ticketId/internal-notes/:recordId/attachments/:attachmentId')
+  deleteNoteAttachment(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Param('recordId', ParseIntPipe) recordId: number,
+    @Req() request: Request,
+    @Body() dto: DeleteCommunicationDto,
+    @Param('attachmentId', ParseIntPipe) attachmentId: number,
+  ) {
+    return this.communication.write(
+      id,
+      this.actor(request),
+      'internal-notes',
+      { ...dto, content: '' },
+      recordId,
+      undefined,
+      true,
+      attachmentId,
     );
   }
 }

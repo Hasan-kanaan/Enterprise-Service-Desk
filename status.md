@@ -1,10 +1,23 @@
 # Project Status
 
-Frontend and backend verification updated on 2026-09-23. [README.md](README.md) describes the project and [docs/decision.md](docs/decision.md) records architectural decisions.
+Frontend and backend verification updated on 2026-09-25. [README.md](README.md) describes the project and [docs/decision.md](docs/decision.md) records architectural decisions.
 
 ## Current Phase
 
-Persistent in-app notifications implemented on the verified routing, collaboration, communication, lifecycle and administration baseline. All work remains uncommitted; no commit or push performed.
+Secure attachments and author-controlled communication soft deletion implemented on the verified notification, routing, collaboration, lifecycle and administration baseline. All work remains uncommitted; no commit or push performed.
+
+## Secure Attachments and Soft Deletion
+
+- Implemented original ticket, public-message and support-only internal-note attachments with a constrained shared Attachment table and author/uploader attribution. Original ticket files are immutable forever. No append, replace, restore or ticket-file deletion API.
+- Current authorized authors alone may delete their own current unfinished-cycle messages/notes and attachments. Deleted parents expose null content, preserve metadata and hide all files. Attachment tombstones hide filenames/type/size; downloads reject deleted files/parents. Previous cycles and terminal work never thaw. No administrative/manager/lead override.
+- Private local AttachmentStorage adapter, generated UUID keys, configurable ATTACHMENT_STORAGE_DIR (default server-process .attachments), temporary writes/rename and failed-operation/replay cleanup. Maximum five files per parent submission and 10 MB each, including the exact five-file/10 MB boundary. PNG/JPEG/WebP/PDF/TXT/LOG/JSON/CSV only, with format checks. Authenticated parent-authorized downloads use safe attachment headers; paths/keys are private.
+- Existing JSON creation remains supported; multipart sends JSON payload plus files. Added original-ticket attachment list and authenticated download GET routes, plus cycle-checked DELETE routes for communication and individual communication files. Content PATCH remains content-only. Full API contracts are in README.md.
+- Creation replay after deletion recovers the tombstone and consumes no new attachment/notification rows. Deletion never reverses WAITING_FOR_EMPLOYEE -> IN_PROGRESS, changes ownership/work cycles/collaboration/routing, creates/retracts notifications or marks notifications read.
+- Migration 20260925120000_attachments_soft_deletion applied to development and isolated test databases: 13 migrations each, zero Prisma schema drift. Existing content is unchanged, deletedAt starts NULL, no historical attachments fabricated. Migration tests verify parent checks/FKs, immutable ticket deletion constraint and preservation of pre-existing communication.
+- Verification: 10 unit suites / 109 tests; 5 PostgreSQL/HTTP suites / 163 tests. Includes all existing regressions plus 20 new attachment/deletion scenario groups and controlled deletion races against resolution, reassignment, lead removal and deactivation. Injected storage/database/domain failures verify rollback and binary cleanup. Complete Employee (16 groups), operational (11 groups) and administration (5 groups) Chromium suites pass; fixtures cover UI contracts, PostgreSQL tests cover real access/transactions. Client lint/build, backend typecheck/build, Prisma validation/generation and migration checks pass.
+- The obsolete regression expecting no communication DELETE route now expects DTO validation failure when expectedCycleId is missing. No existing routing, membership, collaboration, notification or lifecycle behavior required correction. During implementation review, the text-edit response was corrected to redact already-deleted attachment filenames too.
+- Deferred storage hardening: malware scanning (files are not scanned), S3/object storage, physical purge/garbage collection, crash orphan scavenging, capacity/rate controls and production storage backup/permission policies. Lightweight signatures/text checks are not full document validation. Email remains intentionally out of scope.
+- No dependencies added, commit or push performed.
 
 ## Persistent In-App Notifications
 
@@ -18,7 +31,7 @@ Email notifications are intentionally out of scope. The application uses persist
 - Recipient-only authenticated GET /notifications (latest 50), GET /notifications/unread-count (all history), PATCH /notifications/:id/read and PATCH /notifications/read-all. Read timestamps are idempotent. ACTIVE/sessionVersion rules apply; administrative roles gain no other-recipient or ticket access. No DELETE API.
 - Shared bell, badge, accessible modal, minimal descriptions, date/time and read controls. Links use existing routes and authorization; old notifications remain readable after lost access. REST refresh at authenticated load, panel open, explicit refresh/read actions and successful local ticket/subtask/communication mutations. No polling or realtime delivery.
 - Verification: 9 unit suites / 91 tests and 4 PostgreSQL/HTTP suites / 143 tests passed, including 28 new notification cases. Chromium: Employee 13 groups, operational 11 groups, administration 5 groups passed. An initial new browser assertion needed to wait for panel data; corrected before the full passing run. A later database run found the existing PostgreSQL container stopped; it was restarted and the complete suite passed.
-- Prisma validation/generation, backend TypeScript/Nest build, client TypeScript/Vite build and ESLint passed. Both development and isolated test databases have 12 migrations and zero schema differences; final read-only counts confirm zero notifications in both databases after fixture cleanup, with no backfill. Existing uncommitted work preserved; no dependency changes, commit or push.
+- Prisma validation/generation, backend TypeScript/Nest build, client TypeScript/Vite build and ESLint passed. Both development and isolated test databases had 12 migrations at the notification-phase checkpoint and zero schema differences; final read-only counts confirm zero notifications in both databases after fixture cleanup, with no backfill. Existing uncommitted work preserved; no dependency changes, commit or push.
 - Files: `server/prisma/schema.prisma`, `server/prisma/migrations/20260923150000_in_app_notifications/migration.sql`, `server/src/app.module.ts`, `server/src/notifications/notification-events.ts`, `server/src/notifications/notifications.controller.ts`, `server/src/notifications/notifications.module.ts`, `server/src/tickets/tickets.service.ts`, `server/src/tickets/ticket-communication.service.ts`, `server/src/tickets/tickets.service.spec.ts`, `server/test/notifications.e2e-spec.ts`, `server/test/tickets-authorization.e2e-spec.ts`, `server/test/work-cycle-migration.e2e-spec.ts`, `client/src/components/NotificationBell.tsx`, `client/src/services/notifications.service.ts`, `client/src/notifications.css`, `client/src/layouts/AppLayout.tsx`, `client/src/services/api.ts`, `client/test/notification-fixture.mjs`, `client/test/employee-flow.mjs`, `client/test/operations-flow.mjs`, `client/test/administration-flow.mjs`, `README.md`, `docs/decision.md`, and `status.md`.
 
 ## Responsible Manager Primary Routing Correction
@@ -37,7 +50,7 @@ Email notifications are intentionally out of scope. The application uses persist
 - Current unfinished-cycle subtask assignees gain parent/history/conversation/internal-note access without changing explicit manager/team/primary-agent ownership. Completion preserves collaboration; last reassignment or cycle end removes it. Previous-cycle assignments and ordinary membership never grant current parent access.
 - Collaborators can work their own subtasks but gain no parent metadata/status, resolve/close/reopen, routing, manager-transfer or arbitrary subtask powers. Existing independent primary-agent/lead/manager powers remain intact. Agent queues include current collaboration, and authorized standalone subtask views link to the normal parent view.
 - Separate TicketMessage/TicketInternalNote models with same-ticket cycle FKs, retained authorship, bounded plain text, createdAt/editedAt and creation idempotency. Public messages are available to requesters/current support; notes only to current support. Intake managers can read conversation but must claim responsibility before posting or seeing notes. ADMIN/SUPER_ADMIN remain excluded.
-- GET/POST stream endpoints and author-only PATCH endpoints implemented. Authors may edit only their own current unfinished-cycle records while authorized. No deletion or revision-history feature. Terminal and historical records remain read-only after reopening.
+- GET/POST stream endpoints and author-only PATCH endpoints implemented. Authors may edit only their own current unfinished-cycle records while authorized. Author-only current unfinished-cycle soft deletion is implemented; no revision-history feature. Terminal and historical records remain read-only after reopening.
 - Only a NEW requester message while WAITING_FOR_EMPLOYEE atomically changes the ticket to IN_PROGRESS. Support messages, notes, edits and duplicate replay never change status. Creation keys and a private request fingerprint prevent duplicate creation, including recovery after an author edit.
 - Consistent-snapshot reads and serializable writes reuse ticket/user locks. Communication writes additionally lock agent assignment/team relationship rows to reject stale authority after reassignment or lead removal. Stale cycle IDs and serialization conflicts return 409; there is no silent retry or draft transfer.
 - Shared responsive conversation/note UI groups work by cycle, displays author/timestamps/edited markers and exposes only permitted own-record edits. Recoverable failures retain drafts; sibling drafts survive stream refreshes. New-cycle submission requires explicit draft review. Employee responses never contain internal-note content.
@@ -87,30 +100,30 @@ Email notifications are intentionally out of scope. The application uses persist
 
 ## Migration
 
-Twelve migrations are applied in the local development and isolated test databases. `20260923150000_in_app_notifications` adds an empty notification table, enum, indexes and restrictive references with no historical backfill. `20260923120000_ticket_communication` adds the two empty communication tables, indexes, idempotency constraints and restrictive author/same-ticket-cycle FKs. Existing users, tickets, cycles and subtasks are unchanged; no messages or notes are backfilled. The previous `20260918120000_user_lifecycle_work_cycles` migration remains unchanged.
+Thirteen migrations are applied in the local development and isolated test databases. `20260925120000_attachments_soft_deletion` adds the empty constrained Attachment table and nullable communication deletedAt without changing existing content. `20260923150000_in_app_notifications` adds an empty notification table, enum, indexes and restrictive references with no historical backfill. `20260923120000_ticket_communication` adds the two empty communication tables, indexes, idempotency constraints and restrictive author/same-ticket-cycle FKs. Existing users, tickets, cycles and subtasks are unchanged; no messages or notes are backfilled. The previous `20260918120000_user_lifecycle_work_cycles` migration remains unchanged.
 
 Backfill creates one ORIGINAL cycle per existing ticket and attaches existing subtasks without changing their work data. Known timestamps are retained; unknown actors/times remain NULL. Terminal ownership is explicitly marked RECORDED_AT_MIGRATION, not falsely represented as proven ownership at resolution. No inferred managers, earlier reopenings, or replacement people were created.
 
-The historical work-cycle backfill requires old application writers to be paused during that migration/backend switch. The communication and notification migrations are additive and must be applied before serving the new API/frontend. Existing nonterminal managerless fixtures still require explicit reconciliation; this phase does not invent historical owners or an ordinary legacy-adoption endpoint.
+The historical work-cycle backfill requires old application writers to be paused during that migration/backend switch. The communication, notification and attachment migrations are additive and must be applied before serving the new API/frontend. Existing nonterminal managerless fixtures still require explicit reconciliation; this phase does not invent historical owners or an ordinary legacy-adoption endpoint.
 
 ## Verification
 
 - Client TypeScript/Vite production build and ESLint: passed.
 - Chromium browser acceptance: passed for session restore, form payloads, edit/conflict recovery, cancel/close/reopen, history, mobile navigation/layout, deep reload, error/retry/empty states, token renewal/session rejection, and admin route exclusion. No browser runtime exceptions.
-- Employee Chromium suite: thirteen scenario groups passed, including notification list/badge, mark one/all read, ticket navigation, lost-access history, mutation refresh and mobile panel, plus public posting/editing, private-note exclusion, waiting-reply behavior, preserved 503/409 drafts, explicit stale-cycle review and frozen history, plus existing lifecycle/session/mobile flows.
-- Operational Chromium browser suite: eleven scenario groups passed, including Manager/Agent notification navigation and lost-access history, plus eligible managed regional/GLOBAL primary choices, exclusion of other-manager regional choices, retained ineligible-team selection, separate subtask choices, manager messages/notes, author edits, sibling-draft preservation, completed collaborator parent access and communication without primary-agent powers, plus existing Manager/Agent/Team Lead flows and errors.
+- Employee Chromium suite: sixteen scenario groups passed, including attachment draft selection/removal, immutable ticket download, upload failure recovery, author-only message/attachment tombstones and non-author control exclusion, plus notification list/badge, mark one/all read, ticket navigation, lost-access history, mutation refresh and mobile panel, plus public posting/editing, private-note exclusion, waiting-reply behavior, preserved 503/409 drafts, explicit stale-cycle review and frozen history, plus existing lifecycle/session/mobile flows.
+- Operational Chromium browser suite: eleven scenario groups passed, including message/note uploads and confirmed note/attachment tombstones, plus Manager/Agent notification navigation and lost-access history, plus eligible managed regional/GLOBAL primary choices, exclusion of other-manager regional choices, retained ineligible-team selection, separate subtask choices, manager messages/notes, author edits, sibling-draft preservation, completed collaborator parent access and communication without primary-agent powers, plus existing Manager/Agent/Team Lead flows and errors.
 - Browser profile cleanup retries were lengthened after one Windows temporary-profile lock outlasted the original retry window. The complete sequential browser rerun passed and cleaned its profiles.
 - Administration Chromium browser suite: five scenario groups passed for ADMIN/SUPER_ADMIN provisioning and lifecycle matrices, all exposed organization mutations, relationship constraints, 401/403/404/409/network handling, role isolation, and mobile layout. No runtime or console errors. Employee and operational browser suites rerun and passed.
 - Browser checks use isolated API fixtures; real PostgreSQL authorization/contracts are covered separately by backend e2e tests.
 
 - Prisma schema validation and client generation: passed.
-- Development and isolated-test migration status: twelve migrations applied in each; both schema diffs report no difference.
+- Development and isolated-test migration status: thirteen migrations applied in each; both schema diffs report no difference.
 - Backend TypeScript, including tests: passed.
 - Nest build: passed.
-- Unit tests: nine suites, 91 tests passed, including communication validation and collaborator/support visibility predicates.
-- PostgreSQL/HTTP e2e: four suites, 143 tests passed. Coverage includes notification events, recipient/privacy/read matrices, idempotency, lost access, six notification-write rollback cases, plus managed regional/GLOBAL primary routing, other-manager and unmanaged regional rejection, specialty-match rejection, active primary-team membership, retained assignments after manager transfer, concurrent TeamManager removal, collaborator gain/completion/reassignment/cycle-end/reopen boundaries, unchanged ownership/mutation powers, communication role matrix and privacy, own edits, terminal/historical freezes, idempotency before/after editing, current authorization on replay, inactive author attribution, waiting transitions, migration constraints and controlled concurrent authority/lifecycle changes. Existing account, organization, ticket and subtask regressions pass.
+- Unit tests: ten suites, 109 tests passed, including communication validation and collaborator/support visibility predicates.
+- PostgreSQL/HTTP e2e: five suites, 163 tests passed. Coverage includes notification events, recipient/privacy/read matrices, idempotency, lost access, six notification-write rollback cases, plus managed regional/GLOBAL primary routing, other-manager and unmanaged regional rejection, specialty-match rejection, active primary-team membership, retained assignments after manager transfer, concurrent TeamManager removal, collaborator gain/completion/reassignment/cycle-end/reopen boundaries, unchanged ownership/mutation powers, communication role matrix and privacy, own edits, terminal/historical freezes, idempotency before/after editing, current authorization on replay, inactive author attribution, waiting transitions, migration constraints and controlled concurrent authority/lifecycle changes. Existing account, organization, ticket and subtask regressions pass.
 - E2e includes existing authorization regressions, account/session lifecycle, atomic offboarding, cancellation/freeze/reopen matrices, repeated cycles, safe history projections, historical/current-work separation, and controlled concurrent reopen/close/assignment/offboarding races.
-- Migration test replays the historical schema in a private test-database schema, verifies truthful work-cycle backfill, then applies the communication and notification migrations and verifies empty tables, same-ticket cycle constraints and restrictive notification references. It rolls everything back.
+- Migration test replays the historical schema in a private test-database schema, verifies truthful work-cycle backfill, then applies the communication, notification and attachment migrations and verifies empty tables, same-ticket cycle constraints, restrictive references, attachment parent constraints and unchanged pre-existing communication. It rolls everything back.
 - Injected database failures verify complete rollback of reopening, administrative offboarding and employee message insertion when the automatic waiting transition fails. Expected HTTP 500 errors appear in test logs; all rollback tests pass.
 - Test fixtures are scoped and cleaned up. No dependency installation.
 - Node experimental VM-modules and pg concurrent-query deprecation warnings remain non-failing.
@@ -157,13 +170,12 @@ git status --short
 
 ## Remaining Roadmap
 
-1. Attachments
-2. My Work History
-3. Automatic RESOLVED -> CLOSED behavior
-4. General polish/stabilization
-5. AI routing/recommendations
+1. My Work History
+2. Automatic RESOLVED -> CLOSED behavior
+3. General polish/stabilization
+4. AI routing/recommendations
 
-Attachments are next and are not implemented yet.
+Attachments and author-controlled communication soft deletion are complete. My Work History is next.
 
 ## Deferred Work and Remaining Boundaries
 
@@ -176,3 +188,38 @@ Attachments are next and are not implemented yet.
 - Serialization conflicts require explicit reload/retry. Offboarding does not automatically retry or choose replacements.
 - Logout revokes the supplied refresh token; immediate access invalidation here applies to deactivation, not a new per-session logout scheme.
 - Use a real JWT_SECRET for deployment. NULL organization/ownership values must never be replaced with fabricated records.
+
+## Attachment Phase Files Changed
+
+- `.gitignore`
+- `README.md`
+- `client/src/components/Attachments.tsx`
+- `client/src/components/TicketCommunication.tsx`
+- `client/src/components/TicketForm.tsx`
+- `client/src/pages/CreateTicketPage.tsx`
+- `client/src/pages/EmployeeTicketPage.tsx`
+- `client/src/pages/OperationalTicketPage.tsx`
+- `client/src/services/attachments.service.ts`
+- `client/src/services/tickets.service.ts`
+- `client/src/tickets.css`
+- `client/test/communication-fixture.mjs`
+- `client/test/employee-flow.mjs`
+- `client/test/operations-flow.mjs`
+- `docs/decision.md`
+- `server/prisma/migrations/20260925120000_attachments_soft_deletion/migration.sql`
+- `server/prisma/schema.prisma`
+- `server/src/tickets/attachment-storage.spec.ts`
+- `server/src/tickets/attachment-storage.ts`
+- `server/src/tickets/attachment-upload.interceptor.ts`
+- `server/src/tickets/attachments.controller.ts`
+- `server/src/tickets/dto/ticket-communication.dto.ts`
+- `server/src/tickets/ticket-communication.controller.ts`
+- `server/src/tickets/ticket-communication.service.ts`
+- `server/src/tickets/tickets-authorization.module.ts`
+- `server/src/tickets/tickets.controller.spec.ts`
+- `server/src/tickets/tickets.controller.ts`
+- `server/src/tickets/tickets.service.ts`
+- `server/test/attachments.e2e-spec.ts`
+- `server/test/tickets-authorization.e2e-spec.ts`
+- `server/test/work-cycle-migration.e2e-spec.ts`
+- `status.md`

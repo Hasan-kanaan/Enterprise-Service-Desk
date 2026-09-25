@@ -1,7 +1,7 @@
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
-import { communicationFixture } from './communication-fixture.mjs'
+import { communicationFixture, submission } from './communication-fixture.mjs'
 import { notificationFixture } from './notification-fixture.mjs'
 const notifications = notificationFixture()
 const communication = communicationFixture()
@@ -158,10 +158,17 @@ async function checkLabel(text) {
     `(() => { const label = [...document.querySelectorAll('label')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!label) throw Error('Missing label'); label.querySelector('input').click(); })()`,
   )
 }
+
+async function selectAttachment(selector, name) {
+  await evaluate(`(() => { const input = document.querySelector(${JSON.stringify(selector)}); const transfer = new DataTransfer(); transfer.items.add(new File(['service desk'], ${JSON.stringify(name)}, { type: 'text/plain' })); input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true })); })()`)
+}
+
 function response(request) {
   const path = new URL(request.url).pathname
   requests.push(`${request.method} ${path}`)
-  const body = request.postData ? JSON.parse(request.postData) : {}
+  const body = submission(request).body
+  if (/^\/tickets\/\d+\/attachments$/.test(path)) return [200, tickets.find(t => t.id === Number(path.split('/')[2]))?.attachments ?? []]
+  if (/^\/tickets\/attachments\/\d+\/download$/.test(path)) return [200, { file: 'downloaded' }]
   if (path === '/auth/refresh') {
     refreshCount++
     return loggedIn
@@ -209,6 +216,7 @@ function response(request) {
     cycles = [original(id)]
     const ticket = {
       ...body,
+      attachments: submission(request).files,
       id,
       status: 'NEW',
       requesterId: 10,
@@ -339,7 +347,7 @@ try {
             },
             {
               name: 'Access-Control-Allow-Methods',
-              value: 'GET,POST,PATCH,OPTIONS',
+              value: 'GET,POST,PATCH,DELETE,OPTIONS',
             },
           ],
           body: Buffer.from(JSON.stringify(body)).toString('base64'),
@@ -351,6 +359,7 @@ try {
     }
   })
   await send('Page.enable')
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.attachmentConfirmations = []; window.confirm = text => { window.attachmentConfirmations.push(text); return true }' })
   await send('Runtime.enable')
   await send('Fetch.enable', {
     patterns: [{ urlPattern: 'http://localhost:8000/*' }],
@@ -378,12 +387,21 @@ try {
   await checkLabel('Beirut')
   await checkLabel('Operations')
   await checkLabel('VPN')
+  await selectAttachment('input[type=file]', 'remove.txt')
+  await waitText('Remove remove.txt')
+  await click('Remove remove.txt')
+  await selectAttachment('input[type=file]', 'original.txt')
   await click('Submit ticket')
   await waitText('Request #142')
   assert.equal(mutations.filter((item) => item.path === '/tickets').length, 1)
   console.log(
     'PASS: validated form submits real category/scope IDs and opens detail',
   )
+  await waitText('Download original.txt')
+  await click('Download original.txt')
+  await until(() => requests.some(path => /attachments\/\d+\/download/.test(path)), 'authenticated file download')
+  assert(!await evaluate(`document.querySelector('[aria-label="Original request attachments"]').textContent.includes('Delete attachment')`))
+  console.log('PASS: draft attachment removal, multipart ticket submission, immutable attachment display/download')
   const supportNotice = notifications.add(10, 'SUPPORT_MESSAGE', 142)
   notifications.add(10, 'WAITING_FOR_EMPLOYEE', 142)
   await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
@@ -433,9 +451,11 @@ try {
   console.log('PASS: edit and explicit conflict reload without write retry')
   await waitText('No messages yet.')
   await fill('[aria-label="Message content"]', 'Employee context')
+  await selectAttachment('[aria-label="Conversation"] input[type=file]', 'message.txt')
   communication.fail(503)
   await click('Send message')
   await waitText('Temporary server failure')
+  await waitText('Remove message.txt')
   assert.equal(await evaluate(`document.querySelector('[aria-label="Message content"]').value`), 'Employee context')
   await click('Send message')
   await waitText('Employee context')
@@ -459,6 +479,20 @@ try {
   assert(!requests.some(path => path.includes('internal-notes')))
   assert(!await evaluate(`document.body.textContent.includes('Internal notes — support only')`))
   console.log('PASS: requester conversation, own editing, edited marker, waiting reply, private-note exclusion and preserved 503/409 drafts')
+  await click('Delete attachment')
+  await waitText('Attachment deleted')
+  await click('Delete message')
+  await waitText('Message deleted')
+  assert(await evaluate('window.attachmentConfirmations.length >= 2'))
+  assert(!await evaluate(`document.body.textContent.includes('Employee corrected context')`))
+  assert.equal(tickets[0].status, 'IN_PROGRESS')
+  console.log('PASS: preserved file draft after upload failure and confirmed own attachment/message tombstones')
+  communication.records.push({ id: 9000, ticketId: 142, kind: 'messages', createdInCycleId: cycles[0].id, author: { id: 20, username: 'Sara' }, content: 'Support file reply', createdAt: now, editedAt: null, deletedAt: null, attachments: [{ id: 9001, filename: 'support.txt', byteSize: 12, createdAt: now, deletedAt: null }] })
+  await click('Refresh conversation')
+  await waitText('Download support.txt')
+  assert(!await evaluate(`[...document.querySelectorAll('.communication-records > li')].find(el => el.textContent.includes('Support file reply')).textContent.includes('Delete')`))
+  console.log('PASS: requester sees support attachment without non-author deletion controls')
+
   tickets[0].status = 'NEW'
   await click('Refresh')
   await waitText('Cancel ticket')
@@ -501,8 +535,8 @@ try {
   assert.equal(cycles.length, 2)
   assert.equal(cycles[1].outcome, 'CLOSED')
   assert.equal(tickets[0].closedAt, null)
-  await waitText('Employee corrected context')
-  assert(!await evaluate(`[...document.querySelectorAll('button')].some(el => el.textContent === 'Edit message')`))
+  await waitText('Message deleted')
+  assert(!await evaluate(`[...document.querySelectorAll('button')].some(el => ['Edit message', 'Delete message', 'Delete attachment'].includes(el.textContent))`))
   assert(!requests.some((item) => /subtasks/.test(item)))
   await fill('[aria-label="Message content"]', 'Draft written before another reopening')
   cycles[0].isCurrent = false

@@ -1,3 +1,9 @@
+import { UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { AttachmentUploads, Upload } from './attachment-storage';
+import {
+  AttachmentFilesInterceptor,
+  AttachmentPayloadInterceptor,
+} from './attachment-upload.interceptor';
 import {
   Body,
   Controller,
@@ -42,6 +48,7 @@ export class TicketsController {
   constructor(
     private readonly ticketVisibilityService: TicketVisibilityService,
     private readonly ticketsService: TicketsService,
+    private readonly uploads: AttachmentUploads,
   ) {}
 
   @Get()
@@ -106,8 +113,15 @@ export class TicketsController {
   }
 
   @Post()
-  create(@Body() dto: CreateTicketDto, @Req() request: AuthenticatedRequest) {
-    return this.ticketsService.create(this.authenticatedUser(request), dto);
+  @UseInterceptors(AttachmentFilesInterceptor, AttachmentPayloadInterceptor)
+  create(
+    @Body() dto: CreateTicketDto,
+    @Req() request: AuthenticatedRequest,
+    @UploadedFiles() files: Upload[] = [],
+  ) {
+    return this.uploads.run(files, (batch) =>
+      this.ticketsService.create(this.authenticatedUser(request), dto, batch),
+    );
   }
 
   @Patch(':ticketId')

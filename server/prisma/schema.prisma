@@ -109,6 +109,7 @@ model Notification {
 }
 
 model User {
+  uploadedAttachments Attachment[]
   notifications     Notification[] @relation("NotificationRecipient")
   causedNotifications Notification[] @relation("NotificationActor")
   id                Int             @id @default(autoincrement())
@@ -277,6 +278,7 @@ model TicketTag {
 }
 
 model Ticket {
+  attachments Attachment[]
   notifications Notification[]
   id                    Int                @id @default(autoincrement())
   title                 String             @db.VarChar(200)
@@ -431,6 +433,8 @@ model TicketWorkCycle {
 }
 
 model TicketMessage {
+  deletedAt DateTime?
+  attachments Attachment[]
   id Int @id @default(autoincrement())
   ticketId Int
   createdInCycleId Int
@@ -448,6 +452,8 @@ model TicketMessage {
 }
 
 model TicketInternalNote {
+  deletedAt DateTime?
+  attachments Attachment[]
   id Int @id @default(autoincrement())
   ticketId Int
   createdInCycleId Int
@@ -462,4 +468,26 @@ model TicketInternalNote {
   @@unique([authorId, clientRequestId])
   @@index([ticketId, id])
   @@index([createdInCycleId, ticketId])
+}
+
+model Attachment {
+  id Int @id @default(autoincrement())
+  ticketId Int?
+  messageId Int?
+  internalNoteId Int?
+  uploaderId Int
+  filename String @db.VarChar(200)
+  contentType String @db.VarChar(100)
+  byteSize Int
+  storageKey String @unique @db.Uuid
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  message TicketMessage? @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  internalNote TicketInternalNote? @relation(fields: [internalNoteId], references: [id], onDelete: Restrict)
+  uploader User @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  @@index([ticketId])
+  @@index([messageId])
+  @@index([internalNoteId])
+  @@index([uploaderId])
 }

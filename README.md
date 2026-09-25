@@ -953,7 +953,7 @@ Employee:
 It works now.
 ```
 
-Messages remain grouped with their original work cycle. Plain text is trimmed and limited to 4,000 characters. Authors can edit only their own current unfinished-cycle records while still authorized; edits show an edited indicator. No deletion or revision-history endpoint exists. Terminal and previous-cycle records are permanently read-only.
+Messages remain grouped with their original work cycle. Plain text is trimmed and limited to 4,000 characters. Authors can edit only their own current unfinished-cycle records while still authorized; edits show an edited indicator. Authors may also soft-delete their own current unfinished-cycle messages/notes and individual attachments while still authorized. Deleted content is hidden by tombstones and cannot be edited or restored; no revision-history endpoint exists. Terminal and previous-cycle records are permanently read-only.
 
 Only a NEW requester message while WAITING_FOR_EMPLOYEE atomically resumes IN_PROGRESS. Edits, support messages, internal notes and duplicate retries never change status. RESOLVED/CLOSED require explicit reopening before further communication; CANCELLED never reopens. New public messages create the in-app notifications documented above in the same transaction. Real-time transport remains deferred.
 
@@ -973,18 +973,28 @@ Primary agents, current collaborators, primary-team leads and responsible manage
 
 ## Attachments
 
-Tickets may eventually support file attachments.
+Employees can attach files when creating a ticket. These original request attachments are permanently immutable: no later additions, replacements, edits or deletion. New public messages and support-only internal notes can include attachments in the same submission. Content remains required. Files cannot be appended or replaced afterward.
 
-Examples:
+The parent author alone may soft-delete a message/note or one of its attachments while currently authorized and while the parent belongs to the current unfinished work cycle. Managers, Team Leads and other support users cannot delete another author's work. RESOLVED/CLOSED/CANCELLED and all previous-cycle communication stay frozen, including after reopening. ADMIN/SUPER_ADMIN have no attachment access.
 
-- Screenshots
-- Error logs
-- Images
-- Documents
+Deletion retains IDs, author/uploader, creation time, cycle and deletion time. APIs return message/note content as null and attachment tombstones without the old filename/type/size. Deleting a parent also hides all its attached files. Deleted files cannot be downloaded, edited or restored. Deletion changes no ticket status, ownership, subtasks, routing, collaboration, cycles or notifications. A requester reply followed by deletion leaves the ticket IN_PROGRESS. Creation keys stay consumed; replay returns the tombstone without new files or notifications.
 
-File uploads should not be implemented until the core ticket functionality is stable.
+Up to **5 files per submission, 10 MB (10,485,760 bytes) per file**: PNG, JPEG, WebP, PDF, TXT, LOG/plain text, JSON and CSV. The server checks extension, declared MIME, signatures for binary formats, UTF-8 text and JSON syntax. Executable, HTML/script and archive extensions are rejected. Display filenames are sanitized; generated UUID keys address stored files. These checks are not malware scanning.
 
-Storage, validation, file size limits, and security will be designed when this feature is introduced.
+Files use a replaceable `AttachmentStorage` interface and a local filesystem adapter. Set `ATTACHMENT_STORAGE_DIR` to a private directory; the development default is `.attachments` under the server process working directory (`server/.attachments` when started from `server/`), ignored by Git. Never configure it inside a public/static directory. Uploads are bounded in memory, written to temporary files and renamed before the database transaction. Parent and metadata commit together; failed mutations and duplicate replays clean their unused files. Storage failure prevents parent creation. Unexpected process termination can leave private unreferenced files; crash recovery/scavenging, physical purge, quotas, malware scanning and S3/object storage remain deferred deployment hardening. No files are claimed to be scanned.
+
+Every download authorizes current access through the parent in the backend. Original ticket and public-message attachments use current ticket visibility; note attachments use current support-only visibility. Ordinary membership, past collaboration, old participation and notifications grant no access. Authorized historical downloads remain available, but access disappears when the current parent relationship is lost. Downloads use `Content-Disposition: attachment`, `nosniff`, private/no-store caching and a restrictive CSP; no static upload route or inline preview exists. Storage keys/paths never enter API projections.
+
+API additions:
+
+- Existing `POST /tickets`, `POST /tickets/:ticketId/messages` and `POST /tickets/:ticketId/internal-notes` accept the existing JSON DTO or multipart with one JSON `payload` field and up to five `files` parts. No base64 bodies.
+- `GET /tickets/:ticketId/attachments` lists original request metadata. Message/note projections contain their attachment metadata plus parent `canDelete` hints.
+- `GET /tickets/attachments/:attachmentId/download` downloads an authorized, undeleted file.
+- `DELETE /tickets/:ticketId/messages/:recordId` and the corresponding `/internal-notes/:recordId` soft-delete the author's eligible record.
+- Append `/attachments/:attachmentId` to either communication DELETE route to delete one eligible attachment. DELETE bodies require `{ expectedCycleId }`; repeat deletion preserves the original timestamp while still eligible.
+- PATCH remains content-only; no append, replacement, restore or ticket-attachment deletion endpoint exists.
+
+The migration `20260925120000_attachments_soft_deletion` adds nullable communication `deletedAt` and an empty Attachment table. It preserves existing content and fabricates no attachments. Tests use temporary private storage with cleanup.
 
 ---
 
@@ -1215,7 +1225,7 @@ All three require MANAGER or AGENT authentication. Resource projections reuse ex
 
 `pnpm test:browser` runs Employee, operational and administration suites. Communication coverage includes requester/support posting, own editing, internal-note separation, collaborator controls, frozen history, waiting replies and draft recovery across failures/reopening. Existing lifecycle, organization, mobile, session and error flows remain covered. Browser tests use isolated API fixtures; PostgreSQL e2e separately exercises actual authorization and atomicity. No browser-to-live-database coverage is claimed.
 
-ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Persistent in-app notifications are implemented in the shared shell. The remaining roadmap, in order, is attachments, My Work History, automatic RESOLVED -> CLOSED behavior, general polish/stabilization, and AI routing/recommendations. Generic audits and SSO/SCIM remain deferred.
+ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Persistent in-app notifications are implemented in the shared shell. The remaining roadmap, in order, is My Work History, automatic RESOLVED -> CLOSED behavior, general polish/stabilization, and AI routing/recommendations. Generic audits and SSO/SCIM remain deferred.
 
 ---
 
@@ -1397,13 +1407,12 @@ Focus on:
 
 ### Remaining Roadmap
 
-1. Attachments
-2. My Work History
-3. Automatic RESOLVED -> CLOSED behavior
-4. General polish/stabilization
-5. AI routing/recommendations
+1. My Work History
+2. Automatic RESOLVED -> CLOSED behavior
+3. General polish/stabilization
+4. AI routing/recommendations
 
-AI recommendations include categorization, priority and agent suggestions, confidence scores, reasoning, and manager review. Attachments are the next planned feature and are not implemented yet.
+AI recommendations include categorization, priority and agent suggestions, confidence scores, reasoning, and manager review. Secure attachments and author-controlled communication soft deletion are implemented.
 
 ### Optional Deferred Features
 

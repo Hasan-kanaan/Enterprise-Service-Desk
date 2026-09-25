@@ -1,3 +1,8 @@
+import { AttachmentList, AttachmentPicker } from './Attachments'
+import {
+  type Attachment,
+  postWithAttachments,
+} from '@/services/attachments.service'
 import { useCallback, useRef, useState } from 'react'
 import api, { getApiStatus } from '@/services/api'
 import { useResource } from '@/hooks/useResource'
@@ -9,7 +14,10 @@ type Entry = {
   id: number
   createdInCycleId: number
   author: { id: number; username: string }
-  content: string
+  content: string | null
+  deletedAt: string | null
+  canDelete: boolean
+  attachments: Attachment[]
   createdAt: string
   editedAt: string | null
   canEdit: boolean
@@ -87,6 +95,7 @@ function CommunicationStream({
     ),
   )
   const [draft, setDraft] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [draftCycle, setDraftCycle] = useState<number | null>(null)
   const [editing, setEditing] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
@@ -95,6 +104,7 @@ function CommunicationStream({
     content: string
     cycle: number
     key: string
+    files: File[]
   } | null>(null)
   const notes = kind === 'internal-notes'
   const title = notes ? 'Internal notes — support only' : 'Conversation'
@@ -122,16 +132,22 @@ function CommunicationStream({
         if (
           !request.current ||
           request.current.content !== content ||
-          request.current.cycle !== cycle
+          request.current.cycle !== cycle ||
+          request.current.files !== files
         )
-          request.current = { content, cycle, key: crypto.randomUUID() }
-        await api.post(path, {
-          content,
-          expectedCycleId: cycle,
-          clientRequestId: request.current.key,
-        })
+          request.current = { content, cycle, key: crypto.randomUUID(), files }
+        await postWithAttachments(
+          path,
+          {
+            content,
+            expectedCycleId: cycle,
+            clientRequestId: request.current.key,
+          },
+          files,
+        )
       }
       setDraft('')
+      setFiles([])
       setDraftCycle(null)
       setEditing(null)
       request.current = null
@@ -141,6 +157,34 @@ function CommunicationStream({
       if (!notes && !data?.canReadNotes && editing === null) onChanged()
     } catch (failure) {
       setError(failure)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const remove = async (record: Entry, file?: Attachment) => {
+    if (
+      !file &&
+      !window.confirm(
+        `Delete this ${notes ? 'note' : 'message'} and its attachments?`,
+      )
+    )
+      return
+    setBusy(true)
+    setError(undefined)
+    try {
+      await api.delete(
+        `${path}/${record.id}${file ? `/attachments/${file.id}` : ''}`,
+        { data: { expectedCycleId: data?.currentCycleId } },
+      )
+      if (editing === record.id && !file) {
+        setEditing(null)
+        setDraft('')
+        setDraftCycle(null)
+      }
+      reload()
+    } catch (failure) {
+      setError(failure)
+      if (file) throw failure
     } finally {
       setBusy(false)
     }
@@ -199,14 +243,45 @@ function CommunicationStream({
                               </span>
                             )}
                           </p>
-                          <p className="description">{record.content}</p>
+                          {record.deletedAt ? (
+                            <p className="muted">
+                              {notes ? 'Note' : 'Message'} deleted &#183;{' '}
+                              {formatDate(record.deletedAt, true)}
+                            </p>
+                          ) : (
+                            <p className="description">{record.content}</p>
+                          )}
+                          <AttachmentList
+                            files={record.attachments ?? []}
+                            disabled={busy}
+                            onDelete={
+                              record.canDelete && !conflict
+                                ? (file) => remove(record, file)
+                                : undefined
+                            }
+                          />
+                          {record.canDelete && (
+                            <button
+                              type="button"
+                              className="text-button"
+                              disabled={busy || conflict}
+                              onClick={() => void remove(record)}
+                            >
+                              Delete {notes ? 'note' : 'message'}
+                            </button>
+                          )}
                           {record.canEdit && (
                             <button
                               className="text-button"
-                              disabled={busy || !!draft || editing !== null}
+                              disabled={
+                                busy ||
+                                !!draft ||
+                                files.length > 0 ||
+                                editing !== null
+                              }
                               onClick={() => {
                                 setEditing(record.id)
-                                setDraft(record.content)
+                                setDraft(record.content ?? '')
                                 setDraftCycle(record.createdInCycleId)
                                 setError(undefined)
                               }}
@@ -226,7 +301,8 @@ function CommunicationStream({
                   ticket's lifecycle state.
                 </p>
               )}
-              {(data.canPost || draft) && (
+              {!!error && <ErrorState error={error} onRetry={reload} />}
+              {(data.canPost || draft || files.length > 0) && (
                 <form
                   onSubmit={(event) => {
                     event.preventDefault()
@@ -254,7 +330,17 @@ function CommunicationStream({
                   <p className="small muted">
                     {draft.length}/4000 characters. Plain text.
                   </p>
-                  {!!error && <ErrorState error={error} onRetry={reload} />}
+                  {editing === null && (
+                    <AttachmentPicker
+                      files={files}
+                      disabled={busy}
+                      onChange={(next) => {
+                        setFiles(next)
+                        if (draftCycle === null)
+                          setDraftCycle(data.currentCycleId)
+                      }}
+                    />
+                  )}
                   {stale && (
                     <p className="notice">
                       This draft belongs to an earlier cycle. Review it before
@@ -294,13 +380,14 @@ function CommunicationStream({
                         Use reviewed text as new {notes ? 'note' : 'message'}
                       </button>
                     )}
-                    {(draft || editing !== null) && (
+                    {(draft || files.length > 0 || editing !== null) && (
                       <button
                         type="button"
                         className="text-button"
                         disabled={busy}
                         onClick={() => {
                           setDraft('')
+                          setFiles([])
                           setDraftCycle(null)
                           setEditing(null)
                           setError(undefined)

@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { AttachmentPicker } from './Attachments'
 import { useForm, useWatch } from 'react-hook-form'
 import type {
   TicketInput,
@@ -10,7 +12,8 @@ import { ticketPriorities } from '@/types/tickets'
 type Props = {
   options: TicketOptions
   initial?: TicketInput
-  onSave: (values: TicketInput) => Promise<void>
+  onSave: (values: TicketInput, files?: File[]) => Promise<void>
+  allowAttachments?: boolean
   onCancel: () => void
   submitLabel: string
   locked?: boolean
@@ -33,7 +36,9 @@ export function TicketForm({
   onCancel,
   submitLabel,
   locked = false,
+  allowAttachments = false,
 }: Props) {
+  const [files, setFiles] = useState<File[]>([])
   const {
     register,
     control,
@@ -83,15 +88,18 @@ export function TicketForm({
       })
       return
     }
-    await onSave({
-      ...input,
-      title: input.title.trim(),
-      description: input.description.trim(),
-      affectedRegionIds: input.allRegions ? [] : input.affectedRegionIds,
-      affectedDepartmentIds: input.allDepartments
-        ? []
-        : input.affectedDepartmentIds,
-    })
+    await onSave(
+      {
+        ...input,
+        title: input.title.trim(),
+        description: input.description.trim(),
+        affectedRegionIds: input.allRegions ? [] : input.affectedRegionIds,
+        affectedDepartmentIds: input.allDepartments
+          ? []
+          : input.affectedDepartmentIds,
+      },
+      files,
+    )
   })
   return (
     <form onSubmit={submit} className="ticket-form" noValidate>
@@ -237,6 +245,13 @@ export function TicketForm({
             </fieldset>
           )}
         </div>
+        {allowAttachments && (
+          <AttachmentPicker
+            files={files}
+            onChange={setFiles}
+            disabled={isSubmitting || locked}
+          />
+        )}
         <div className="form-footer">
           <button className="button secondary" type="button" onClick={onCancel}>
             Cancel

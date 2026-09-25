@@ -149,6 +149,23 @@ describe('Work-cycle migration from the nine-migration schema', () => {
         await expect(client.query(`DELETE FROM "${table}" WHERE id = $1`, [id])).rejects.toMatchObject({ code: '23503' });
         await client.query('ROLLBACK TO SAVEPOINT notification_reference');
       }
+      for (const table of ['TicketMessage', 'TicketInternalNote']) {
+        await client.query(`INSERT INTO "${table}" ("ticketId", "createdInCycleId", "authorId", content, "clientRequestId", "creationHash") VALUES (1, $1, 1, 'Existing content', $2, $3)`, [cycles[0].id, randomUUID(), 'a'.repeat(64)]);
+      }
+      await client.query(readFileSync(join(root, '20260925120000_attachments_soft_deletion', 'migration.sql'), 'utf8'));
+      expect((await client.query('SELECT count(*)::int AS count FROM "Attachment"')).rows[0].count).toBe(0);
+      for (const table of ['TicketMessage', 'TicketInternalNote']) {
+        expect((await client.query(`SELECT content, "deletedAt" FROM "${table}"`)).rows).toEqual([{ content: 'Existing content', deletedAt: null }]);
+      }
+      for (const parents of ['NULL, NULL, NULL', '1, 1, NULL', '99999, NULL, NULL']) {
+        await client.query('SAVEPOINT attachment_constraint');
+        await expect(client.query(`INSERT INTO "Attachment" ("ticketId", "messageId", "internalNoteId", "uploaderId", filename, "contentType", "byteSize", "storageKey") VALUES (${parents}, 1, 'file.txt', 'text/plain', 1, $1)`, [randomUUID()])).rejects.toBeDefined();
+        await client.query('ROLLBACK TO SAVEPOINT attachment_constraint');
+      }
+      await client.query(`INSERT INTO "Attachment" ("ticketId", "uploaderId", filename, "contentType", "byteSize", "storageKey") VALUES (1, 1, 'file.txt', 'text/plain', 1, $1)`, [randomUUID()]);
+      await client.query('SAVEPOINT immutable_ticket_attachment');
+      await expect(client.query('UPDATE "Attachment" SET "deletedAt" = NOW()')).rejects.toMatchObject({ code: '23514' });
+      await client.query('ROLLBACK TO SAVEPOINT immutable_ticket_attachment');
     } finally {
       await client.query('ROLLBACK');
       await client.end();
