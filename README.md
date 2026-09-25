@@ -38,6 +38,7 @@ The goal is not only to build a functional application, but also to gain practic
 - [Git Workflow](#git-workflow)
 - [Rules for AI Assistants](#rules-for-ai-assistants)
 - [Project Status](status.md)
+- [Future Public Demo Deployment Plan](docs/demo-deployment-plan.md)
 
 ---
 
@@ -1225,7 +1226,7 @@ All three require MANAGER or AGENT authentication. Resource projections reuse ex
 
 `pnpm test:browser` runs Employee, operational and administration suites. Communication coverage includes requester/support posting, own editing, internal-note separation, collaborator controls, frozen history, waiting replies and draft recovery across failures/reopening. Existing lifecycle, organization, mobile, session and error flows remain covered. Browser tests use isolated API fixtures; PostgreSQL e2e separately exercises actual authorization and atomicity. No browser-to-live-database coverage is claimed.
 
-ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Persistent in-app notifications are implemented in the shared shell. The remaining roadmap, in order, is My Work History, automatic RESOLVED -> CLOSED behavior, general polish/stabilization, and AI routing/recommendations. Generic audits and SSO/SCIM remain deferred.
+ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Persistent in-app notifications are implemented in the shared shell. My Work History is implemented. The remaining roadmap, in order, is automatic RESOLVED -> CLOSED behavior, general polish/stabilization, and AI routing/recommendations. Generic audits and SSO/SCIM remain deferred.
 
 ---
 
@@ -1407,16 +1408,15 @@ Focus on:
 
 ### Remaining Roadmap
 
-1. My Work History
-2. Automatic RESOLVED -> CLOSED behavior
-3. General polish/stabilization
-4. AI routing/recommendations
+1. Automatic RESOLVED -> CLOSED behavior
+2. General polish/stabilization
+3. AI routing/recommendations
 
 AI recommendations include categorization, priority and agent suggestions, confidence scores, reasoning, and manager review. Secure attachments and author-controlled communication soft deletion are implemented.
 
 ### Optional Deferred Features
 
-Realtime transport, generic audit infrastructure, SSO/SCIM, notification preferences and retention, pagination, analytics, SLA tracking, advanced permissions, and further AI automation remain deferred.
+Realtime transport, generic audit infrastructure, SSO/SCIM, notification preferences and retention, pagination outside My Work History, analytics, SLA tracking, advanced permissions, and further AI automation remain deferred.
 
 
 ---
@@ -1662,3 +1662,23 @@ Optimize for building a solid application while understanding the decisions behi
 ## Project Status
 
 Live implementation progress, validation results, and the next task are tracked in [status.md](status.md).
+
+## My Work History
+
+`/work-history` is available to MANAGER and AGENT (including agents who are Team Leads). `GET /my-work-history` is an authenticated, limited personal historical projection, not a ticket-visibility rule. EMPLOYEE keeps request history; ADMIN/SUPER_ADMIN do not receive support history. The caller comes exclusively from the authenticated identity; user selectors and unknown query fields are rejected.
+
+Evidence and row semantics:
+
+- One row per ended TicketWorkCycle (`endedAt` and `outcome` present), combining all matching contributions: `endingManagerId` / `endingAgentId` only when `ownershipSnapshotBasis=END_OF_WORK`, `endedById`, timestamped `closedById`, and `startedById` on REOPENED cycles. Reopen attribution appears once that cycle ends. Original-cycle creation is not support history.
+- Separate rows for Subtasks currently marked COMPLETED with both `completedById` equal to the caller and `completedAt` present, including completed tasks in ongoing cycles. Assignment alone never proves completion. Multiple completed tasks are distinct pieces of work; they do not duplicate the cycle row.
+- Migration-time ownership snapshots are not treated as proof of ending responsibility. Unknown actors remain unknown. The system does not preserve every intermediate within-cycle ownership assignment. Brief ownership or collaboration that left no durable evidence is absent; no missing historical participation is invented. Existing within-cycle subtask reopening can clear completion attribution; there is no completion-event archive or assignment-event stream.
+
+Projection fields are `kind` (CYCLE/SUBTASK), row `id`, `ticketId`, `cycleId`, `sequenceNumber`, `cycleType`, `outcome`, `activityAt`, `contributions`, `subtaskTitle`, `subtaskStatus`, and `canOpenTicket`. Subtask fields are null for cycle rows. No current ticket title, description, requester identity, current owners, affected organizations, category, messages, notes, files or notifications are selected. Completed subtask titles are retained task labels, not immutable title snapshots.
+
+`canOpenTicket` is a current, advisory check of the existing TicketVisibilityService policy for only the returned page. It offers the normal ticket route when allowed. Historical-only records remain visible without a link. Every detail/communication/download route continues to authorize independently, including manual navigation or access lost after the history read. Membership, Team Lead status and former collaboration create no history by themselves. Deactivation does not rewrite evidence; inactive accounts cannot authenticate. Reactivation restores no responsibilities and retains the existing normal visibility rules (including manager intake visibility).
+
+Query parameters: `page` (default 1, range 1..1,000,000), `pageSize` (default 25, range 1..100), optional `contribution` (`RESPONSIBLE_MANAGER`, `PRIMARY_AGENT`, `ENDED_WORK`, `CLOSED_WORK`, `REOPENED_WORK`, `COMPLETED_SUBTASK`), and inclusive ISO `from` / `to`. Invalid values and reversed ranges return 400. Date-only API bounds mean UTC midnight; the UI submits UTC start/end-of-day bounds. Cycle activity is its endedAt, or the caller's later closedAt; task activity is completedAt. Reopen labels describe participation in the ended cycle, not a separate chronological event.
+
+Pagination uses parameterized SQL UNION ALL, database filtering and deterministic `activityAt DESC, kind DESC, id DESC`, with LIMIT pageSize+1 / OFFSET. The response is `{ items, page, pageSize, hasMore }`; there is no full-history load or count. The page and current-access hint share a repeatable-read snapshot. Offset pages are deterministic for unchanged data; new completions/closure or cleared within-cycle completion can shift pages between requests. Deep offsets still cost database work. Pagination elsewhere is unchanged.
+
+Migration `20260925160000_work_history_indexes` adds five actor/ending-time/id indexes to TicketWorkCycle and a completer/completion-time/id index to Subtask. It creates no history table or historical records. History reads produce no notifications or mutations. Auto-close and demo/deployment infrastructure remain deferred.

@@ -37,10 +37,12 @@ const navigation = {
     { label: 'New ticket intake', to: '/work/intake', icon: Ticket },
     { label: 'My tickets', to: '/work/tickets', icon: Ticket },
     { label: 'Subtasks', to: '/work/subtasks', icon: Ticket },
+    { label: 'My Work History', to: '/work-history', icon: Ticket },
   ],
   AGENT: [
     { label: 'Assigned & collaborating', to: '/work/tickets', icon: Ticket },
     { label: 'Subtasks', to: '/work/subtasks', icon: Ticket },
+    { label: 'My Work History', to: '/work-history', icon: Ticket },
     { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
     { label: 'Profile', to: '/profile', icon: Shield },
   ],
@@ -81,17 +83,20 @@ export function AppLayout() {
       : userRole === 'ADMIN' || userRole === 'SUPER_ADMIN'
         ? 'Administration'
         : 'Support workspace'
-  const pageLabel = location.pathname.startsWith('/admin')
-    ? 'Administration'
-    : location.pathname.startsWith('/work')
-      ? 'Operational work'
-      : location.pathname.startsWith('/tickets')
-        ? 'My tickets'
-        : location.pathname.startsWith('/users')
-          ? 'Accounts'
-          : location.pathname.startsWith('/profile')
-            ? 'Profile'
-            : 'Dashboard'
+  const pageLabel =
+    location.pathname === '/work-history'
+      ? 'My Work History'
+      : location.pathname.startsWith('/admin')
+        ? 'Administration'
+        : location.pathname.startsWith('/work')
+          ? 'Operational work'
+          : location.pathname.startsWith('/tickets')
+            ? 'My tickets'
+            : location.pathname.startsWith('/users')
+              ? 'Accounts'
+              : location.pathname.startsWith('/profile')
+                ? 'Profile'
+                : 'Dashboard'
   const handleLogout = async () => {
     clearSession()
     try {

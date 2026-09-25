@@ -17,10 +17,13 @@ import { TicketsController } from './tickets.controller';
 import { TicketsService } from './tickets.service';
 import { TicketWorkspaceController } from './ticket-workspace.controller';
 import { TicketOptionsController } from './ticket-options.controller';
+import { WorkHistoryController } from './work-history.controller';
+import { WorkHistoryService } from './work-history.service';
 
 @Module({
   imports: [JwtModule.register({ secret: jwtConstants.secret })],
   controllers: [
+    WorkHistoryController,
     AttachmentsController,
     TicketCommunicationController,
     TicketsController,
@@ -28,6 +31,7 @@ import { TicketOptionsController } from './ticket-options.controller';
     TicketWorkspaceController,
   ],
   providers: [
+    WorkHistoryService,
     { provide: AttachmentStorage, useClass: LocalAttachmentStorage },
     AttachmentUploads,
     TicketCommunicationService,

@@ -2,9 +2,11 @@
 
 Frontend and backend verification updated on 2026-09-25. [README.md](README.md) describes the project and [docs/decision.md](docs/decision.md) records architectural decisions.
 
+The [future public demo deployment plan](docs/demo-deployment-plan.md) records late-phase constraints only; demo infrastructure remains deferred while normal product development continues.
+
 ## Current Phase
 
-Secure attachments and author-controlled communication soft deletion implemented on the verified notification, routing, collaboration, lifecycle and administration baseline. All work remains uncommitted; no commit or push performed.
+My Work History implemented on the existing authorization, routing, collaboration, communication, attachment, notification, lifecycle and offboarding baseline. Auto-close and demo/deployment infrastructure remain deferred. All work remains uncommitted; no commit or push performed.
 
 ## Secure Attachments and Soft Deletion
 
@@ -170,19 +172,18 @@ git status --short
 
 ## Remaining Roadmap
 
-1. My Work History
-2. Automatic RESOLVED -> CLOSED behavior
-3. General polish/stabilization
-4. AI routing/recommendations
+1. Automatic RESOLVED -> CLOSED behavior
+2. General polish/stabilization
+3. AI routing/recommendations
 
-Attachments and author-controlled communication soft deletion are complete. My Work History is next.
+Attachments, author-controlled communication soft deletion and My Work History are complete. Auto-close remains deferred.
 
 ## Deferred Work and Remaining Boundaries
 
 - Browser notifications, polling/realtime transport, generic audit infrastructure, SSO/SCIM and other optional enterprise features remain deferred. Notification history pagination, preferences, deletion and retention jobs are not implemented.
 - Communication uses explicit REST refresh with no pagination, read receipts or revision history. Edits retain original authorship/time and only the latest editedAt/content. Names are current display labels for stable author IDs. Drafts are in-memory and are not promised across navigation, sign-out or a full browser reload.
 - Organization master/team rename/delete, existing team coverage updates, specialty-link changes, account identity/role/home-organization editing, and broader organization/membership lifecycle reconciliation remain deferred due to missing mutation APIs/business rules. Existing member removal does not transfer retained work; no new reconciliation behavior was introduced.
-- Pagination remains deferred. Employee catalogs and operational assignment choices retain their scoped read-only endpoints.
+- Pagination outside My Work History remains deferred. Employee catalogs and operational assignment choices retain their scoped read-only endpoints.
 - Work-cycle snapshots capture ending responsibility, not every within-cycle assignment. Legacy unknown facts remain NULL; names are current display labels for stable user IDs.
 - Subtask statuses retain their existing within-cycle transition behavior; earlier-cycle work is permanently frozen.
 - Serialization conflicts require explicit reload/retry. Offboarding does not automatically retry or choose replacements.
@@ -223,3 +224,45 @@ Attachments and author-controlled communication soft deletion are complete. My W
 - `server/test/tickets-authorization.e2e-spec.ts`
 - `server/test/work-cycle-migration.e2e-spec.ts`
 - `status.md`
+
+## My Work History - 2026-09-25
+
+- MANAGER/AGENT navigation and /work-history page use authenticated GET /my-work-history. EMPLOYEE/ADMIN/SUPER_ADMIN cannot use it, and no caller can select another user's history.
+- Limited personal historical projection: IDs, cycle number/type/outcome, contribution labels, activity timestamp, own completed subtask title/status, and current canOpenTicket. No ticket title, requester, descriptions, ownership/scope/category detail, conversation, internal notes, deleted contents, attachments or notification data.
+- Evidence: endedAt/outcome-qualified TicketWorkCycle endingManagerId/endingAgentId with END_OF_WORK basis, endedById, timestamped closedById, and REOPENED startedById. Matching cycle relations combine into one row. Separate completed-task rows require COMPLETED, completedById and completedAt; completed work may precede cycle end. Reopen attribution appears only once its cycle ends.
+- History grants no ticket visibility. Open ticket uses the existing current-access predicate, scoped to returned IDs; detail and all related routes recheck normally. Team membership, Team Lead relationship, former assignment or collaboration alone create no record. Normal offboarding retains evidence, inactive sessions are rejected, and reactivation restores no responsibilities. Existing shared intake visibility remains intact.
+- Truthfulness limits: intermediate within-cycle assignments are not stored; no missing participation is invented. RECORDED_AT_MIGRATION owners are not ending evidence. Within-cycle subtask reopening can clear completion facts; task titles are retained labels, not title-version snapshots. No assignment-event stream or duplicate history table.
+- SQL pagination: page 1 / size 25 by default, size 1..100, at most 101 rows loaded, LIMIT/OFFSET, deterministic activityAt/kind/id descending. Contribution and inclusive date filters run in PostgreSQL. Cycle activity is endedAt or the caller's later closedAt; task activity is completedAt. No all-history query/count or browser reconstruction. Offset pages can shift as facts change between requests; deep offsets still require database work.
+- Migration 20260925160000_work_history_indexes adds five cycle actor/time/id indexes and one subtask completer/time/id index. Applied to both local development and isolated test databases (14 migrations each, zero schema drift in both). Existing application data and sequences were verified unchanged in both databases; no migration files were created or modified. No backfill or fabricated history.
+- UI includes loading, empty/filter state, pagination, retry, responsive cards and current-access-only ticket links. No history read writes or notifications. Existing browser suites cover the unchanged workflows; two additional operational browser groups cover Manager/Agent history, completed subtask, filters, pagination, empty/error states, access loss and mobile layout.
+
+### My Work History files changed
+
+- README.md
+- docs/decision.md
+- status.md
+- client/src/layouts/AppLayout.tsx
+- client/src/routes/AppRoutes.tsx
+- client/src/pages/WorkHistoryPage.tsx
+- client/test/operations-flow.mjs
+- server/prisma/schema.prisma
+- server/prisma/migrations/20260925160000_work_history_indexes/migration.sql
+- server/src/tickets/tickets-authorization.module.ts
+- server/src/tickets/dto/work-history.dto.ts
+- server/src/tickets/work-history.controller.ts
+- server/src/tickets/work-history.service.ts
+- server/src/tickets/work-history.service.spec.ts
+- server/test/work-history.e2e-spec.ts
+
+Pre-existing README/status demo-plan references were preserved. docs/demo-deployment-plan.md and demo/deployment infrastructure were not changed. No commit or push.
+
+### My Work History verification results
+
+- Backend TypeScript check and Nest build: passed.
+- Unit: 11 suites / 110 tests passed (`node node_modules/jest/bin/jest.js --runInBand --no-cache`). Includes bounded query/sentinel and page-scoped existing visibility predicate checks.
+- PostgreSQL/HTTP: 6 suites / 192 tests passed (`node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json --runInBand --no-cache`). New history suite: 29 tests, including a 261-cycle pagination fixture. Existing routing, collaborator, message/note/deletion, attachment, notification and offboarding regressions all pass.
+- Chromium: Employee 16 groups, operational 13 groups (11 existing + 2 history), administration 5 groups passed. No runtime errors; mobile history screenshot saved to the OS temp directory as eds-work-history-mobile.png. Browser API fixtures test frontend contracts; PostgreSQL/HTTP tests verify real queries and authorization.
+- Client ESLint, TypeScript and Vite production build: passed.
+- Prisma validation/generation: passed. Local development and isolated test databases: all 14 migrations applied in each; migrate status is fully up to date and migrate diff reports no difference for both.
+- git diff --check: passed.
+- Initial verification corrected a new-file encoding issue and incorrect test assumptions about cancellation and reactivated-manager intake access. The first history run left a test ticket in shared intake before fixture cleanup was added; its verified fixture was removed, then the complete 192-test run passed. Restricted-sandbox database access failed; authorized local PostgreSQL and Chromium runs completed successfully. Expected injected rollback errors and existing pg/VM warnings remain in e2e logs.

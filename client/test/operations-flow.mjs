@@ -264,6 +264,21 @@ function response(request) {
   if (!loggedIn) return [401, { message: 'Inactive account' }]
   if (path.startsWith('/notifications')) return notifications.respond(request, user.id)
   if (failure) return [503, { message: 'Service temporarily unavailable' }]
+  if (path === '/my-work-history') {
+    const page = Number(url.searchParams.get('page') || 1)
+    const contribution = user.role === 'MANAGER' ? 'RESPONSIBLE_MANAGER' : 'PRIMARY_AGENT'
+    let rows = Array.from({ length: 27 }, (_, i) => ({
+      kind: i === 0 ? 'SUBTASK' : 'CYCLE', id: 700 + i, ticketId: i === 1 ? 143 : 800 + i,
+      cycleId: 900 + i, sequenceNumber: i + 1, cycleType: 'REOPENED', outcome: 'RESOLVED',
+      activityAt: '2026-09-22T08:00:00.000Z', contributions: [i === 0 ? 'COMPLETED_SUBTASK' : contribution],
+      subtaskTitle: i === 0 ? 'Completed VPN verification' : null, subtaskStatus: i === 0 ? 'COMPLETED' : null,
+      canOpenTicket: i === 1,
+    }))
+    if (url.searchParams.get('contribution')) rows = rows.filter(row => row.contributions.includes(url.searchParams.get('contribution')))
+    if (url.searchParams.get('from')) rows = rows.filter(row => row.activityAt >= url.searchParams.get('from'))
+    if (url.searchParams.get('to')) rows = rows.filter(row => row.activityAt <= url.searchParams.get('to'))
+    return [200, { items: rows.slice((page - 1) * 25, page * 25), page, pageSize: 25, hasMore: rows.length > page * 25 }]
+  }
   if (path === '/ticket-options') return [200, options]
   if (path === '/ticket-workspace')
     return [
@@ -609,6 +624,48 @@ try {
     await click(text)
     await waitText('Confirm')
   }
+  // Personal history is a limited projection; no parent link for retained work.
+  await navigate('/work-history')
+  await waitText('Completed VPN verification')
+  await waitText('Responsible Manager')
+  assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Historical work"] li').length`), 25)
+  assert(!await evaluate(`!!document.querySelector('a[href="/work/tickets/800"]')`))
+  await waitText('Historical record only')
+  await click('Next')
+  await waitText('Page 2')
+  assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Historical work"] li').length`), 2)
+  await click('Previous')
+  await waitText('Page 1')
+  await fill('select', 'COMPLETED_SUBTASK')
+  await waitText('Completed VPN verification')
+  await until(() => evaluate(`document.querySelectorAll('[aria-label="Historical work"] li').length === 1`), 'filtered history')
+  await fill('input[type="date"]', '2027-01-01')
+  await waitText('No work history found')
+  await fill('input[type="date"]', '')
+  await fill('select', '')
+  await waitText('Open ticket')
+  await click('Open ticket')
+  await waitText('Owned network issue')
+  console.log('PASS: manager history, completed subtask, pagination, filters, empty state and current ticket navigation')
+  user = { ...user, id: 31, role: 'AGENT' }
+  await navigate('/work-history')
+  await waitText('Primary Agent')
+  await waitText('Completed VPN verification')
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'), 'History fits mobile viewport')
+  const historyMobile = await send('Page.captureScreenshot', { format: 'png' })
+  writeFileSync(join(tmpdir(), 'eds-work-history-mobile.png'), Buffer.from(historyMobile.data, 'base64'))
+  failure = true
+  await navigate('/work-history')
+  await waitText('Service temporarily unavailable')
+  failure = false
+  await click('Try again')
+  await waitText('Completed VPN verification')
+  await navigate('/work/tickets/800')
+  await waitText('could not be found')
+  console.log('PASS: agent history, inaccessible historical ticket, mobile layout and error retry')
+  await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false })
+  user = { ...user, id: 20, role: 'MANAGER' }
   await navigate('/dashboard')
   await waitText('Support overview')
   await waitText('Owned network issue')

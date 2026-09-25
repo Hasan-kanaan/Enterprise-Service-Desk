@@ -391,6 +391,8 @@ model Subtask {
   createdInCycle  TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
   completedBy     User? @relation("SubtaskCompleter", fields: [completedById], references: [id], onDelete: Restrict)
 
+  @@index([completedById, completedAt, id])
+
   @@index([ticketId])
   @@index([assignedTeamId])
   @@index([assignedAgentId])
@@ -428,6 +430,11 @@ model TicketWorkCycle {
   messages               TicketMessage[]
   internalNotes          TicketInternalNote[]
 
+  @@index([endingManagerId, endedAt, id])
+  @@index([endingAgentId, endedAt, id])
+  @@index([endedById, endedAt, id])
+  @@index([closedById, closedAt, id])
+  @@index([startedById, endedAt, id])
   @@unique([ticketId, sequenceNumber])
   @@unique([id, ticketId])
 }

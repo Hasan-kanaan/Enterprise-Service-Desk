@@ -1,3 +1,4 @@
+import { WorkHistoryPage } from '@/pages/WorkHistoryPage'
 import { OperationalWorkspacePage } from '@/pages/OperationalWorkspacePage'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
@@ -92,6 +93,7 @@ export function AppRoutes() {
               />
             </Route>
             <Route element={<ProtectedRoute roles={['MANAGER', 'AGENT']} />}>
+              <Route path="/work-history" element={<WorkHistoryPage />} />
               <Route
                 path="/work/tickets"
                 element={<OperationalWorkspacePage />}
