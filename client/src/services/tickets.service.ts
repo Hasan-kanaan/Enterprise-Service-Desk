@@ -8,8 +8,8 @@ import type {
   TicketSummary,
 } from '@/types/tickets'
 
-export const listTickets = async (signal?: AbortSignal) =>
-  (await api.get<TicketSummary[]>('/tickets', { signal })).data
+export const getTicketSummary = async (signal?: AbortSignal) =>
+  (await api.get<{ counts: number[] }>('/tickets/summary', { signal })).data
 export const getTicket = async (id: number, signal?: AbortSignal) =>
   (await api.get<TicketDetail>(`/tickets/${id}`, { signal })).data
 export const getTicketHistory = async (id: number, signal?: AbortSignal) =>

@@ -1,4 +1,5 @@
 import { Prisma } from '../../generated/prisma/client';
+import { autoCloseAt } from './auto-close.config';
 
 const person = { select: { id: true, username: true } } as const;
 export const cycleInclude = {
@@ -34,6 +35,7 @@ export function mapCycle(cycle: Cycle, isCurrent: boolean, ticket: Owners) {
     endedBy: cycle.endedBy,
     closedAt: cycle.closedAt,
     closedBy: cycle.closedBy,
+    closeSource: cycle.closeSource,
     resolutionSummary: cycle.resolutionSummary,
     ownership: {
       basis: ended ? cycle.ownershipSnapshotBasis : 'CURRENT',
@@ -70,6 +72,7 @@ export function mapTicket(
   } = ticket;
   return {
     ...scalars,
+    autoCloseAt: autoCloseAt(ticket),
     tagIds: tags.map((tag) => tag.tagId),
     affectedRegionIds: affectedRegions.map((region) => region.regionId),
     affectedDepartmentIds: affectedDepartments.map(

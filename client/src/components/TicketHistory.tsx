@@ -67,9 +67,9 @@ export function TicketHistory({
                 {cycle.endedBy ? ` by ${cycle.endedBy.username}` : ''}
               </p>
             )}
-            {cycle.outcome === 'CLOSED' && (
+            {cycle.closedAt && (
               <p className="muted small">
-                Closed {formatDate(cycle.closedAt, true)}
+                {cycle.closeSource === 'AUTO_TIMEOUT' ? 'Automatically closed' : 'Closed'} {formatDate(cycle.closedAt, true)}
                 {cycle.closedBy ? ` by ${cycle.closedBy.username}` : ''}
               </p>
             )}

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request as ExpressRequest, Response } from 'express';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
@@ -26,28 +34,50 @@ export class AuthController {
   @Post('accounts')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  createAccount(@Req() request: { user: { role: UserRole } }, @Body() dto: CreateAccountDto) {
+  createAccount(
+    @Req() request: { user: { role: UserRole } },
+    @Body() dto: CreateAccountDto,
+  ) {
     return this.authService.createAccount(request.user.role, dto);
   }
 
   @Post('login')
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) response: Response) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     const result = await this.authService.login(dto);
     this.setRefreshCookie(response, result.refreshToken);
     return { accessToken: result.accessToken, user: result.user };
   }
 
   @Post('refresh')
-  async refresh(@Req() request: ExpressRequest, @Res({ passthrough: true }) response: Response) {
-    const result = await this.authService.refresh(request.cookies?.refresh_token ?? '');
+  async refresh(
+    @Req() request: ExpressRequest,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.refresh(
+      (request.cookies as Record<string, string | undefined> | undefined)
+        ?.refresh_token ?? '',
+    );
     this.setRefreshCookie(response, result.refreshToken);
     return { accessToken: result.accessToken, user: result.user };
   }
 
   @Post('logout')
-  logout(@Req() request: ExpressRequest, @Res({ passthrough: true }) response: Response) {
-    response.clearCookie('refresh_token', { httpOnly: true, sameSite: 'lax', path: '/auth' });
-    return this.authService.logout(request.cookies?.refresh_token ?? '');
+  logout(
+    @Req() request: ExpressRequest,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.clearCookie('refresh_token', {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/auth',
+    });
+    return this.authService.logout(
+      (request.cookies as Record<string, string | undefined> | undefined)
+        ?.refresh_token ?? '',
+    );
   }
 
   private setRefreshCookie(response: Response, refreshToken: string) {

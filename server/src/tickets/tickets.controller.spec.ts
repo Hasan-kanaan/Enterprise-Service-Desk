@@ -1,3 +1,6 @@
+import { TicketsService } from './tickets.service';
+import { TicketVisibilityService } from './ticket-visibility.service';
+import { AttachmentUploads } from './attachment-storage';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { UserRole } from '../users/user-role.enum';
 import { TicketsController } from './tickets.controller';
@@ -7,9 +10,9 @@ describe('TicketsController', () => {
   const findVisibleById = jest.fn();
   const assignManager = jest.fn();
   const controller = new TicketsController(
-    { listVisible, findVisibleById } as any,
-    { assignManager } as any,
-    {} as any,
+    { listVisible, findVisibleById } as unknown as TicketVisibilityService,
+    { assignManager } as unknown as TicketsService,
+    {} as unknown as AttachmentUploads,
   );
 
   beforeEach(() => jest.clearAllMocks());

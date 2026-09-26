@@ -1,8 +1,4 @@
-import {
-  AttachmentStorage,
-  AttachmentUploads,
-  validateUpload,
-} from './attachment-storage';
+import { AttachmentUploads, validateUpload } from './attachment-storage';
 
 const upload = (
   name: string,
@@ -60,7 +56,7 @@ describe('Attachment file boundaries', () => {
     ).toThrow();
   });
   it('cleans earlier files and never calls the database when a later store fails', async () => {
-    const storage: AttachmentStorage = {
+    const storage = {
       put: jest
         .fn()
         .mockResolvedValueOnce(undefined)
@@ -79,19 +75,16 @@ describe('Attachment file boundaries', () => {
     expect(storage.remove).toHaveBeenCalledTimes(2);
   });
   it('cleans on commit failure even if the transaction callback marked files used', async () => {
-    const storage: AttachmentStorage = {
+    const storage = {
       put: jest.fn(),
       read: jest.fn(),
       remove: jest.fn(),
     };
     await expect(
-      new AttachmentUploads(storage).run(
-        [upload('a.txt', 'a')],
-        async (batch) => {
-          batch.used = true;
-          throw new Error('commit');
-        },
-      ),
+      new AttachmentUploads(storage).run([upload('a.txt', 'a')], (batch) => {
+        batch.used = true;
+        return Promise.reject(new Error('commit'));
+      }),
     ).rejects.toThrow('commit');
     expect(storage.remove).toHaveBeenCalledTimes(1);
   });

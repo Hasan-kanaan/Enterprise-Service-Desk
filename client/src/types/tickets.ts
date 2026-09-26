@@ -39,6 +39,7 @@ export type TicketSummary = {
   createdAt: string
   updatedAt: string
   resolvedAt: string | null
+  autoCloseAt: string | null
   closedAt: string | null
 }
 export type WorkCycle = {
@@ -56,6 +57,7 @@ export type WorkCycle = {
   endedBy: Person | null
   closedAt: string | null
   closedBy: Person | null
+  closeSource: 'MANUAL' | 'AUTO_TIMEOUT' | null
   resolutionSummary: string | null
   ownership: Ownership & {
     basis: 'CURRENT' | 'END_OF_WORK' | 'RECORDED_AT_MIGRATION' | null

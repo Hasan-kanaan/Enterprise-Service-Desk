@@ -91,7 +91,7 @@ describe('Lifecycle policies', () => {
         endingManager: null,
         endingTeam: null,
         ownershipSnapshotBasis: 'END_OF_WORK',
-      } as any,
+      } as Parameters<typeof mapCycle>[0],
       false,
       {
         assignedAgent: { id: 9, username: 'mohammad' },

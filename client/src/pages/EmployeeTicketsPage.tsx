@@ -1,11 +1,17 @@
 import { Plus, Search, RefreshCw, ArrowRight } from 'lucide-react'
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { useResource } from '@/hooks/useResource'
-import { listTickets } from '@/services/tickets.service'
-import { ticketStatuses, type TicketStatus } from '@/types/tickets'
-import { isTerminal, statusLabels } from '@/types/ticketPresentation'
+import { usePagedList, useDebouncedValue } from '@/hooks/usePagedList'
+import { useListFilters } from '@/hooks/useListFilters'
+import { ListContinuation } from '@/components/ListContinuation'
+import { getTicketSummary } from '@/services/tickets.service'
+import {
+  ticketStatuses,
+  type TicketSummary,
+  type TicketStatus,
+} from '@/types/tickets'
+import { statusLabels } from '@/types/ticketPresentation'
 import {
   EmptyState,
   ErrorState,
@@ -19,29 +25,31 @@ export function EmployeeTicketsPage({
   overview?: boolean
 }) {
   const user = useAppSelector((state) => state.auth.user)
-  const { data: tickets, error, loading, reload } = useResource(listTickets)
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState('all')
-  const [status, setStatus] = useState<TicketStatus | ''>('')
-  const visible = (tickets ?? []).filter(
-    (ticket) =>
-      `${ticket.id} ${ticket.title}`
-        .toLowerCase()
-        .includes(query.toLowerCase()) &&
-      (!status || ticket.status === status) &&
-      (filter === 'all' ||
-        (filter === 'active'
-          ? !isTerminal(ticket.status)
-          : isTerminal(ticket.status))),
-  )
-  const counts = tickets
-    ? [
-        tickets.filter((ticket) => !isTerminal(ticket.status)).length,
-        tickets.filter((ticket) => ticket.status === 'WAITING_FOR_EMPLOYEE')
-          .length,
-        tickets.filter((ticket) => ticket.status === 'RESOLVED').length,
-      ]
-    : null
+  const filters = useListFilters()
+  const query = filters.get('search')
+  const filter = filters.get('state') || 'all'
+  const status = filters.get('status') as TicketStatus | ''
+  const search = useDebouncedValue(query)
+  const resource = usePagedList<TicketSummary>('/tickets', {
+    search: search || undefined,
+    status: status || undefined,
+    active:
+      filter === 'active'
+        ? 'true'
+        : filter === 'finished'
+          ? 'false'
+          : undefined,
+    limit: overview ? 5 : 25,
+  })
+  const summary = useResource(getTicketSummary)
+  const { items: tickets, error, loading } = resource
+  const reload = () => {
+    resource.reload()
+    summary.reload()
+  }
+  const visible = tickets
+  const counts = summary.data?.counts
+  const searching = !!(query || status || filter !== 'all')
   return (
     <div className="ticket-workspace">
       <header className="page-heading">
@@ -104,7 +112,7 @@ export function EmployeeTicketsPage({
                   key={value}
                   className={filter === value ? 'selected' : ''}
                   aria-pressed={filter === value}
-                  onClick={() => setFilter(value)}
+                  onClick={() => filters.set('state', value)}
                 >
                   {label}
                 </button>
@@ -116,16 +124,17 @@ export function EmployeeTicketsPage({
                 <input
                   aria-label="Search tickets"
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  maxLength={120}
+                  onChange={(event) =>
+                    filters.set('search', event.target.value)
+                  }
                   placeholder="Search by title or ticket number"
                 />
               </label>
               <select
                 aria-label="Filter by status"
                 value={status}
-                onChange={(event) =>
-                  setStatus(event.target.value as TicketStatus | '')
-                }
+                onChange={(event) => filters.set('status', event.target.value)}
               >
                 <option value="">All statuses</option>
                 {ticketStatuses.map((value) => (
@@ -139,30 +148,31 @@ export function EmployeeTicketsPage({
         )}
         {loading ? (
           <LoadingState />
-        ) : error ? (
+        ) : error && !tickets.length ? (
           <ErrorState error={error} onRetry={reload} />
         ) : visible.length ? (
-          <TicketRows tickets={overview ? visible.slice(0, 5) : visible} />
+          <TicketRows tickets={visible} />
         ) : (
           <EmptyState
             title={
-              tickets?.length
+              searching
                 ? 'No matching requests'
                 : 'Your next request starts here'
             }
           >
             <p className="muted">
-              {tickets?.length
+              {searching
                 ? 'Try a different search or filter.'
                 : 'Tell us what is getting in your way. You can follow every update here.'}
             </p>
-            {!tickets?.length && (
+            {!searching && (
               <Link className="button secondary" to="/tickets/new">
                 Create your first ticket
               </Link>
             )}
           </EmptyState>
         )}
+        {!overview && <ListContinuation resource={resource} />}
         {overview && !!tickets?.length && (
           <Link className="list-footer" to="/tickets">
             View all requests <ArrowRight size={16} />

@@ -8,8 +8,6 @@ import { UserRole } from '../users/user-role.enum';
 import { ForbiddenException } from '@nestjs/common';
 
 describe('AuthService', () => {
-  let authService: AuthService;
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -30,7 +28,7 @@ describe('AuthService', () => {
           provide: JwtService,
           useValue: {
             sign: jest.fn(
-              (payload) =>
+              (payload: { email: string; role: UserRole; sub: number }) =>
                 `signed-${payload.email}-${payload.role}-${payload.sub}`,
             ),
           },
@@ -38,7 +36,7 @@ describe('AuthService', () => {
       ],
     }).compile();
 
-    authService = module.get<AuthService>(AuthService);
+    module.get<AuthService>(AuthService);
   });
 
   it('logs in an existing user and returns a signed token', async () => {
@@ -65,7 +63,10 @@ describe('AuthService', () => {
     const jwtService = {
       sign: jest.fn(() => 'signed-test-token'),
     };
-    const auth = new AuthService(usersService as any, jwtService as any);
+    const auth = new AuthService(
+      usersService as unknown as UsersService,
+      jwtService as unknown as JwtService,
+    );
 
     const result = await auth.login({
       email: 'admin@company.com',
@@ -100,8 +101,8 @@ describe('AuthService', () => {
     };
 
     const auth = new AuthService(
-      usersService as any,
-      { sign: jest.fn() } as any,
+      usersService as unknown as UsersService,
+      { sign: jest.fn() } as unknown as JwtService,
     );
 
     await expect(
@@ -123,7 +124,10 @@ describe('AuthService', () => {
     const usersService = {
       hasSuperAdmin: jest.fn().mockResolvedValue(false),
     };
-    const auth = new AuthService(usersService as any, {} as any);
+    const auth = new AuthService(
+      usersService as unknown as UsersService,
+      {} as unknown as JwtService,
+    );
 
     await expect(auth.getSetupStatus()).resolves.toEqual({ available: true });
   });
@@ -137,7 +141,10 @@ describe('AuthService', () => {
         role: UserRole.SUPER_ADMIN,
       }),
     };
-    const auth = new AuthService(usersService as any, {} as any);
+    const auth = new AuthService(
+      usersService as unknown as UsersService,
+      {} as unknown as JwtService,
+    );
 
     await expect(
       auth.setup({
@@ -161,7 +168,10 @@ describe('AuthService', () => {
     const usersService = {
       createInitialSuperAdmin: jest.fn().mockResolvedValue(null),
     };
-    const auth = new AuthService(usersService as any, {} as any);
+    const auth = new AuthService(
+      usersService as unknown as UsersService,
+      {} as unknown as JwtService,
+    );
 
     await expect(
       auth.setup({
@@ -180,14 +190,19 @@ describe('AuthService', () => {
   ])('allows SUPER_ADMIN to create %s', async (role) => {
     const users = {
       create: jest
-        .fn()
-        .mockImplementation(async (data) => ({
-          ...data,
-          password: undefined,
-          id: 2,
-        })),
+        .fn<Promise<unknown>, [Parameters<UsersService['create']>[0]]>()
+        .mockImplementation((data: Parameters<UsersService['create']>[0]) =>
+          Promise.resolve({
+            ...data,
+            password: undefined,
+            id: 2,
+          }),
+        ),
     };
-    const auth = new AuthService(users as any, {} as any);
+    const auth = new AuthService(
+      users as unknown as UsersService,
+      {} as unknown as JwtService,
+    );
     const result = await auth.createAccount(UserRole.SUPER_ADMIN, {
       username: 'NewUser',
       email: 'new@company.test',
@@ -208,7 +223,10 @@ describe('AuthService', () => {
 
   it('never provisions SUPER_ADMIN or lets operational users provision accounts', async () => {
     const create = jest.fn();
-    const auth = new AuthService({ create } as any, {} as any);
+    const auth = new AuthService(
+      { create } as unknown as UsersService,
+      {} as unknown as JwtService,
+    );
     for (const [caller, role] of [
       [UserRole.SUPER_ADMIN, UserRole.SUPER_ADMIN],
       [UserRole.ADMIN, UserRole.ADMIN],
@@ -230,14 +248,21 @@ describe('AuthService', () => {
 
   it('allows ADMIN to create employee, agent, and manager accounts', async () => {
     const usersService = {
-      create: jest.fn().mockImplementation(async (data) => ({
-        id: 2,
-        username: data.username,
-        email: data.email,
-        role: data.role,
-      })),
+      create: jest
+        .fn()
+        .mockImplementation((data: Parameters<UsersService['create']>[0]) =>
+          Promise.resolve({
+            id: 2,
+            username: data.username,
+            email: data.email,
+            role: data.role,
+          }),
+        ),
     };
-    const auth = new AuthService(usersService as any, {} as any);
+    const auth = new AuthService(
+      usersService as unknown as UsersService,
+      {} as unknown as JwtService,
+    );
 
     for (const role of [UserRole.EMPLOYEE, UserRole.AGENT, UserRole.MANAGER]) {
       await expect(
@@ -252,7 +277,10 @@ describe('AuthService', () => {
   });
 
   it('rejects unauthorized account role creation', async () => {
-    const auth = new AuthService({ create: jest.fn() } as any, {} as any);
+    const auth = new AuthService(
+      { create: jest.fn() } as unknown as UsersService,
+      {} as unknown as JwtService,
+    );
 
     await expect(
       auth.createAccount(UserRole.ADMIN, {
@@ -295,7 +323,10 @@ describe('AuthService', () => {
       verifyAsync: jest.fn().mockResolvedValue({ sub: 1 }),
       sign: jest.fn(() => 'new-access-token'),
     };
-    const auth = new AuthService(usersService as any, jwtService as any);
+    const auth = new AuthService(
+      usersService as unknown as UsersService,
+      jwtService as unknown as JwtService,
+    );
 
     const result = await auth.refresh('valid-refresh-token');
 
@@ -322,8 +353,10 @@ describe('AuthService', () => {
       }),
     };
     const auth = new AuthService(
-      usersService as any,
-      { verifyAsync: jest.fn().mockResolvedValue({ sub: 1 }) } as any,
+      usersService as unknown as UsersService,
+      {
+        verifyAsync: jest.fn().mockResolvedValue({ sub: 1 }),
+      } as unknown as JwtService,
     );
 
     await expect(auth.refresh('revoked-refresh-token')).rejects.toThrow(
@@ -335,7 +368,10 @@ describe('AuthService', () => {
     const usersService = {
       revokeRefreshToken: jest.fn().mockResolvedValue(true),
     };
-    const auth = new AuthService(usersService as any, {} as any);
+    const auth = new AuthService(
+      usersService as unknown as UsersService,
+      {} as unknown as JwtService,
+    );
 
     await expect(auth.logout('refresh-token')).resolves.toEqual({
       message: 'Logged out successfully',

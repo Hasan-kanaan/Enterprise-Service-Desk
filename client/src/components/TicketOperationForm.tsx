@@ -3,7 +3,7 @@ import type { TicketDetail, TicketStatus } from '@/types/tickets'
 import type { TicketOperations } from '@/types/operations'
 import { OperationDialog } from './OperationDialog'
 import { AssignmentFields } from './AssignmentFields'
-import { compatibleAssignment } from '@/types/assignment'
+import { PeopleLookup } from './PeopleLookup'
 import {
   assignManager,
   assignTicket,
@@ -35,7 +35,13 @@ export function TicketOperationForm({
       ? ticket.assignedTeamId
       : null,
   )
-  const [agent, setAgent] = useState(ticket.assignedAgentId)
+  const [agent, updateAgent] = useState(ticket.assignedAgentId)
+  const [agentTeam, setAgentTeam] = useState(ticket.assignedTeamId)
+  const setAgent = (id: number | null) => {
+    updateAgent(id)
+    setAgentTeam(team)
+  }
+  const compatible = agent === null || team === agentTeam
   const [manager, setManager] = useState<number | null>(null)
   const [status, setStatus] = useState<TicketStatus | ''>('')
   const [reason, setReason] = useState('')
@@ -56,7 +62,7 @@ export function TicketOperationForm({
       onDone={() => onDone(action === 'transfer' && manager !== userId)}
       valid={
         action === 'assignment'
-          ? team !== null && compatibleAssignment(operations.teams, team, agent)
+          ? team !== null && compatible
           : action === 'transfer'
             ? manager !== null
             : action === 'status'
@@ -91,26 +97,12 @@ export function TicketOperationForm({
             The selected manager will take responsibility. This ticket will
             leave your workspace; its team and agent remain unchanged.
           </p>
-          <label className="field">
-            New responsible manager
-            <select
-              aria-label="Responsible manager"
-              required
-              value={manager ?? ''}
-              onChange={(event) =>
-                setManager(Number(event.target.value) || null)
-              }
-            >
-              <option value="">Choose manager</option>
-              {operations.managers
-                .filter((person) => person.id !== userId)
-                .map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.username}
-                  </option>
-                ))}
-            </select>
-          </label>
+          <PeopleLookup
+            label="Responsible manager"
+            value={manager}
+            onChange={setManager}
+            url={`/ticket-workspace/tickets/${ticket.id}/people?purpose=manager`}
+          />
         </>
       )}
       {action === 'assignment' && (
@@ -122,6 +114,8 @@ export function TicketOperationForm({
             </p>
           )}
           <AssignmentFields
+            compatible={compatible}
+            lookupUrl={`/ticket-workspace/tickets/${ticket.id}/people?purpose=primary`}
             teams={operations.teams}
             teamId={team}
             agentId={agent}

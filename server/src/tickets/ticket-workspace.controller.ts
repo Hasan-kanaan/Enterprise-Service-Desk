@@ -7,6 +7,8 @@ import {
   UseGuards,
   NotFoundException,
   HttpException,
+  Query,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Prisma, TicketStatus, UserRole } from '../../generated/prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
@@ -16,7 +18,21 @@ import { UserRole as Role } from '../users/user-role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketVisibilityService } from './ticket-visibility.service';
 import { TicketAuthorizationService } from './ticket-authorization.service';
+import { ListQuery, listWindow } from '../common/list-query';
+import { IsIn, IsInt, IsOptional, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TicketAuthorizationUser } from './ticket-authorization.types';
+
+class AssignmentLookupQuery extends ListQuery {
+  @IsIn(['primary', 'subtask', 'manager'])
+  purpose!: 'primary' | 'subtask' | 'manager';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  teamId?: number;
+}
 
 type Request = { user: { sub: number; role: UserRole } };
 const person = { select: { id: true, username: true } } as const;
@@ -91,17 +107,127 @@ export class TicketWorkspaceController {
       select: {
         id: true,
         name: true,
-        members: {
-          where: { user: { role: UserRole.AGENT, status: 'ACTIVE' } },
-          select: { user: person },
-          orderBy: { user: { username: 'asc' } },
-        },
       },
     });
-    return teams.map(({ members, ...team }) => ({
-      ...team,
-      agents: members.map((member) => member.user),
-    }));
+    return teams;
+  }
+
+  @Get('tickets/:ticketId/people')
+  async ticketPeople(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Req() request: Request,
+    @Query() query: AssignmentLookupQuery,
+  ) {
+    const user = this.actor(request);
+    const { search } = listWindow(query, false);
+    return this.prisma.$transaction(
+      async (db) => {
+        const ticket = await db.ticket.findFirst({
+          where: { AND: [{ id }, this.visibility.buildWhere(user)] },
+          select: subjectSelect,
+        });
+        if (!ticket) throw new NotFoundException('Ticket not found');
+        if (query.purpose === 'manager') {
+          this.policy.assertCanAssignManager(user, ticket);
+          if (!this.policy.isResponsibleManager(user, ticket))
+            throw new ForbiddenException();
+          return this.people(
+            db,
+            { role: UserRole.MANAGER, id: { not: user.id } },
+            search,
+          );
+        }
+        if (query.teamId === undefined)
+          throw new ForbiddenException('Select an eligible team');
+        if (query.purpose === 'primary') {
+          this.policy.assertCanAssignTicket(user, ticket, query.teamId);
+          const team = await db.team.findFirst({
+            where: {
+              AND: [
+                { id: query.teamId },
+                this.policy.isResponsibleManager(user, ticket)
+                  ? this.policy.responsibleManagerTeamWhere(user.id)
+                  : {},
+              ],
+            },
+            select: { id: true },
+          });
+          if (!team) throw new ForbiddenException('Team is not eligible');
+        } else {
+          this.policy.assertCanCreateSubtask(user, ticket, query.teamId);
+        }
+        return this.people(
+          db,
+          {
+            role: UserRole.AGENT,
+            teamMemberships: { some: { teamId: query.teamId } },
+          },
+          search,
+        );
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+
+  @Get('subtasks/:subtaskId/people')
+  async subtaskPeople(
+    @Param('subtaskId', ParseIntPipe) id: number,
+    @Req() request: Request,
+    @Query() query: AssignmentLookupQuery,
+  ) {
+    const user = this.actor(request);
+    const { search } = listWindow(query, false);
+    return this.prisma.$transaction(
+      async (db) => {
+        const subtask = await db.subtask.findFirst({
+          where: { AND: [{ id }, this.visibility.buildSubtaskWhere(user)] },
+          include: {
+            ticket: { select: subjectSelect },
+            assignedTeam: { select: { teamLeadId: true } },
+          },
+        });
+        if (!subtask) throw new NotFoundException('Subtask not found');
+        if (
+          query.purpose !== 'subtask' ||
+          query.teamId === undefined ||
+          subtask.createdInCycleId !== subtask.ticket.workCycles[0]?.id
+        )
+          throw new ForbiddenException();
+        this.policy.assertCanAssignSubtask(user, subtask, query.teamId);
+        return this.people(
+          db,
+          {
+            role: UserRole.AGENT,
+            teamMemberships: { some: { teamId: query.teamId } },
+          },
+          search,
+        );
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+
+  private people(
+    db: Prisma.TransactionClient,
+    where: Prisma.UserWhereInput,
+    search?: string,
+  ) {
+    // Require typing: an empty selector must never expand the company directory.
+    if (!search) return [];
+    return db.user.findMany({
+      where: {
+        AND: [
+          where,
+          {
+            status: 'ACTIVE',
+            username: { contains: search, mode: 'insensitive' },
+          },
+        ],
+      },
+      select: { id: true, username: true },
+      orderBy: [{ username: 'asc' }, { id: 'asc' }],
+      take: 20,
+    });
   }
 
   @Get('tickets/:ticketId')
@@ -150,27 +276,17 @@ export class TicketWorkspaceController {
               ),
             ),
           },
-          teams:
-            assignAgent
-              ? await this.teams(
-                  db,
-                  owned,
-                  ticket.assignedTeamId,
-                  this.policy.responsibleManagerTeamWhere(user.id),
-                )
-              : [],
-          subtaskTeams:
-            createSubtask
-              ? await this.teams(db, owned, ticket.assignedTeamId)
-              : [],
-          managers:
-            assignManager && owned
-              ? await db.user.findMany({
-                  where: { role: UserRole.MANAGER, status: 'ACTIVE' },
-                  select: { id: true, username: true },
-                  orderBy: { username: 'asc' },
-                })
-              : [],
+          teams: assignAgent
+            ? await this.teams(
+                db,
+                owned,
+                ticket.assignedTeamId,
+                this.policy.responsibleManagerTeamWhere(user.id),
+              )
+            : [],
+          subtaskTeams: createSubtask
+            ? await this.teams(db, owned, ticket.assignedTeamId)
+            : [],
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
@@ -215,11 +331,14 @@ export class TicketWorkspaceController {
           );
         const assignTeam =
           assignAgent && this.policy.isResponsibleManager(user, record.ticket);
-        const { ticket: _ticket, assignedTeam, ...subtask } = record;
-        const parentVisible = !!await db.ticket.findFirst({
-          where: { AND: [{ id: record.ticketId }, this.visibility.buildWhere(user)] },
+        const { ticket, assignedTeam, ...subtask } = record;
+        void ticket; // The parent is used for authorization but excluded from this response.
+        const parentVisible = !!(await db.ticket.findFirst({
+          where: {
+            AND: [{ id: record.ticketId }, this.visibility.buildWhere(user)],
+          },
           select: { id: true },
-        });
+        }));
         return {
           parentVisible,
           subtask: {

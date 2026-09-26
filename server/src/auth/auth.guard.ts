@@ -9,8 +9,15 @@ import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { jwtConstants } from './auth.constants';
 
-type AuthenticatedRequest = Request & {
-  user?: any;
+export type AuthenticatedRequest = Request & {
+  user?: {
+    sub: number;
+    username: string;
+    email: string;
+    role: import('../../generated/prisma/client').UserRole;
+    status: string;
+    sessionVersion: number;
+  };
 };
 
 @Injectable()
@@ -35,7 +42,10 @@ export class AuthGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync(token, {
+      const payload = await this.jwtService.verifyAsync<{
+        sub: number;
+        sessionVersion?: number;
+      }>(token, {
         secret: jwtConstants.secret,
       });
 

@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:browser": "node test/employee-flow.mjs && node test/operations-flow.mjs && node test/administration-flow.mjs"
+    "test:browser": "node test/employee-flow.mjs && node test/operations-flow.mjs && node test/administration-flow.mjs && node test/session-flow.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

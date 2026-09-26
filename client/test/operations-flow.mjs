@@ -1,3 +1,4 @@
+import { pageFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
@@ -285,20 +286,19 @@ function response(request) {
       200,
       { ledTeams: leads(8) ? [{ id: 8, name: 'Network support' }] : [] },
     ]
-  if (path === '/tickets' && request.method === 'GET')
-    return [200, tickets.filter(visible).map(t => ({ ...t, isCurrentCollaborator: user.role === 'AGENT' && !terminal(t) && subtasks.some(s => s.ticketId === t.id && s.assignedAgentId === user.id && s.createdInCycleId === history[t.id][0].id) }))]
-  if (path === '/tickets/subtasks')
-    return [
-      200,
-      subtasks.filter(
-        (s) =>
-          taskVisible(s) &&
-          (!url.searchParams.has('currentWork') ||
-            (['TODO', 'IN_PROGRESS'].includes(s.status) &&
-              s.createdInCycleId === history[s.ticketId][0].id &&
-              !terminal(tickets.find((t) => t.id === s.ticketId)))),
-      ),
-    ]
+  if (path === '/tickets/summary') return [200, { counts: [tickets.filter(t => visible(t) && !terminal(t)).length, 1, 1] }]
+  if (path === '/tickets' && request.method === 'GET') {
+    const queue = url.searchParams.get('queue')
+    const rows = tickets.filter(visible).map(t => ({ ...t, isCurrentCollaborator: user.role === 'AGENT' && !terminal(t) && subtasks.some(s => s.ticketId === t.id && s.assignedAgentId === user.id && s.createdInCycleId === history[t.id][0].id) }))
+    return [200, pageFixture(rows.filter(t => queue === 'intake' ? t.status === 'NEW' && t.assignedManagerId === null : queue === 'team' ? leads(t.assignedTeamId) : queue === 'primary' ? t.assignedAgentId === user.id : queue === 'collaboration' ? t.isCurrentCollaborator : user.role === 'MANAGER' ? owned(t) : t.assignedAgentId === user.id || t.isCurrentCollaborator), url)]
+  }
+  if (path === '/tickets/subtasks') return [200, pageFixture(subtasks.filter(s => taskVisible(s) && (!url.searchParams.has('currentWork') || (['TODO', 'IN_PROGRESS'].includes(s.status) && s.createdInCycleId === history[s.ticketId][0].id && !terminal(tickets.find(t => t.id === s.ticketId))))), url)]
+  const lookup = path.match(/^\/ticket-workspace\/(tickets|subtasks)\/(\d+)\/people$/)
+  if (lookup) {
+    const search = (url.searchParams.get('search') ?? '').toLowerCase()
+    const candidates = url.searchParams.get('purpose') === 'manager' ? people.filter(p => [20, 21].includes(p.id) && p.id !== user.id) : teams.find(t => t.id === Number(url.searchParams.get('teamId')))?.agents ?? []
+    return [200, search ? candidates.filter(p => p.username.toLowerCase().includes(search)).slice(0, 20) : []]
+  }
   const submatch = path.match(
     /^\/(?:ticket-workspace|tickets)\/subtasks\/(\d+)$/,
   )
@@ -367,9 +367,6 @@ function response(request) {
             : [],
           subtaskTeams: p.createSubtask
             ? owned(t) ? teams : teams.filter((team) => team.id === t.assignedTeamId)
-            : [],
-          managers: p.transfer
-            ? people.filter((p) => [20, 21].includes(p.id))
             : [],
         },
       ]
@@ -509,12 +506,18 @@ async function navigate(path) {
   await delay(150)
 }
 async function click(text) {
+  await until(() => evaluate(`[...document.querySelectorAll('button,a')].some(el => el.textContent.trim() === ${JSON.stringify(text)} && !el.disabled)`), `ready: ${text}`)
   await evaluate(
     `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); el.click(); })()`,
   )
   await delay(70)
 }
 async function fill(selector, value) {
+  if (value && ['[aria-label="Assignment agent"]', '[aria-label="Responsible manager"]'].includes(selector)) {
+    const label = selector.includes('Assignment') ? 'Assignment agent' : 'Responsible manager'
+    await fill(`[aria-label="${label} search"]`, person(Number(value)).username)
+    await until(() => evaluate(`[...document.querySelector(${JSON.stringify(selector)}).options].some(o => o.value === ${JSON.stringify(value)} && !o.disabled)`), 'lookup choice')
+  }
   await evaluate(
     `(() => { const el = document.querySelector(${JSON.stringify(selector)}); const prototype = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
   )
@@ -624,6 +627,31 @@ try {
     await click(text)
     await waitText('Confirm')
   }
+  const originalUser = user
+  const originalLength = tickets.length
+  for (const [route, role, id, manager, team, agent] of [
+    ['/work/intake', 'MANAGER', 20, null, null, null],
+    ['/work/tickets', 'MANAGER', 20, 20, 8, 31],
+    ['/work/tickets', 'AGENT', 31, 20, 8, 31],
+    ['/work/team', 'AGENT', 32, 20, 8, 31],
+  ]) {
+    user = { ...originalUser, role, id }
+    for (let i = 0; i < 61; i++) tickets.push(makeTicket(1000 + i, `scale queue ${i}`, manager, team, agent))
+    await navigate(`${route}?search=scale`)
+    await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 25"), 'bounded queue')
+    await click('Load more')
+    await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 50"), 'queue continuation')
+    await click('Load more')
+    await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 61"), 'queue final page')
+    await waitText('End of results')
+    await fill('[aria-label="Search work tickets"]', 'scale queue 60')
+    await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 1"), 'queue search resets cursor')
+    await navigate(`${route}?search=scale+queue+60`)
+    await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 1"), 'queue deep reload')
+    tickets.splice(originalLength)
+    console.log(`PASS: ${role} ${route} server pages, search reset and deep reload`)
+  }
+  user = originalUser
   // Personal history is a limited projection; no parent link for retained work.
   await navigate('/work-history')
   await waitText('Completed VPN verification')

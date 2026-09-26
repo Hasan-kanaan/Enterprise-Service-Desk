@@ -79,7 +79,8 @@ export class AttachmentsController {
           file.deletedAt ||
           file.message?.deletedAt ||
           file.internalNote?.deletedAt ||
-          (file.internalNoteId !== null && request.user.role === UserRole.EMPLOYEE)
+          (file.internalNoteId !== null &&
+            request.user.role === UserRole.EMPLOYEE)
         )
           throw new NotFoundException('Attachment not found');
         const actor = { id: request.user.sub, role: request.user.role };

@@ -1,5 +1,6 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import type { AuthResponse } from '@/types/auth'
+import { SessionCoordinator } from './session-coordinator'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000',
@@ -7,8 +8,12 @@ const api = axios.create({
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 })
+type SessionRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean
+  _sessionRevision?: string
+}
+
 let accessToken: string | null = null
-let generation = 0
 let refreshRequest: Promise<AuthResponse | null> | null = null
 let sessionListener: (session: AuthResponse | null) => void = () => {}
 export function onSessionChange(listener: typeof sessionListener) {
@@ -17,16 +22,13 @@ export function onSessionChange(listener: typeof sessionListener) {
 export function setAccessToken(token: string | null) {
   if (accessToken !== token) {
     accessToken = token
-    generation++
   }
 }
 export function getAccessToken() {
   return accessToken
 }
 export function clearSession() {
-  generation++
-  accessToken = null
-  sessionListener(null)
+  sessionCoordinator.forget()
 }
 export function getApiErrorMessage(error: unknown, fallback: string) {
   if (error instanceof AxiosError) {
@@ -40,47 +42,43 @@ export function getApiStatus(error: unknown) {
   return axios.isAxiosError(error) ? error.response?.status : undefined
 }
 
-// One refresh for simultaneous requests/StrictMode startup. Never resurrect a signed-out session.
+export const sessionCoordinator = new SessionCoordinator((session) => {
+  setAccessToken(session?.accessToken ?? null)
+  sessionListener(session)
+})
+if (import.meta.hot) import.meta.hot.dispose(() => sessionCoordinator.dispose())
+
+// Single flight locally; one cookie-changing operation across all same-origin tabs.
 export function refreshSession(): Promise<AuthResponse | null> {
   if (refreshRequest) return refreshRequest
-  const started = generation
-  refreshRequest = api
-    .post<AuthResponse>('/auth/refresh')
-    .then(({ data }) => {
-      if (generation !== started) return null
-      setAccessToken(data.accessToken)
-      sessionListener(data)
-      return data
-    })
-    .catch((error: unknown) => {
-      if (generation !== started) return null
-      if (getApiStatus(error) === 401) {
-        clearSession()
-        return null
-      }
-      throw error
-    })
+  refreshRequest = sessionCoordinator
+    .refresh(
+      async () => (await api.post<AuthResponse>('/auth/refresh')).data,
+      (error) => [401, 403].includes(getApiStatus(error) ?? 0),
+    )
     .finally(() => {
       refreshRequest = null
     })
   return refreshRequest
 }
-export async function settleSessionRefresh() {
-  await refreshRequest?.catch(() => null)
-}
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+api.interceptors.request.use((config: SessionRequestConfig) => {
+  sessionCoordinator.sync()
+  config._sessionRevision = sessionCoordinator.revisionId()
+  config.headers.delete('Authorization')
   if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`
   return config
 })
 api.interceptors.response.use(
   (response) => {
-    if (response.config.method !== 'get' && response.config.url?.startsWith('/tickets'))
+    if (
+      response.config.method !== 'get' &&
+      response.config.url?.startsWith('/tickets')
+    )
       window.dispatchEvent(new Event('service-desk:mutation'))
     return response
   },
   async (error: AxiosError) => {
-    const original = error.config as
-      (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined
+    const original = error.config as SessionRequestConfig | undefined
     if (
       error.response?.status !== 401 ||
       !original ||
@@ -96,7 +94,7 @@ api.interceptors.response.use(
     // A late response after sign-out must not start a new cookie-based session.
     if (!accessToken) throw error
     if (original._retry) {
-      clearSession()
+      await sessionCoordinator.invalidate(original._sessionRevision)
       throw error
     }
     original._retry = true

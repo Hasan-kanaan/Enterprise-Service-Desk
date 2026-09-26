@@ -59,9 +59,16 @@ export class TicketsController {
     return this.ticketVisibilityService.listVisible(
       {
         id: request.user.sub,
-        role: request.user.role as PrismaUserRole,
+        role: request.user.role,
       },
       query,
+    );
+  }
+
+  @Get('summary')
+  summary(@Req() request: AuthenticatedRequest) {
+    return this.ticketVisibilityService.summary(
+      this.authenticatedUser(request),
     );
   }
 
@@ -74,6 +81,7 @@ export class TicketsController {
       this.authenticatedUser(request),
       undefined,
       query.currentWork === 'true',
+      query,
     );
   }
 
@@ -98,6 +106,7 @@ export class TicketsController {
       this.authenticatedUser(request),
       id,
       query.currentWork === 'true',
+      query,
     );
   }
 
@@ -108,7 +117,7 @@ export class TicketsController {
   ) {
     return this.ticketVisibilityService.findVisibleById(ticketId, {
       id: request.user.sub,
-      role: request.user.role as PrismaUserRole,
+      role: request.user.role,
     });
   }
 

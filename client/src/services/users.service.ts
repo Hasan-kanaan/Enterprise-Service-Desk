@@ -9,11 +9,6 @@ export type CreateAccountInput = {
   role: UserRole
 }
 
-export async function listAccounts(signal?: AbortSignal) {
-  const { data } = await api.get<Account[]>('/users', { signal })
-  return data
-}
-
 export async function createAccount(input: CreateAccountInput) {
   const { data } = await api.post<{ user: Account }>('/auth/accounts', input)
   return data.user

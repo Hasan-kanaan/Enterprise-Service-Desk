@@ -12,6 +12,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from './user-role.enum';
 import { UserStatus } from '../../generated/prisma/client';
+import { after, listPage, listWindow } from '../common/list-query';
+import { ListUsersDto } from './dto/list-users.dto';
 import {
   lockUser,
   operationalStatuses,
@@ -249,8 +251,26 @@ export class UsersService {
     });
   }
 
-  async findAll() {
+  async findAll(query: ListUsersDto = {}) {
+    const { limit, position, search } = listWindow(query, false);
     const users = await this.prisma.user.findMany({
+      where: {
+        AND: [
+          after(position),
+          query.role ? { role: query.role } : {},
+          query.status ? { status: query.status } : {},
+          search
+            ? {
+                OR: [
+                  { username: { contains: search, mode: 'insensitive' } },
+                  { email: { contains: search, mode: 'insensitive' } },
+                ],
+              }
+            : {},
+        ],
+      },
+      orderBy: { id: 'desc' },
+      take: limit + 1,
       select: {
         id: true,
         username: true,
@@ -263,7 +283,7 @@ export class UsersService {
       },
     });
 
-    return users;
+    return listPage(users, limit, false);
   }
 
   async findByEmail(email: string): Promise<UserRecord | null> {
@@ -329,7 +349,7 @@ export class UsersService {
             username: normalizedUsername,
             email: normalizedEmail,
             password: data.password,
-            role: data.role as PrismaUserRole,
+            role: data.role,
           },
           select: {
             id: true,

@@ -1,3 +1,4 @@
+import { Prisma } from '../../generated/prisma/client';
 import { WorkHistoryService } from './work-history.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketVisibilityService } from './ticket-visibility.service';
@@ -11,7 +12,9 @@ describe('WorkHistoryService bounded projection', () => {
       kind: 'CYCLE',
     }));
     const db = {
-      $queryRaw: jest.fn().mockResolvedValue(rows),
+      $queryRaw: jest
+        .fn<Promise<unknown[]>, [Prisma.Sql]>()
+        .mockResolvedValue(rows),
       ticket: { findMany: jest.fn().mockResolvedValue([{ id: 100 }]) },
     };
     const prisma = {

@@ -3,7 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useResource } from '@/hooks/useResource'
 import { getOrganization } from '@/services/administration.service'
-import { listAccounts } from '@/services/users.service'
+import { usePagedList, useDebouncedValue } from '@/hooks/usePagedList'
+import { ListContinuation } from '@/components/ListContinuation'
+import type { Account } from '@/types/administration'
 import { ErrorState, LoadingState, EmptyState } from '@/components/TicketUI'
 import {
   OrganizationCreateForm,
@@ -11,20 +13,20 @@ import {
   type TeamAction,
 } from '@/components/OrganizationForms'
 import type { Catalog } from '@/types/administration'
-const load = async (signal: AbortSignal) => {
-  const [organization, accounts] = await Promise.all([
-    getOrganization(signal),
-    listAccounts(signal),
-  ])
-  return { ...organization, accounts }
-}
 export function OrganizationPage() {
   const { teamId } = useParams()
-  const resource = useResource(load)
+  const resource = useResource(getOrganization)
   const [tab, setTab] = useState<Catalog | 'teams'>('teams'),
     [creating, setCreating] = useState(false),
     [action, setAction] = useState<TeamAction | null>(null)
+  const [memberSearch, setMemberSearch] = useState('')
+  const search = useDebouncedValue(memberSearch)
+  const members = usePagedList<Account>(
+    teamId ? `/organization/teams/${teamId}/members` : null,
+    { search: search || undefined },
+  )
   const reload = () => {
+    members.reload()
     setCreating(false)
     setAction(null)
     resource.reload()
@@ -106,15 +108,27 @@ export function OrganizationPage() {
                 Add member
               </button>
             </div>
-            {team.members.length ? (
-              team.members.map((member) => (
-                <article className="admin-row" key={member.userId}>
+            <label className="search-field">
+              <input
+                aria-label="Search team members"
+                maxLength={120}
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+              />
+            </label>
+            {members.loading ? (
+              <LoadingState />
+            ) : members.error && !members.items.length ? (
+              <ErrorState error={members.error} onRetry={members.retry} />
+            ) : members.items.length ? (
+              members.items.map((member) => (
+                <article className="admin-row" key={member.id}>
                   <div>
-                    <h3>{member.user.username}</h3>
+                    <h3>{member.username}</h3>
                     <p className="muted">
-                      {member.user.role} / {member.user.status}
+                      {member.role} / {member.status}
                     </p>
-                    {member.userId === team.teamLeadId && (
+                    {member.id === team.teamLeadId && (
                       <p className="quiet-note">
                         Remove Team Lead responsibility before removing
                         membership.
@@ -123,11 +137,11 @@ export function OrganizationPage() {
                   </div>
                   <button
                     className="button secondary"
-                    disabled={member.userId === team.teamLeadId}
+                    disabled={member.id === team.teamLeadId}
                     onClick={() =>
                       setAction({
                         kind: 'remove-member',
-                        userId: member.userId,
+                        userId: member.id,
                       })
                     }
                   >
@@ -138,6 +152,7 @@ export function OrganizationPage() {
             ) : (
               <p className="detail-body muted">No members assigned.</p>
             )}
+            <ListContinuation resource={members} />
           </section>
           <div className="form-columns">
             <section className="panel detail-body">
@@ -193,8 +208,6 @@ export function OrganizationPage() {
             <TeamActionForm
               key={`${team.id}-${action.kind}`}
               team={team}
-              teams={data.teams}
-              accounts={data.accounts}
               action={action}
               onClose={() => setAction(null)}
               onReload={reload}

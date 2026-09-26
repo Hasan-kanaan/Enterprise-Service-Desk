@@ -18,7 +18,6 @@ import { BrandMark } from '@/components/BrandMark'
 import { NotificationBell } from '@/components/NotificationBell'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { logout } from '@/services/auth.service'
-import { clearSession } from '@/services/api'
 import type { UserRole } from '@/types/auth'
 
 const navigation = {
@@ -98,7 +97,6 @@ export function AppLayout() {
                 ? 'Profile'
                 : 'Dashboard'
   const handleLogout = async () => {
-    clearSession()
     try {
       await logout()
     } catch {

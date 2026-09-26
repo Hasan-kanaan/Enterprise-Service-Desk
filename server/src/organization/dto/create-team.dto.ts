@@ -1,4 +1,11 @@
-import { IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { TeamScope } from '../../../generated/prisma/client';
 
 export class CreateTeamDto {

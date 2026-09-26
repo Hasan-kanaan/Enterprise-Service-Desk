@@ -188,6 +188,12 @@ function TicketContent({ id }: { id: number }) {
               Review the result below. Close the ticket if it is fixed, or
               reopen it if you still need help.
             </p>
+            {ticket.autoCloseAt && (
+              <p>
+                Eligible for automatic closure on {formatDate(ticket.autoCloseAt, true)}.
+                Closes on the next scheduled check unless reopened or closed earlier.
+              </p>
+            )}
           </div>
         </div>
       )}

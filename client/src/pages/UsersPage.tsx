@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAppSelector } from '@/hooks/storeHooks'
-import { useResource } from '@/hooks/useResource'
-import { listAccounts } from '@/services/users.service'
+import { usePagedList, useDebouncedValue } from '@/hooks/usePagedList'
+import { useListFilters } from '@/hooks/useListFilters'
+import { ListContinuation } from '@/components/ListContinuation'
 import { updateAccountStatus } from '@/services/administration.service'
 import { manageableRoles, type Account } from '@/types/administration'
 import { AdminDialog } from '@/components/AdminDialog'
@@ -10,9 +11,16 @@ import { AccountForm } from '@/components/AccountForm'
 import { ErrorState, LoadingState, EmptyState } from '@/components/TicketUI'
 export function UsersPage() {
   const role = useAppSelector((state) => state.auth.user)!.role
-  const resource = useResource(listAccounts)
-  const [query, setQuery] = useState(''),
-    [status, setStatus] = useState('')
+  const filters = useListFilters()
+  const query = filters.get('search'),
+    status = filters.get('status'),
+    accountRole = filters.get('role')
+  const search = useDebouncedValue(query)
+  const resource = usePagedList<Account>('/users', {
+    search: search || undefined,
+    status: status || undefined,
+    role: accountRole || undefined,
+  })
   const [creating, setCreating] = useState(false),
     [target, setTarget] = useState<Account | null>(null)
   const reload = () => {
@@ -20,14 +28,7 @@ export function UsersPage() {
     setTarget(null)
     resource.reload()
   }
-  const rows =
-    resource.data?.filter(
-      (account) =>
-        `${account.username} ${account.email} ${account.role}`
-          .toLowerCase()
-          .includes(query.toLowerCase()) &&
-        (!status || account.status === status),
-    ) ?? []
+  const rows = resource.items
   return (
     <div className="ticket-workspace">
       <header className="page-heading">
@@ -54,24 +55,37 @@ export function UsersPage() {
           <label className="search-field">
             <input
               aria-label="Search accounts"
-              placeholder="Search identity, email or role"
+              placeholder="Search username or email"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              maxLength={120}
+              onChange={(e) => filters.set('search', e.target.value)}
             />
           </label>
           <select
             aria-label="Account status filter"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(e) => filters.set('status', e.target.value)}
           >
             <option value="">All statuses</option>
             <option value="ACTIVE">ACTIVE</option>
             <option value="INACTIVE">INACTIVE</option>
           </select>
+          <select
+            aria-label="Account role filter"
+            value={accountRole}
+            onChange={(e) => filters.set('role', e.target.value)}
+          >
+            <option value="">All roles</option>
+            {['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'AGENT', 'EMPLOYEE'].map(
+              (value) => (
+                <option key={value}>{value}</option>
+              ),
+            )}
+          </select>
         </div>
         {resource.loading ? (
           <LoadingState label="Loading accounts..." />
-        ) : resource.error ? (
+        ) : resource.error && !rows.length ? (
           <ErrorState
             error={resource.error}
             resourceName="account directory"
@@ -111,6 +125,7 @@ export function UsersPage() {
             <p>Try another filter or create an authorized account.</p>
           </EmptyState>
         )}
+        <ListContinuation resource={resource} />
       </section>
       {creating && (
         <AccountForm

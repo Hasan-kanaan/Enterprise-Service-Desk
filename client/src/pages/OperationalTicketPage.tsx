@@ -365,6 +365,7 @@ function OperationalTicket({ id }: { id: number }) {
       )}
       {creating && (
         <SubtaskForm
+          ticketId={ticket.id}
           teams={operations.subtaskTeams}
           canAssignTeam={p.assignTeam}
           canAssignAgent

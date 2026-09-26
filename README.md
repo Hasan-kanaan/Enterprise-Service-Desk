@@ -1210,19 +1210,19 @@ Managers can claim intake, route owned tickets, choose/clear primary agents, tra
 
 Agents see primary assignments and current collaborating tickets. Collaboration permits parent/history/communication access and work on their own subtask; it grants no ticket metadata/status/routing, resolve/close/reopen or arbitrary subtask powers. The primary agent remains explicitly assigned and needs no subtask. A ticket may have NULL primary agent and several collaborators. Team Lead remains a relationship with existing led-team powers. Ordinary primary assignment grants no extra subtask authority. TeamManager still grants no ticket authority.
 
-Assignment dialogs list real eligible active users. The primary-team picker offers responsible managers only their organizationally managed teams and GLOBAL teams; the API independently enforces the same rule within the assignment transaction. An existing team that is no longer eligible requires explicit selection of an eligible team. Team changes retain the previous agent selection and require explicit clearing/replacement if incompatible; no silent reassignment is introduced. Subtask creation uses separate choices, preserving existing cross-team delegation and collaborator rules. Managers may explicitly leave subtasks unassigned. Team Leads cannot move work across teams, change responsible managers, or reopen tickets. Confirmations cover assignment, transfer, status, reopening, and subtask updates. Resolution summaries and reopening reasons are requester-visible. Standard 409 conflicts freeze submission and require explicit reload; no write is automatically retried on conflict.
+Assignment dialogs search for real eligible active users, returning at most 20 matches. The primary-team picker offers responsible managers only their organizationally managed teams and GLOBAL teams; the API independently enforces the same rule within the assignment transaction. An existing team that is no longer eligible requires explicit selection of an eligible team. Team changes retain the previous agent selection and require explicit clearing/replacement if incompatible; no silent reassignment is introduced. Subtask creation uses separate choices, preserving existing cross-team delegation and collaborator rules. Managers may explicitly leave subtasks unassigned. Team Leads cannot move work across teams, change responsible managers, or reopen tickets. Confirmations cover assignment, transfer, status, reopening, and subtask updates. Resolution summaries and reopening reasons are requester-visible. Standard 409 conflicts freeze submission and require explicit reload; no write is automatically retried on conflict.
 
 History reuses the employee cycle renderer with independently authorized support work. Communication streams show current and frozen historical records. Standalone subtask detail exposes no parent content, but offers an Open parent ticket link when the server's parentVisible hint authorizes it. Historical subtask-only access remains limited. Subtask assignment never changes the explicit primary agent, and previous-cycle participation never expands active queues.
 
-The existing administrative organization/user APIs are not called for operational pickers. Three small read-only projections fill the missing UI context:
+The existing administrative organization/user APIs are not called for operational pickers. Read-only context projections and purpose-specific people lookups provide the UI context:
 
 | Endpoint | Restricted projection |
 | --- | --- |
 | `GET /ticket-workspace` | Current caller's led-team IDs/names only |
-| `GET /ticket-workspace/tickets/:ticketId` | Actions/statuses from existing policies and eligible manager/team/agent choices for an authorized ticket |
+| `GET /ticket-workspace/tickets/:ticketId` | Actions/statuses from existing policies and eligible team names for an authorized ticket |
 | `GET /ticket-workspace/subtasks/:subtaskId` | Authorized subtask fields/display names, historical/frozen flags, actions, and eligible assignment choices; no parent content |
 
-All three require MANAGER or AGENT authentication. Resource projections reuse existing visibility predicates and authorization methods. Ticket/subtask context reads use a consistent database snapshot. Options contain only team IDs/names and active eligible user IDs/usernames; ordinary agents get no assignee directory and Team Leads get only the authorized team. Terminal work returns no assignment choices. These are current presentation hints, not grants: existing transactional mutation checks remain authoritative after any concurrent change.
+These reads and their `/people` lookup routes require MANAGER or AGENT authentication. Resource projections reuse existing visibility predicates and authorization methods. Ticket/subtask context reads use a consistent database snapshot. Context options contain only team IDs/names; bounded people lookups contain active eligible user IDs/usernames; ordinary agents get no assignee directory and Team Leads get only the authorized team. Terminal work returns no assignment choices. These are current presentation hints, not grants: existing transactional mutation checks remain authoritative after any concurrent change.
 
 `pnpm test:browser` runs Employee, operational and administration suites. Communication coverage includes requester/support posting, own editing, internal-note separation, collaborator controls, frozen history, waiting replies and draft recovery across failures/reopening. Existing lifecycle, organization, mobile, session and error flows remain covered. Browser tests use isolated API fixtures; PostgreSQL e2e separately exercises actual authorization and atomicity. No browser-to-live-database coverage is claimed.
 
@@ -1251,7 +1251,7 @@ Organization controls use existing mutations only:
 
 GLOBAL creation omits regionId; REGION creation requires one actual region. No organization records or relationships are invented. Agents can join multiple teams and managers can manage multiple teams. TeamManager remains organizational only, with no ticket authority. Team member removal consumes the current backend behavior; it is not an offboarding/assignment-transfer workflow.
 
-The only read changes are nullable region/department ID/name projections on GET /users and member userId plus user ID/username/role/status on GET /organization/teams. Existing administrative guards remain; no new endpoints or operational data are exposed.
+GET /users retains nullable region/department ID/name labels in its paginated directory projection. GET /organization/teams returns configuration without member expansion; GET /organization/teams/:teamId/members paginates user ID/username/role/status for membership display. Purpose-specific bounded people lookups serve organization selectors. Existing administrative guards remain and no operational data is exposed.
 
 The current backend has no rename/delete APIs for regions, departments, specialties or teams; no team coverage update; no specialty-link mutations; and no account identity/role/home-organization editing API. Those controls are deliberately absent. Broader membership/organization lifecycle rules, including reconciliation of retained work after membership removal, remain separate design work. This phase adds no organization mutation or migration.
 
@@ -1416,7 +1416,7 @@ AI recommendations include categorization, priority and agent suggestions, confi
 
 ### Optional Deferred Features
 
-Realtime transport, generic audit infrastructure, SSO/SCIM, notification preferences and retention, pagination outside My Work History, analytics, SLA tracking, advanced permissions, and further AI automation remain deferred.
+Realtime transport, generic audit infrastructure, SSO/SCIM, notification preferences and retention, pagination of remaining subject streams, analytics, SLA tracking, advanced permissions, and further AI automation remain deferred.
 
 
 ---
@@ -1679,6 +1679,144 @@ Projection fields are `kind` (CYCLE/SUBTASK), row `id`, `ticketId`, `cycleId`, `
 
 Query parameters: `page` (default 1, range 1..1,000,000), `pageSize` (default 25, range 1..100), optional `contribution` (`RESPONSIBLE_MANAGER`, `PRIMARY_AGENT`, `ENDED_WORK`, `CLOSED_WORK`, `REOPENED_WORK`, `COMPLETED_SUBTASK`), and inclusive ISO `from` / `to`. Invalid values and reversed ranges return 400. Date-only API bounds mean UTC midnight; the UI submits UTC start/end-of-day bounds. Cycle activity is its endedAt, or the caller's later closedAt; task activity is completedAt. Reopen labels describe participation in the ended cycle, not a separate chronological event.
 
-Pagination uses parameterized SQL UNION ALL, database filtering and deterministic `activityAt DESC, kind DESC, id DESC`, with LIMIT pageSize+1 / OFFSET. The response is `{ items, page, pageSize, hasMore }`; there is no full-history load or count. The page and current-access hint share a repeatable-read snapshot. Offset pages are deterministic for unchanged data; new completions/closure or cleared within-cycle completion can shift pages between requests. Deep offsets still cost database work. Pagination elsewhere is unchanged.
+Pagination uses parameterized SQL UNION ALL, database filtering and deterministic `activityAt DESC, kind DESC, id DESC`, with LIMIT pageSize+1 / OFFSET. The response is `{ items, page, pageSize, hasMore }`; there is no full-history load or count. The page and current-access hint share a repeatable-read snapshot. Offset pages are deterministic for unchanged data; new completions/closure or cleared within-cycle completion can shift pages between requests. Deep offsets still cost database work. Other application lists now use keyset pagination; see Server-side lists and scoped people lookup below.
 
-Migration `20260925160000_work_history_indexes` adds five actor/ending-time/id indexes to TicketWorkCycle and a completer/completion-time/id index to Subtask. It creates no history table or historical records. History reads produce no notifications or mutations. Auto-close and demo/deployment infrastructure remain deferred.
+Migration `20260925160000_work_history_indexes` adds five actor/ending-time/id indexes to TicketWorkCycle and a completer/completion-time/id index to Subtask. It creates no history table or historical records. History reads produce no notifications or mutations. Demo/deployment infrastructure remains deferred.
+
+## Automatic closure
+
+A ticket continuously RESOLVED for 72 elapsed hours becomes eligible for automatic CLOSED status. This uses real elapsed time, with no business-day, weekend or holiday calendar. It closes on a subsequent scheduled sweep. Employees retain their existing manual close/reopen permissions; CANCELLED remains frozen. Reopening clears resolvedAt, and resolving again begins a new period.
+
+`AUTO_CLOSE_AFTER_HOURS` is the single server configuration value (default `72`; positive finite hours, maximum `87600`). Set it in the server process environment before startup, consistently across instances. There is no admin setting. Ticket detail returns `autoCloseAt`, calculated from current status and resolvedAt with that configuration; the Employee UI displays the local date and explains scheduled-check timing without a ticking countdown.
+
+`AutoCloseService.runSweep(now)` is independent of scheduling and takes an explicit clock value. `AutoCloseScheduler` uses Nest lifecycle hooks and one process-wide ten-minute interval, first running ten minutes after startup. No per-ticket in-memory timers, Redis, queue, cron dependency or stored deadlines are involved. Future deployment can replace the trigger without changing the domain service.
+
+The database query selects `status = RESOLVED AND resolvedAt <= now - configured duration`, ordered by resolvedAt, with `LIMIT 100 FOR UPDATE SKIP LOCKED`. Each Serializable batch locks parent tickets before rechecking current status/resolvedAt and the latest resolved cycle. A sweep processes at most ten batches (1,000 tickets); backlog, locked rows and serialization conflicts continue on later sweeps. Multiple instances safely share work; closure and cycle annotation commit together. Interactive 409 behavior is unchanged. Unexpected failures are logged and rolled back for that batch; earlier committed batches remain closed.
+
+Migration `20260925180000_ticket_auto_close` adds the compact `(status, resolvedAt)` eligibility index and nullable `TicketWorkCycle.closeSource` enum (`MANUAL`, `AUTO_TIMEOUT`). Existing sources remain NULL without a backfill. New manual closes retain their real closedBy actor and existing CLOSED cycle outcome. Automatic closes set ticket/cycle closedAt and AUTO_TIMEOUT with closedById NULL, retaining the resolved cycle outcome, summary, ending actor and ownership snapshot. Closure creates no cycle and no fake system user. History displays “Automatically closed”; legacy unknown sources remain unattributed.
+
+There is no CLOSED notification type, so closure creates no notification and sends no email. Resolution notifications remain unchanged. Communication stays frozen, and messages, notes, subtasks and files remain intact and readable under existing authorization. Attachment storage is unchanged.
+
+## Server-side lists and scoped people lookup
+
+The [pre-implementation scale audit](docs/list-scale-audit.md) distinguishes enterprise
+collections from configuration catalogs and existing bounded reads.
+
+| Read API | Pagination and filters |
+| --- | --- |
+| `GET /tickets` | Employee own requests; Manager `queue=intake` or `mine`; Agent `mine`, `primary`, `collaboration`; Team Lead `team`. Optional `search`, `status`, `active=true/false`, `categoryId`. No queue means all currently visible tickets. |
+| `GET /tickets/subtasks`, `/tickets/:ticketId/subtasks` | Independently authorized subtasks; optional literal title `search` and `currentWork=true`. No parent ticket expansion. |
+| `GET /users` | Existing ADMIN/SUPER_ADMIN directory projection, with username/email `search`, `role`, and `status`. |
+| `GET /organization/teams/:teamId/members` | ADMIN/SUPER_ADMIN membership display, with username `search`. Team catalogs no longer embed members. |
+
+These APIs return `{ items, nextCursor, hasMore }`. `limit` defaults to 25; values
+outside 1–100 are rejected. Ticket/subtask continuation uses immutable
+`createdAt DESC, id DESC`; accounts and membership use `id DESC` so renaming a
+user cannot move its cursor position. The versioned base64url cursor contains
+the boundary ID and, for dated lists, the ISO timestamp. Its shape, version,
+length, ID range and timestamp are validated. It is not an authorization token:
+all visibility and filters are reapplied in the SQL query before `LIMIT`.
+Continuation does not depend on looking up the boundary record, so deletion or
+changed ownership/status does not invalidate a cursor. There is no browsing-session
+snapshot. Refresh starts again; current access remains authoritative.
+
+Search trims whitespace, treats blank input as no search, and caps the normalized
+input at 120 characters. Prisma parameterizes queries; `%`, `_`, and `\` are
+escaped for literal substring matching. Ticket search covers title or an exact
+numeric reference (optionally `#`); it does not search hidden fields. Full-text
+infrastructure and per-page total counts are intentionally absent. The existing
+dashboard cards use separate, authorization-scoped `GET /tickets/summary` count
+queries. Collaboration flags aggregate only relationships for the bounded page.
+
+The Employee, Manager, Agent, Team Lead, subtask, account and member screens use
+load-more controls with initial/loading-more/end/empty/error/retry states. A failed
+continuation retains already displayed rows. Text search waits 300 ms; obsolete
+requests are aborted and ignored. Search/filter changes and browser back/forward
+restart at the first page. Main ticket/queue/account filters live in URL query
+parameters; small people and membership searches remain local. Mobile layouts
+are retained. No new data-fetching dependency is needed.
+
+Assignment payloads retain eligible team names, but no longer contain every Agent
+or Manager. Type a username in the selector; at most 20 eligible `{ id, username }`
+matches are returned. Blank search returns no people. Refine the search if needed.
+
+- `/ticket-workspace/tickets/:ticketId/people?purpose=primary&teamId=...&search=...`
+  checks current ticket access, assignment authority, active AGENT membership and
+  the responsible Manager's managed-regional/GLOBAL rule. Team Leads remain limited
+  to the current primary team.
+- The same route with `purpose=manager` requires current transfer authority;
+  `purpose=subtask&teamId=...` uses the existing subtask-creation routing policy.
+- `/ticket-workspace/subtasks/:subtaskId/people?purpose=subtask&teamId=...&search=...`
+  checks subtask visibility, current cycle, active lifecycle and assignment policy.
+- `/organization/teams/:teamId/people?purpose=member|lead|manager&search=...` is
+  admin-only. Membership, active role, and one-led-team restrictions remain intact.
+
+Mutations still lock and recheck all eligibility. No unrestricted employee search,
+account deletion, additional directory fields or business-authorization changes
+were introduced. Historical work and notifications still grant no current access.
+
+Migration `20260926120000_list_keyset_indexes` replaces five Ticket filter indexes
+with their `createdAt, id` composites (requester, Manager, Agent, team, and
+status/Manager), retaining the useful left prefixes. It adds the general
+`Ticket(createdAt,id)` order index and `User(role,status,id)` for filtered directory
+reads. Existing membership keys and subtask/cycle relationship indexes are reused.
+No data migration, equivalent duplicate indexes or text-search infrastructure.
+
+Regions, departments, specialties, categories, tags and the team configuration
+catalog intentionally remain unpaginated. Notifications retain their existing
+bound and My Work History retains its existing pagination. Ticket history,
+communications, internal notes and attachments are unchanged, subject-scoped
+remaining scale boundaries. Substring searches, complex collaboration predicates,
+dashboard counts and repeatedly loading more pages still consume resources as
+collections grow; this phase does not claim 500,000-user capacity certification.
+
+`server/test/list-scale.e2e-spec.ts` creates and cleans prefix-scoped synthetic
+fixtures only in the explicit `_test` database. The default fixture has 128 users,
+343 tickets and 57 subtasks, including equal timestamps and forbidden relationships.
+Set `LIST_SCALE_SIZE=2000` for a larger fixture (2,071 users, 12,001 tickets, 2,000
+subtasks). Set `LIST_SCALE_PLANS=true` to record `EXPLAIN (ANALYZE, BUFFERS)` of
+captured, parameterized Prisma SQL after refreshing test-table statistics. There
+are no strict timing assertions and no large development seed.
+
+## Browser session coordination
+
+Multiple devices, browsers and tabs remain supported. Logout revokes the supplied
+refresh session, not every session belonging to the account. Deactivation and
+sessionVersion invalidation still invalidate all account sessions; reactivation
+requires fresh authentication. Backend rotation and replay protection are unchanged.
+
+Same-origin tabs in one browser profile use a Web Lock to serialize refresh,
+login and logout. BroadcastChannel carries fresh access tokens and user snapshots
+only transiently, so waiting tabs can reuse a completed refresh. Access tokens
+remain in memory; refresh tokens remain in HttpOnly cookies. Neither token is
+written to localStorage, sessionStorage, IndexedDB or JavaScript-readable cookies.
+Only a random revision, operation state and short retry deadline are stored in
+localStorage; this lets resumed tabs discard stale broadcasts and observe logout
+before sending another authenticated request. The app origin must be trusted:
+any script executing there can join its BroadcastChannel, just as it can already
+access the app's in-memory credentials.
+
+Logout and definitive backend session rejection clear sibling authentication and
+leave the protected workspace. Login can restore sibling login pages. Temporary
+network/5xx failures retain authentication and impose a two-second shared cooldown;
+there is no automatic retry or broadcast-triggered refresh loop. Existing retry
+UI remains available. Cookie requests retain their 15-second HTTP timeout, and
+lock waits abort after 20 seconds without stealing another tab's lock.
+
+Current Chrome/Edge, Firefox and Safari with Web Locks, enabled site storage, and
+a secure context (HTTPS or localhost) are the supported coordination environment.
+Without BroadcastChannel, refreshes are serialized separately and logout uses
+storage events; transient token sharing/login adoption is unavailable. Without
+Web Locks or usable storage, automatic restoration fails safely with recovery
+instructions instead of issuing uncoordinated cookie requests. If a tab disappears
+during refresh, its pending marker prevents replay of an uncertain rotation;
+choose **Go to sign in** for fresh authentication. No coordination crosses browser
+profiles or devices. Applications served from different origins cannot share this
+lock/channel even when configured to use the same API cookie.
+
+`npm run test:browser` (or `pnpm test:browser`) includes the existing production
+browser suites and `client/test/session-flow.mjs`. The latter runs real Chromium
+pages and an isolated browser context against Vite on port 3001, using the actual
+coordinator/Axios/Redux modules and deterministic rotating HttpOnly-cookie API
+fixtures. PostgreSQL/HTTP tests separately verify real atomic rotation, replay
+rejection, session-scoped logout, deactivation and reactivation.

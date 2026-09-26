@@ -309,12 +309,10 @@ export class TicketCommunicationService {
           clientRequestId: creation.clientRequestId,
           creationHash,
           attachments: {
-            create: (batch?.files ?? []).map(
-              ({ digest: _digest, ...file }) => ({
-                ...file,
-                uploaderId: user.id,
-              }),
-            ),
+            create: (batch?.files ?? []).map(({ digest, ...file }) => {
+              void digest; // Digest participates in upload validation, not persistence.
+              return { ...file, uploaderId: user.id };
+            }),
           },
         },
         select: projection,

@@ -13,7 +13,6 @@ import { LoginDto } from './dto/login.dto';
 import { SetupDto } from './dto/setup.dto';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UserRole } from '../users/user-role.enum';
-import { jwtConstants } from './auth.constants';
 
 @Injectable()
 export class AuthService {

@@ -5,7 +5,11 @@ import { AttachmentStorage } from '../src/tickets/attachment-storage';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import request from 'supertest';
+import request, {
+  type HttpTest,
+  type Message,
+  type Attachment,
+} from './http-test';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -13,7 +17,7 @@ import { jwtConstants } from '../src/auth/auth.constants';
 import { User, UserRole } from '../generated/prisma/client';
 
 describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
-  let app: INestApplication, db: PrismaService;
+  let app: INestApplication<import('node:http').Server>, db: PrismaService;
   let storageDir: string;
   const previousStorage = process.env.ATTACHMENT_STORAGE_DIR;
   let users: Record<string, User>;
@@ -22,34 +26,26 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
   const jwt = new JwtService({ secret: jwtConstants.secret });
   const token = (name: string) =>
     jwt.sign({ sub: users[name].id, role: users[name].role });
-  const get = (path: string, who: string) =>
+  const get = <P extends string>(path: P, who: string) =>
     request(app.getHttpServer())
       .get(path)
       .set('Authorization', `Bearer ${token(who)}`);
-  const patch = (path: string, who: string, body = {}) =>
+  const patch = <P extends string>(path: P, who: string, body = {}) =>
     request(app.getHttpServer())
       .patch(path)
       .set('Authorization', `Bearer ${token(who)}`)
       .send(body);
-  const post = (path: string, who: string, body: object) =>
+  const post = <P extends string>(path: P, who: string, body: object) =>
     request(app.getHttpServer())
       .post(path)
       .set('Authorization', `Bearer ${token(who)}`)
       .send(body);
   const rows = () =>
     db.notification.findMany({ where: { ticketId }, orderBy: { id: 'asc' } });
-  const message = (who = 'employee', key = randomUUID(), kind = 'messages') =>
-    post(`/tickets/${ticketId}/${kind}`, who, {
-      content: 'Sensitive content must not appear in notifications',
-      expectedCycleId: cycleId,
-      clientRequestId: key,
-    });
   const assign = (name: string | null) =>
     patch(`/tickets/${ticketId}/assignment`, 'manager', {
       agentId: name ? users[name].id : null,
     });
-  const status = (value: string) =>
-    patch(`/tickets/${ticketId}/status`, 'manager', { status: value });
   const reopen = (who: string) =>
     post(`/tickets/${ticketId}/reopen`, who, {
       reason: 'Private reopening reason',
@@ -208,7 +204,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
   });
   const upload = (
     who = 'employee',
-    kind = 'messages',
+    kind: 'messages' | 'internal-notes' = 'messages',
     key = randomUUID(),
     filename = 'report.txt',
     bytes = Buffer.from('service desk report'),
@@ -227,11 +223,11 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       .attach('files', bytes, filename);
   const download = (id: number, who = 'employee') =>
     get(`/tickets/attachments/${id}/download`, who);
-  const remove = (
+  const remove = <File extends number | undefined = undefined>(
     record: number,
     who = 'employee',
-    kind = 'messages',
-    file?: number,
+    kind: 'messages' | 'internal-notes' = 'messages',
+    file?: File,
     cycle = cycleId,
   ) =>
     request(app.getHttpServer())
@@ -239,7 +235,9 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
         `/tickets/${ticketId}/${kind}/${record}${file ? `/attachments/${file}` : ''}`,
       )
       .set('Authorization', `Bearer ${token(who)}`)
-      .send({ expectedCycleId: cycle });
+      .send({ expectedCycleId: cycle }) as unknown as HttpTest<
+      File extends number ? Attachment : Message
+    >;
 
   it('creates immutable original ticket files atomically with private metadata and current authorization', async () => {
     const body = {
@@ -268,7 +266,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       byteSize: 8,
       deletedAt: null,
     });
-    expect(file.storageKey).toBeUndefined();
+    expect(file).not.toHaveProperty('storageKey');
     expect((await download(file.id).expect(200)).text).toBe('original');
     for (const who of ['outsider', 'agent', 'admin', 'superAdmin'])
       expect((await download(file.id, who)).status).toBe(
@@ -331,7 +329,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     await download(support.attachments[0].id, 'employee').expect(200);
   });
 
-  it.each(['messages', 'internal-notes'])(
+  it.each(['messages', 'internal-notes'] as const)(
     'allows only the authorized author to delete %s attachments without notifications',
     async (kind) => {
       const record = (await upload('agent', kind).expect(201)).body;
@@ -355,7 +353,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
         .body.records[0].attachments[0];
       expect(tombstone.deletedAt).toBeTruthy();
       expect(tombstone.filename).toBeNull();
-      expect(tombstone.storageKey).toBeUndefined();
+      expect(tombstone).not.toHaveProperty('storageKey');
       const edited = await patch(
         `/tickets/${ticketId}/${kind}/${record.id}`,
         'agent',
@@ -370,7 +368,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     },
   );
 
-  it.each(['messages', 'internal-notes'])(
+  it.each(['messages', 'internal-notes'] as const)(
     'soft deletes %s and consumes its creation key permanently',
     async (kind) => {
       const key = randomUUID();
@@ -437,18 +435,18 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     expect(await rows()).toEqual(before);
   });
 
-  it.each(['RESOLVED', 'CLOSED', 'CANCELLED'])(
+  it.each(['RESOLVED', 'CLOSED', 'CANCELLED'] as const)(
     'freezes communication and attachment deletion in %s',
     async (terminal) => {
       const record = (await upload().expect(201)).body;
       const note = (await upload('agent', 'internal-notes').expect(201)).body;
       await db.ticket.update({
         where: { id: ticketId },
-        data: { status: terminal as any },
+        data: { status: terminal },
       });
       await db.ticketWorkCycle.update({
         where: { id: cycleId },
-        data: { outcome: terminal as any, endedAt: new Date() },
+        data: { outcome: terminal, endedAt: new Date() },
       });
       for (const [item, who, kind] of [
         [record, 'employee', 'messages'],
@@ -719,8 +717,23 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     },
   );
   it('accepts exactly five files and the inclusive 10 MB boundary', async () => {
-    let call = request(app.getHttpServer()).post(`/tickets/${ticketId}/messages`).set('Authorization', `Bearer ${token('employee')}`).field('payload', JSON.stringify({ content: 'Limits', expectedCycleId: cycleId, clientRequestId: randomUUID() }));
-    for (let i = 0; i < 5; i++) call = call.attach('files', i === 0 ? Buffer.alloc(10485760, 65) : Buffer.from('small'), `file${i}.txt`);
+    let call = request(app.getHttpServer())
+      .post(`/tickets/${ticketId}/messages`)
+      .set('Authorization', `Bearer ${token('employee')}`)
+      .field(
+        'payload',
+        JSON.stringify({
+          content: 'Limits',
+          expectedCycleId: cycleId,
+          clientRequestId: randomUUID(),
+        }),
+      );
+    for (let i = 0; i < 5; i++)
+      call = call.attach(
+        'files',
+        i === 0 ? Buffer.alloc(10485760, 65) : Buffer.from('small'),
+        `file${i}.txt`,
+      );
     const result = await call.expect(201);
     expect(result.body.attachments).toHaveLength(5);
     expect(result.body.attachments[0].byteSize).toBe(10485760);

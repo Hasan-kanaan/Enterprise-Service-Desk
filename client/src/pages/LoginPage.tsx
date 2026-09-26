@@ -1,13 +1,12 @@
 import { Eye, EyeOff, LockKeyhole, MoveRight } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { login } from '@/services/auth.service'
-import { useAppDispatch } from '@/hooks/storeHooks'
-import { signedIn } from '@/store/authSlice'
+import { useAppSelector } from '@/hooks/storeHooks'
 import { getApiErrorMessage } from '@/services/api'
 
 const loginSchema = z.object({ email: z.string().email('Enter a valid company email'), password: z.string().min(1, 'Enter your password') })
@@ -15,20 +14,21 @@ type LoginForm = z.infer<typeof loginSchema>
 
 export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
-  const dispatch = useAppDispatch()
+  const user = useAppSelector((state) => state.auth.user)
   const navigate = useNavigate()
   const location = useLocation()
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) })
   const onSubmit = async (values: LoginForm) => {
     try {
-      const response = await login(values)
-      dispatch(signedIn({ accessToken: response.accessToken, user: response.user }))
+      await login(values)
       toast.success('Signed in successfully')
       navigate((location.state as { from?: string } | null)?.from ?? '/dashboard', { replace: true })
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'Unable to sign in. Check your credentials and try again.'))
     }
   }
+
+  if (user) return <Navigate to={(location.state as { from?: string } | null)?.from ?? '/dashboard'} replace />
 
   return (
     <section className="grid w-full items-center gap-16 lg:grid-cols-[1.05fr_0.95fr]">

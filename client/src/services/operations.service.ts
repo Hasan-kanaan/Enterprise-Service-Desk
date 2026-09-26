@@ -24,16 +24,6 @@ export const getSubtaskOperations = async (id: number, signal?: AbortSignal) =>
   ).data
 export const getSupportHistory = async (id: number, signal?: AbortSignal) =>
   (await api.get<SupportHistory>(`/tickets/${id}/history`, { signal })).data
-export const listSubtasks = async (
-  currentWork: boolean,
-  signal?: AbortSignal,
-) =>
-  (
-    await api.get<Subtask[]>('/tickets/subtasks', {
-      params: currentWork ? { currentWork: true } : {},
-      signal,
-    })
-  ).data
 export const assignManager = async (id: number, assignedManagerId: number) =>
   (
     await api.patch<TicketSummary>(`/tickets/${id}/manager`, {

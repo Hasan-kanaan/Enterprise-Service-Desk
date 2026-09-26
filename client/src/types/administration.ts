@@ -12,10 +12,6 @@ export type Team = Reference & {
   region: Reference | null
   teamLeadId: number | null
   teamLead: Pick<AuthUser, 'id' | 'username' | 'role'> | null
-  members: {
-    userId: number
-    user: Pick<Account, 'id' | 'username' | 'role' | 'status'>
-  }[]
   managers: {
     managerId: number
     manager: Pick<AuthUser, 'id' | 'username' | 'role'>

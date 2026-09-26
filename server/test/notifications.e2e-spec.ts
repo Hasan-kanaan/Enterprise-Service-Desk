@@ -1,7 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import request from 'supertest';
+import request from './http-test';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -9,30 +9,34 @@ import { jwtConstants } from '../src/auth/auth.constants';
 import { User, UserRole } from '../generated/prisma/client';
 
 describe('Persistent notifications (PostgreSQL and HTTP)', () => {
-  let app: INestApplication, db: PrismaService;
+  let app: INestApplication<import('node:http').Server>, db: PrismaService;
   let users: Record<string, User>;
   let ticketId: number, subtaskId: number, teamId: number, otherTeamId: number;
   let cycleId: number, oldCycleId: number, categoryId: number;
   const jwt = new JwtService({ secret: jwtConstants.secret });
   const token = (name: string) =>
     jwt.sign({ sub: users[name].id, role: users[name].role });
-  const get = (path: string, who: string) =>
+  const get = <P extends string>(path: P, who: string) =>
     request(app.getHttpServer())
       .get(path)
       .set('Authorization', `Bearer ${token(who)}`);
-  const patch = (path: string, who: string, body = {}) =>
+  const patch = <P extends string>(path: P, who: string, body = {}) =>
     request(app.getHttpServer())
       .patch(path)
       .set('Authorization', `Bearer ${token(who)}`)
       .send(body);
-  const post = (path: string, who: string, body: object) =>
+  const post = <P extends string>(path: P, who: string, body: object) =>
     request(app.getHttpServer())
       .post(path)
       .set('Authorization', `Bearer ${token(who)}`)
       .send(body);
   const rows = () =>
     db.notification.findMany({ where: { ticketId }, orderBy: { id: 'asc' } });
-  const message = (who = 'employee', key = randomUUID(), kind = 'messages') =>
+  const message = (
+    who = 'employee',
+    key = randomUUID(),
+    kind: 'messages' | 'internal-notes' = 'messages',
+  ) =>
     post(`/tickets/${ticketId}/${kind}`, who, {
       content: 'Sensitive content must not appear in notifications',
       expectedCycleId: cycleId,

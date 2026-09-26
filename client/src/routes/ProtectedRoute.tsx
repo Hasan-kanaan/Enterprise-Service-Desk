@@ -21,5 +21,5 @@ export function ProtectedRoute({ roles }: { roles?: UserRole[] }) {
         </Link>
       </div>
     )
-  return <Outlet />
+  return <Outlet key={`${user.id}:${user.role}`} />
 }

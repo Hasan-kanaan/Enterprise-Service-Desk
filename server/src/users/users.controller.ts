@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Req,
   Body,
+  Query,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -15,6 +16,7 @@ import { UserRole } from './user-role.enum';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UserRole as PrismaUserRole } from '../../generated/prisma/client';
 import { UsersService } from './users.service';
+import { ListUsersDto } from './dto/list-users.dto';
 
 @Controller('users')
 export class UsersController {
@@ -45,7 +47,7 @@ export class UsersController {
   @Get()
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query() query: ListUsersDto) {
+    return this.usersService.findAll(query);
   }
 }

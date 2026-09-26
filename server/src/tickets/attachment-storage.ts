@@ -56,6 +56,7 @@ export function validateUpload(file: Upload): Omit<StoredUpload, 'storageKey'> {
     .replace(/\\/g, '/')
     .split('/')
     .pop()!
+    // eslint-disable-next-line no-control-regex -- Intentionally replace control bytes in untrusted filenames.
     .replace(/[\x00-\x1f\x7f<>:"|?*]/g, '_')
     .replace(/^\.+|[. ]+$/g, '')
     .slice(-200);
@@ -86,6 +87,7 @@ export function validateUpload(file: Upload): Omit<StoredUpload, 'storageKey'> {
     try {
       const text = new TextDecoder('utf-8', { fatal: true }).decode(b);
       valid =
+        // eslint-disable-next-line no-control-regex -- Intentionally reject binary control bytes in text uploads.
         !/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text) &&
         !/^\s*(?:<!doctype\s+html|<html|<script|#!)/i.test(text);
       if (extension === '.json') JSON.parse(text);

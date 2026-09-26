@@ -1,4 +1,4 @@
-import api, { settleSessionRefresh } from '@/services/api'
+import api, { sessionCoordinator } from '@/services/api'
 import type { AuthResponse, AuthUser } from '@/types/auth'
 
 export type LoginInput = {
@@ -13,8 +13,9 @@ export type SetupInput = {
 }
 
 export async function login(input: LoginInput) {
-  const { data } = await api.post<AuthResponse>('/auth/login', input)
-  return data
+  return sessionCoordinator.login(async () =>
+    (await api.post<AuthResponse>('/auth/login', input)).data,
+  )
 }
 
 export async function setupInitialAdmin(input: SetupInput) {
@@ -28,6 +29,5 @@ export async function getSetupStatus() {
 }
 
 export async function logout() {
-  await settleSessionRefresh()
-  await api.post('/auth/logout')
+  await sessionCoordinator.logout(() => api.post('/auth/logout'))
 }

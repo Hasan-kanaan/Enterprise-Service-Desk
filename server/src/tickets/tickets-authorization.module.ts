@@ -19,6 +19,8 @@ import { TicketWorkspaceController } from './ticket-workspace.controller';
 import { TicketOptionsController } from './ticket-options.controller';
 import { WorkHistoryController } from './work-history.controller';
 import { WorkHistoryService } from './work-history.service';
+import { AutoCloseService } from './auto-close.service';
+import { AutoCloseScheduler } from './auto-close.scheduler';
 
 @Module({
   imports: [JwtModule.register({ secret: jwtConstants.secret })],
@@ -31,6 +33,8 @@ import { WorkHistoryService } from './work-history.service';
     TicketWorkspaceController,
   ],
   providers: [
+    AutoCloseService,
+    AutoCloseScheduler,
     WorkHistoryService,
     { provide: AttachmentStorage, useClass: LocalAttachmentStorage },
     AttachmentUploads,

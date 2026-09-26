@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { PeopleLookup } from './PeopleLookup'
 import { AdminDialog } from './AdminDialog'
-import type { Account, Catalog, Reference, Team } from '@/types/administration'
+import type { Catalog, Reference, Team } from '@/types/administration'
 import {
   createReference,
   createTeam,
@@ -105,32 +106,14 @@ export type TeamAction = {
 }
 export function TeamActionForm({
   team,
-  teams,
-  accounts,
   action,
   ...callbacks
 }: {
   team: Team
-  teams: Team[]
-  accounts: Account[]
   action: TeamAction
 } & Callbacks) {
   const [person, setPerson] = useState<number | null>(null)
   const removing = action.kind.startsWith('remove-')
-  const candidates = accounts.filter(
-    (account) =>
-      account.status === 'ACTIVE' &&
-      (action.kind === 'manager'
-        ? account.role === 'MANAGER'
-        : account.role === 'AGENT' &&
-          (action.kind === 'member'
-            ? !team.members.some((member) => member.userId === account.id)
-            : team.members.some((member) => member.userId === account.id) &&
-              !teams.some(
-                (other) =>
-                  other.id !== team.id && other.teamLeadId === account.id,
-              ))),
-  )
   const labels = {
     member: 'Add team member',
     lead: 'Assign Team Lead',
@@ -143,9 +126,7 @@ export function TeamActionForm({
     <AdminDialog
       title={labels[action.kind]}
       {...callbacks}
-      valid={
-        removing || candidates.some((candidate) => candidate.id === person)
-      }
+      valid={removing || person !== null}
       submit={() => {
         switch (action.kind) {
           case 'member':
@@ -167,8 +148,7 @@ export function TeamActionForm({
         <p className="notice">
           Confirm removal of{' '}
           {action.kind === 'remove-member'
-            ? team.members.find((member) => member.userId === action.userId)
-                ?.user.username
+            ? `member #${action.userId}`
             : action.kind === 'remove-lead'
               ? team.teamLead?.username
               : team.managers[0]?.manager.username}{' '}
@@ -176,27 +156,12 @@ export function TeamActionForm({
           selected.
         </p>
       ) : (
-        <label className="field">
-          {action.kind === 'manager' ? 'Manager' : 'Agent'}
-          <select
-            aria-label="Organization assignee"
-            required
-            value={person ?? ''}
-            onChange={(e) => setPerson(Number(e.target.value) || null)}
-          >
-            <option value="">Choose eligible person</option>
-            {candidates.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.username}
-              </option>
-            ))}
-          </select>
-          {!candidates.length && (
-            <span className="quiet-note">
-              No eligible active accounts are available.
-            </span>
-          )}
-        </label>
+        <PeopleLookup
+          label="Organization assignee"
+          value={person}
+          onChange={setPerson}
+          url={`/organization/teams/${team.id}/people?purpose=${action.kind}`}
+        />
       )}
       {action.kind.includes('manager') && (
         <p className="notice">

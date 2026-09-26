@@ -1,3 +1,19 @@
+import { PrismaService } from '../prisma/prisma.service';
+import type { Ticket } from '../../generated/prisma/client';
+type CurrentTicket = Pick<
+  Ticket,
+  | 'id'
+  | 'requesterId'
+  | 'assignedManagerId'
+  | 'assignedTeamId'
+  | 'assignedAgentId'
+  | 'status'
+  | 'resolvedAt'
+  | 'closedAt'
+> & {
+  assignedTeam: { teamLeadId: number } | null;
+  workCycles: { id: number; sequenceNumber: number; outcome: null }[];
+};
 import {
   BadRequestException,
   ConflictException,
@@ -23,10 +39,10 @@ describe('TicketsService', () => {
   };
   const transaction = jest.fn();
   const service = new TicketsService(
-    { ...db, $transaction: transaction } as any,
+    { ...db, $transaction: transaction } as unknown as PrismaService,
     new TicketAuthorizationService(),
   );
-  let current: any;
+  let current: CurrentTicket;
   beforeEach(() => {
     jest.resetAllMocks();
     db.user.findMany.mockResolvedValue([]);
@@ -42,25 +58,35 @@ describe('TicketsService', () => {
       resolvedAt: null,
       closedAt: null,
     };
-    transaction.mockImplementation((callback) => callback(db));
+    transaction.mockImplementation(
+      (callback: (tx: typeof db) => Promise<unknown>) => callback(db),
+    );
     db.$queryRaw.mockResolvedValue([{ id: 1 }]);
-    db.ticket.findUniqueOrThrow.mockImplementation(async () => current);
-    db.ticket.update.mockImplementation(async ({ data }) => ({
-      ...current,
-      ...data,
-    }));
+    db.ticket.findUniqueOrThrow.mockImplementation(() =>
+      Promise.resolve(current),
+    );
+    db.ticket.update.mockImplementation(
+      ({ data }: { data: Partial<CurrentTicket> }) =>
+        Promise.resolve({
+          ...current,
+          ...data,
+        }),
+    );
     db.ticket.updateMany.mockResolvedValue({ count: 1 });
     db.team.findUnique.mockResolvedValue({ id: 30 });
     db.team.findFirst.mockResolvedValue({ id: 30 });
     db.teamMember.findUnique.mockResolvedValue({
       user: { role: UserRole.AGENT },
     });
-    db.user.findUnique.mockImplementation(async ({ where }) => ({
-      id: where.id,
-      role: where.id === 20 ? UserRole.AGENT : UserRole.MANAGER,
-      status: 'ACTIVE',
-      sessionVersion: 0,
-    }));
+    db.user.findUnique.mockImplementation(
+      ({ where }: { where: { id: number } }) =>
+        Promise.resolve({
+          id: where.id,
+          role: where.id === 20 ? UserRole.AGENT : UserRole.MANAGER,
+          status: 'ACTIVE',
+          sessionVersion: 0,
+        }),
+    );
   });
 
   it('preserves an omitted agent and active status on reassignment', async () => {
@@ -137,7 +163,7 @@ describe('TicketsService', () => {
       data: expect.objectContaining({
         assignedTeamId: null,
         assignedAgentId: null,
-      }),
+      }) as unknown,
     });
   });
 

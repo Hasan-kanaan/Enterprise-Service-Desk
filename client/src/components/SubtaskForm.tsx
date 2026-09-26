@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { AssignmentFields } from './AssignmentFields'
-import { compatibleAssignment } from '@/types/assignment'
 import { OperationDialog } from './OperationDialog'
 import {
   subtaskStatuses,
@@ -9,6 +8,7 @@ import {
   type SubtaskInput,
 } from '@/types/operations'
 export function SubtaskForm({
+  ticketId,
   initial,
   teams,
   canAssignTeam,
@@ -19,6 +19,7 @@ export function SubtaskForm({
   onDone,
   onReload,
 }: {
+  ticketId: number
   initial?: Subtask
   teams: AssignmentTeam[]
   canAssignTeam: boolean
@@ -35,17 +36,22 @@ export function SubtaskForm({
   const [team, setTeam] = useState(
     initial ? initial.assignedTeamId : initialTeam,
   )
-  const [agent, setAgent] = useState(initial?.assignedAgentId ?? null)
+  const [agent, updateAgent] = useState(initial?.assignedAgentId ?? null)
+  const [agentTeam, setAgentTeam] = useState(
+    initial?.assignedTeamId ?? initialTeam,
+  )
+  const setAgent = (id: number | null) => {
+    updateAgent(id)
+    setAgentTeam(team)
+  }
+  const compatible = agent === null || team === agentTeam
   return (
     <OperationDialog
       title={initial ? 'Update subtask' : 'Create subtask'}
       onClose={onClose}
       onDone={onDone}
       onReload={onReload}
-      valid={
-        !!title.trim() &&
-        (!canAssignAgent || compatibleAssignment(teams, team, agent))
-      }
+      valid={!!title.trim() && (!canAssignAgent || compatible)}
       submit={() =>
         save({
           title: title.trim(),
@@ -94,6 +100,12 @@ export function SubtaskForm({
       )}
       {canAssignAgent && (
         <AssignmentFields
+          compatible={compatible}
+          lookupUrl={
+            initial
+              ? `/ticket-workspace/subtasks/${initial.id}/people?purpose=subtask`
+              : `/ticket-workspace/tickets/${ticketId}/people?purpose=subtask`
+          }
           teams={teams}
           teamId={team}
           agentId={agent}

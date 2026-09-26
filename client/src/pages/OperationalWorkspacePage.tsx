@@ -1,10 +1,14 @@
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { useResource } from '@/hooks/useResource'
-import { getWorkspace, listSubtasks } from '@/services/operations.service'
-import { listTickets } from '@/services/tickets.service'
-import { isTerminal } from '@/types/ticketPresentation'
+import { getWorkspace } from '@/services/operations.service'
+import { getTicketSummary } from '@/services/tickets.service'
+import { usePagedList, useDebouncedValue } from '@/hooks/usePagedList'
+import { useListFilters } from '@/hooks/useListFilters'
+import { ListContinuation } from '@/components/ListContinuation'
+import type { TicketSummary } from '@/types/tickets'
+import type { Subtask } from '@/types/operations'
 import {
   ErrorState,
   LoadingState,
@@ -21,47 +25,41 @@ export function OperationalWorkspacePage({
 }) {
   const user = useAppSelector((state) => state.auth.user)!
   const manager = user.role === 'MANAGER'
-  const [all, setAll] = useState(false)
-  const [query, setQuery] = useState('')
+  const filters = useListFilters()
+  const all = filters.get('all') === 'true'
+  const query = filters.get('search')
+  const search = useDebouncedValue(query)
   const workspace = useResource(getWorkspace)
-  // Subtask-only navigation deliberately makes no parent-ticket list/detail/history requests.
-  const tickets = useResource(
+  const summary = useResource(
     useCallback(
       (signal: AbortSignal) =>
-        view === 'subtasks' ? Promise.resolve([]) : listTickets(signal),
-      [view],
+        overview ? getTicketSummary(signal) : Promise.resolve({ counts: [] }),
+      [overview],
     ),
   )
-  const tasks = useResource(
-    useCallback(
-      (signal: AbortSignal) =>
-        view === 'subtasks' || overview
-          ? listSubtasks(!all, signal)
-          : Promise.resolve([]),
-      [view, overview, all],
-    ),
+  // Subtask-only navigation makes no parent list/detail/history request.
+  const tickets = usePagedList<TicketSummary>(
+    view === 'subtasks' ? null : '/tickets',
+    {
+      queue:
+        view === 'intake'
+          ? 'intake'
+          : view === 'team'
+            ? 'team'
+            : filters.get('queue') || 'mine',
+      active: all ? undefined : 'true',
+      search: search || undefined,
+    },
+  )
+  const tasks = usePagedList<Subtask>(
+    view === 'subtasks' ? '/tickets/subtasks' : null,
+    {
+      currentWork: all ? undefined : 'true',
+      search: search || undefined,
+    },
   )
   const led = workspace.data?.ledTeams ?? []
-  const rows = tickets.data ?? []
-  const intake = rows.filter(
-    (ticket) => ticket.status === 'NEW' && ticket.assignedManagerId === null,
-  )
-  const mine = rows.filter((ticket) =>
-    manager
-      ? ticket.assignedManagerId === user.id
-      : ticket.assignedAgentId === user.id || ticket.isCurrentCollaborator,
-  )
-  const team = rows.filter((ticket) =>
-    led.some((item) => item.id === ticket.assignedTeamId),
-  )
-  const chosen = view === 'intake' ? intake : view === 'team' ? team : mine
-  const visible = chosen.filter(
-    (ticket) =>
-      (all || !isTerminal(ticket.status)) &&
-      `${ticket.id} ${ticket.title}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  )
+  const visible = tickets.items
   const title = overview
     ? 'Support overview'
     : view === 'intake'
@@ -80,6 +78,7 @@ export function OperationalWorkspacePage({
     tickets.reload()
     workspace.reload()
     tasks.reload()
+    summary.reload()
   }
   return (
     <div className="ticket-workspace">
@@ -131,30 +130,21 @@ export function OperationalWorkspacePage({
         <section className="ticket-stats" aria-label="Operational counts">
           <div className="stat-card">
             <span>
-              {manager ? 'Unowned intake' : 'Active assigned and collaborating work'}
+              {manager
+                ? 'Unowned intake'
+                : 'Active assigned and collaborating work'}
             </span>
-            <strong>
-              {tickets.data
-                ? manager
-                  ? intake.length
-                  : mine.filter((t) => !isTerminal(t.status)).length
-                : '-'}
-            </strong>
+            <strong>{summary.data?.counts[0] ?? '-'}</strong>
           </div>
           <div className="stat-card">
             <span>
               {manager ? 'My active tickets' : 'Active led-team tickets'}
             </span>
-            <strong>
-              {tickets.data && workspace.data
-                ? (manager ? mine : team).filter((t) => !isTerminal(t.status))
-                    .length
-                : '-'}
-            </strong>
+            <strong>{summary.data?.counts[1] ?? '-'}</strong>
           </div>
           <div className="stat-card">
             <span>Authorized incomplete subtasks</span>
-            <strong>{tasks.data ? tasks.data.length : '-'}</strong>
+            <strong>{summary.data?.counts[2] ?? '-'}</strong>
           </div>
         </section>
       )}
@@ -169,7 +159,9 @@ export function OperationalWorkspacePage({
               <input
                 type="checkbox"
                 checked={all}
-                onChange={(event) => setAll(event.target.checked)}
+                onChange={(event) =>
+                  filters.set('all', event.target.checked ? 'true' : '')
+                }
               />
               {view === 'subtasks'
                 ? 'Include completed and historical work'
@@ -177,25 +169,37 @@ export function OperationalWorkspacePage({
             </label>
           )}
         </div>
-        {view !== 'subtasks' && (
+        {
           <div className="list-filters">
             <label className="search-field">
               <input
                 aria-label="Search work tickets"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                maxLength={120}
+                onChange={(event) => filters.set('search', event.target.value)}
                 placeholder="Search by title or ticket number"
               />
             </label>
           </div>
+        }
+        {!manager && view === 'mine' && (
+          <select
+            aria-label="Ticket queue filter"
+            value={filters.get('queue')}
+            onChange={(e) => filters.set('queue', e.target.value)}
+          >
+            <option value="">Assigned and collaborating</option>
+            <option value="primary">Primary assignments</option>
+            <option value="collaboration">Collaboration</option>
+          </select>
         )}
         {loading ? (
           <LoadingState />
-        ) : error ? (
+        ) : error && !resource.items.length ? (
           <ErrorState error={error} onRetry={reload} />
         ) : view === 'subtasks' ? (
-          tasks.data?.length ? (
-            <SubtaskRows subtasks={tasks.data} />
+          tasks.items.length ? (
+            <SubtaskRows subtasks={tasks.items} />
           ) : (
             <EmptyState title="No authorized subtask work">
               <p>There is no work in this view.</p>
@@ -212,6 +216,7 @@ export function OperationalWorkspacePage({
             </p>
           </EmptyState>
         )}
+        <ListContinuation resource={resource} />
       </section>
       {led.length > 0 && (
         <p className="quiet-note">

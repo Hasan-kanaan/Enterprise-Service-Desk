@@ -1,12 +1,80 @@
 # Project Status
 
-Frontend and backend verification updated on 2026-09-25. [README.md](README.md) describes the project and [docs/decision.md](docs/decision.md) records architectural decisions.
+Frontend and backend verification updated on 2026-09-26. [README.md](README.md) describes the project and [docs/decision.md](docs/decision.md) records architectural decisions.
 
 The [future public demo deployment plan](docs/demo-deployment-plan.md) records late-phase constraints only; demo infrastructure remains deferred while normal product development continues.
 
 ## Current Phase
 
-My Work History implemented on the existing authorization, routing, collaboration, communication, attachment, notification, lifecycle and offboarding baseline. Auto-close and demo/deployment infrastructure remain deferred. All work remains uncommitted; no commit or push performed.
+Multi-tab authentication/session coordination is implemented on the completed pagination/search and business-authorization baseline. Multiple devices/browsers remain supported; logout remains refresh-session scoped. AI and public-demo/deployment work remain deferred. No commit or push performed.
+
+## Multi-tab session stabilization (2026-09-26)
+
+- Fixed the shared-cookie race between independent frontend refresh promises. Central Web Locks serialize refresh/login/logout; BroadcastChannel shares access-token/user snapshots transiently. Access tokens remain memory-only, refresh tokens HttpOnly. Persistent storage holds only non-secret revision/operation/cooldown metadata. Stale messages and late rejected requests cannot overwrite newer authentication.
+- Logout clears sibling UI/Redux/access state under the lock and revokes the supplied session once for concurrent callers. Definitive refresh rejection and repeated unauthorized requests propagate invalidation. Login propagation preserves deep links; account/role changes remount protected views. Multiple independent devices/browsers remain supported; logout is not global. Deactivation/sessionVersion invalidation remains global, and reactivation requires fresh authentication.
+- Network/5xx failures retain authentication, impose a two-second shared cooldown and use existing retry UI. No automatic retry/broadcast loop. HTTP timeout stays 15 seconds; lock waits abort after 20 seconds without stealing locks. Channel/listener/queued-wait cleanup covers teardown/HMR; focus/pageshow checks catch resumed tabs.
+- Fallback: without BroadcastChannel, Web Locks serialize separate refreshes and storage events propagate logout. Without Web Locks or usable storage, fail safely with recovery guidance. Requires current browsers on HTTPS/localhost with site storage enabled. Different app origins cannot coordinate even when sharing an API cookie. Closing the refresh owner mid-request leaves an uncertain pending operation: offer fresh login instead of replay. Backend logout failure cannot guarantee revocation, but siblings still clear local authentication.
+- No backend runtime, account-lifecycle, business-authorization, dependency, lockfile, schema or migration changes. Added a backend test only. Existing uncommitted changes preserved; demo-deployment-plan.md untouched. No AI, deployment, commit or push work.
+
+### Session verification
+
+- Backend and frontend lint: **0 errors / 0 warnings**, checked with `--max-warnings 0` and no autofixes. Backend typecheck/Nest build and frontend TypeScript/Vite production build passed.
+- Backend unit tests: **13 suites / 133 tests passed**. PostgreSQL/HTTP: **8 suites / 239 tests passed** on the existing `eds_stabilization_test` database. Added coverage for two independent logins, exactly one successful concurrent rotation, replay rejection, session-scoped logout and continued access/refresh on the other login. Existing deactivation/reactivation and all business regressions pass.
+- Complete Chromium browser suites: **Employee 18 groups, operations 17 groups, administration 6 groups, session 11 groups**. Real same-profile pages and a separate browser context use native Web Locks/BroadcastChannel/storage events, actual Axios/Redux and isolated rotating HttpOnly-cookie API fixtures. New coverage: simultaneous refresh/401s, sibling requests, profile isolation, concurrent logout behind refresh, stale broadcasts, login/deactivation propagation, network cooldown/recovery, missing channel/locks, blocked storage, owner closure/fresh login and no persisted tokens. No runtime errors in the successful complete run. Chromium-only execution; browser-to-live-database and Firefox/Safari execution are not claimed.
+- Prisma validate/generate passed. Development and test databases each have **16 migrations applied**, up-to-date status and **no schema drift**. No migration deployment/reset. `git diff --check` passed.
+- Initial sandbox Chromium/CDP startup failures were resolved by authorized local process execution. Corrected browser readiness timing and observed one interrupted lazy import during deliberate tab closure; subsequent complete runs passed. The new backend race test initially assumed only 401 for the loser; existing serializable contention may return 409. It now accepts either while separately requiring replay 401. Expected injected rollback errors and existing pg/experimental VM warnings remain in e2e logs; lint has no warnings.
+
+### Files changed in this phase
+
+- `client/src/services/session-coordinator.ts` (new)
+- `client/src/services/api.ts`
+- `client/src/services/auth.service.ts`
+- `client/src/components/SessionBootstrap.tsx`
+- `client/src/layouts/AppLayout.tsx`
+- `client/src/pages/LoginPage.tsx`
+- `client/src/routes/ProtectedRoute.tsx`
+- `client/test/session-flow.mjs` (new)
+- `client/package.json` (browser test command only)
+- `server/test/tickets-authorization.e2e-spec.ts` (test addition only)
+- `README.md`, `docs/decision.md`, `status.md`
+
+## Enterprise list stabilization (2026-09-26)
+
+- [Audit and measured query plans](docs/list-scale-audit.md) recorded before implementation: `/tickets`, global/per-ticket subtask reads, `/users`, embedded organization members and assignment-user collections were unbounded. Configuration catalogs remain small; notifications and My Work History already had bounds. Subject history/communication/note/attachment streams were explicitly deferred.
+- Ticket/subtask queues now apply unchanged authorization AND queue/search/filter/cursor predicates in the database, ordered by immutable `createdAt DESC, id DESC`, taking at most page size + 1. Accounts and membership use immutable `id DESC`. Versioned base64url cursor payloads have strict structure, ID/date/length validation and no dependency on an existing boundary record. Default 25, maximum 100, `{ items, nextCursor, hasMore }`; no per-page total. Dashboard cards use scoped COUNT queries.
+- Employee own requests, Manager intake/owned, Agent primary/collaboration, Team Lead led-team, subtask workspace, account directory and member display consume server pages. Search is trimmed, capped at 120, parameterized and literal for LIKE wildcard characters. Ticket title/reference, status, active/finished, category and queue filters combine with visibility; directory username/email, role and status filters preserve the existing projection/matrix.
+- Primary Agent, transfer Manager, new/existing subtask Agent, organization member/lead/manager selectors now use purpose-specific authorized username lookup, at most 20 matches, without embedded user expansions. Existing active-role, membership, Team Lead, primary managed-regional/GLOBAL and subtask-specific policies remain authoritative. No unrestricted employee API or user deletion.
+- Frontend: 300 ms debounce, initial/loading-more/end/empty/search-empty/error/retry states, retention of rows on continuation failure, cancelled/ignored stale requests, and URL filters on ticket/queue/account lists. Search/filter/back/forward changes reset cursor state; repeated records are deduplicated defensively. Existing React/service conventions and mobile layouts retained, without a fetching dependency.
+- Migration `20260926120000_list_keyset_indexes` replaces five equivalent-prefix Ticket indexes with ordered composites, adds general ticket-order and User(role,status,id) indexes, and reuses existing membership/subtask/cycle keys. No data migration. Development and isolated test databases each have **16 migrations**, up to date with **zero schema drift**.
+- Default test-only fixture: **128 users / 343 tickets / 57 subtasks**. Optional large fixture: **2,071 users / 12,001 tickets / 2,000 subtasks**, cleaned afterward. Actual parameterized Prisma SQL plans after ANALYZE showed direct list pages around **0.025–0.527 ms**, collaboration **12.222 ms** locally. No timing assertions or production-capacity claim; substring filtering and complex collaboration still require database work.
+- Final verification: backend lint **0 errors / 0 warnings**, TypeScript and Nest build pass; **13 unit suites / 133 tests**; **8 PostgreSQL/e2e suites / 238 tests**. Frontend lint **0 errors / 0 warnings**, TypeScript/Vite build pass; all **3 browser suites / 41 named acceptance groups** pass (**Employee 18, operations 17, administration 6**) with no browser runtime errors. Prisma validate/generate, migration status/drift checks and `git diff --check` pass.
+- Verification recovery: the local PostgreSQL container was stopped during continuation; restarting that existing development container restored test access. Sandboxed browser/CDP connections failed, so authorized local browser checks ran with process access. A browser test's immediate form click was changed to wait for readiness; the complete suites then passed. No production services or public deployment were involved.
+- Remaining scale boundaries: small configuration/team catalogs, subject history/communication/note/attachment streams, existing offset-based My Work History, dashboard count cost, substring searches, relationship-heavy collaboration and accumulated load-more browser rows. Notifications retain their existing bound. Business authorization, mutations, auto-close, lifecycle/concurrency, offboarding, sessions and all explicitly excluded features are unchanged; existing uncommitted baseline work is preserved.
+
+## Backend lint stabilization (2026-09-26)
+
+- Audited the existing backend lint scope before editing application code: 84 owned TypeScript files, 818 errors and 138 warnings. `src/` accounted for 113 errors / 38 warnings; `test/` for 705 errors / 100 warnings. Configuration, generated code, migrations and other directories contributed zero. The package command explicitly targets `{src,apps,libs,test}/**/*.ts`; generated Prisma, node_modules, dist/build, coverage and migration SQL were not accidentally included. Tests remain covered. No ESLint configuration, package script, dependency or directory exclusion changes were needed.
+- Main findings: 348 unsafe member accesses, 137 unsafe arguments, 88 unsafe assignments, 87 unsafe calls, 17 unsafe returns and 254 formatting violations. Smaller categories were unused bindings, unnecessary async/assertions, unbound mock methods, CommonJS import typing and an unhandled-promise lint warning.
+- Applied the existing lint command's formatting/autofixes, typed authentication request/JWT/cookie boundaries and DTO transform inputs, preserved intentional field omission, and made startup promise handling explicit. Test changes type partial mocks/callbacks, PostgreSQL query results and HTTP response contracts. The test-only Supertest adapter derives response types from existing services/controllers and preserves the real requests and runtime assertions. No authorization, API contract, lifecycle, notification, communication, attachment, routing or database behavior changed.
+- Exactly two line-level `no-control-regex` exceptions were added in attachment validation: the existing regexes intentionally sanitize filename control bytes and reject binary control bytes in text uploads. Each exception explains its purpose; neither regex changed. No broad disables, safety-rule relaxation or source/test exclusions were added.
+- Maintenance scope: 37 existing TypeScript files modified plus one test-only HTTP typing helper (38 total): 24 application files, eight unit-test files, five e2e files and one test helper. Many application changes are formatting only. Documentation changed only in this status entry; pre-existing auto-close README/decision/schema/migration changes remain intact. No new or edited migrations, data repair, deployment work, AI work, commit or push.
+- Final backend lint: **0 errors / 0 warnings** using the existing package command and a separate check without autofixes. No warnings intentionally remain. Server TypeScript check and Nest build passed; complete unit suite passed **12 suites / 124 tests**; complete PostgreSQL e2e suite passed **7 suites / 211 tests**.
+- Frontend TypeScript/Vite build and ESLint passed. Complete Chromium suites passed: **Employee 17 groups, operations 13 groups, administration 5 groups**, without browser runtime errors. Prisma validate/generate and `git diff --check` passed. The first e2e attempt could not connect because Docker Desktop was stopped; starting the existing local installation restored the existing PostgreSQL container, and the complete rerun passed. No migration deployment or database reset was performed; database writes were limited to the existing isolated test fixtures and their cleanup.
+
+## Automatic closure verification (2026-09-25)
+
+- Migration synchronization: development `enterprise_service_desk` and isolated `eds_stabilization_test` both have all 15 migrations applied; Prisma migrate status is up to date and migrate diff reports zero differences in both. Migration `20260925180000_ticket_auto_close` adds nullable MANUAL/AUTO_TIMEOUT closeSource and `(status, resolvedAt)` index. Historical sources are left NULL; migration regression verifies existing cycle facts and tickets are preserved.
+- Rule: 72 real elapsed hours continuously RESOLVED, with no business-day/weekend/holiday logic. Current persisted status/resolvedAt determines eligibility. Reopen invalidates the old deadline, re-resolution starts a fresh period, and CANCELLED remains frozen. Existing manual permissions and interactive 409 behavior are unchanged.
+- Architecture: testable `AutoCloseService.runSweep(now)` plus independent Nest lifecycle `AutoCloseScheduler`, invoking a sweep every ten minutes (first run ten minutes after startup). One process-wide trigger, no per-ticket in-memory timers, no queue and no dependency changes. Future deployment may replace the scheduler without changing domain logic.
+- Query: status=RESOLVED and resolvedAt<=now-duration, ordered by resolvedAt, LIMIT 100 FOR UPDATE SKIP LOCKED. At most ten Serializable batches/1,000 tickets per sweep. Parent locks precede current-state/cycle rechecks. Locked candidates and serialization conflicts defer to later sweeps; ticket/cycle updates are atomic and idempotent. An unexpected failure rolls back its batch and is logged. Backlogs may require additional sweeps.
+- Automatic closure annotates the same resolved cycle, retaining outcome, summary, ending actor and ownership snapshot, with AUTO_TIMEOUT and no human closedBy actor. New manual closes record MANUAL and retain existing manual outcome behavior. Legacy unknown source remains NULL; no fake system user or source backfill.
+- `AUTO_CLOSE_AFTER_HOURS` defaults to 72; positive finite values up to 87600 are accepted at startup. Configure all instances identically. API autoCloseAt uses the same value; Employee detail shows eligibility time and subsequent-check wording. History displays “Automatically closed”. No countdown or admin setting.
+- No CLOSED notification exists; no closure notification or email is sent. Existing resolution notifications, frozen communication, readable authorized attachments, soft deletion, managed-regional/GLOBAL routing, collaborators, work history and offboarding remain unchanged. No attachment infrastructure or demo deployment plan changes.
+- Complete unit verification: 12 suites / 124 tests passed. Complete PostgreSQL e2e verification: 7 suites / 211 tests passed. New cases cover eligibility boundaries and all excluded statuses, stale candidates, fresh resolution periods, manual attribution, races, locked rows, actual database rollback, batch caps, index strategy, configurable duration and scheduler lifecycle. Existing authorization and domain regression suites pass.
+- Complete Chromium verification: Employee 17 groups, operations 13 groups, administration 5 groups passed, including auto-close date/history, manual close/reopen, mobile layout and no browser runtime errors. The initial sandbox browser launch timed out at Page.enable; the approved run outside the sandbox passed all three suites.
+- Server TypeScript and Nest build, frontend ESLint/TypeScript/Vite build, Prisma validation/generation and git diff whitespace check passed. New auto-close source/test files pass ESLint. Full backend ESLint was run without broad autofixes and remains failing on repository-wide baseline issues: 818 errors / 138 warnings (formatting, unsafe types, unused variables and related rules). Existing e2e injected-rollback logs and pg/VM warnings are expected.
+- Files changed: `server/prisma/schema.prisma`; `server/prisma/migrations/20260925180000_ticket_auto_close/migration.sql`; `server/src/tickets/auto-close.config.ts`; `server/src/tickets/auto-close.service.ts`; `server/src/tickets/auto-close.scheduler.ts`; `server/src/tickets/auto-close.service.spec.ts`; `server/src/tickets/tickets-authorization.module.ts`; `server/src/tickets/tickets.service.ts`; `server/src/tickets/ticket-response.mapper.ts`; `server/test/auto-close.e2e-spec.ts`; `server/test/work-cycle-migration.e2e-spec.ts`; `client/src/types/tickets.ts`; `client/src/pages/EmployeeTicketPage.tsx`; `client/src/components/TicketHistory.tsx`; `client/test/employee-flow.mjs`; `README.md`; `docs/decision.md`; `status.md`.
+- No package/lockfile changes, commit or push.
 
 ## Secure Attachments and Soft Deletion
 
@@ -172,11 +240,10 @@ git status --short
 
 ## Remaining Roadmap
 
-1. Automatic RESOLVED -> CLOSED behavior
-2. General polish/stabilization
-3. AI routing/recommendations
+1. General polish/stabilization
+2. AI routing/recommendations
 
-Attachments, author-controlled communication soft deletion and My Work History are complete. Auto-close remains deferred.
+Attachments, author-controlled communication soft deletion, My Work History and automatic closure are complete.
 
 ## Deferred Work and Remaining Boundaries
 

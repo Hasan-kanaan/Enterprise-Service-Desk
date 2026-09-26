@@ -8,7 +8,9 @@ import {
 } from 'class-validator';
 
 export class ReopenTicketDto {
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @MinLength(1)
   @MaxLength(2000)

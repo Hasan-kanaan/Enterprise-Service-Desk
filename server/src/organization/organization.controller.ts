@@ -8,7 +8,10 @@ import {
   Post,
   UseGuards,
   Req,
+  Query,
 } from '@nestjs/common';
+import { ListQuery } from '../common/list-query';
+import { IsIn } from 'class-validator';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -17,6 +20,11 @@ import { UserRole } from '../users/user-role.enum';
 import { CreateNameDto } from './dto/create-name.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { OrganizationService } from './organization.service';
+
+class OrganizationLookupQuery extends ListQuery {
+  @IsIn(['member', 'lead', 'manager'])
+  purpose!: 'member' | 'lead' | 'manager';
+}
 
 type ActorRequest = {
   user: { sub: number; role: PrismaUserRole; sessionVersion: number };
@@ -49,6 +57,20 @@ export class OrganizationController {
   @Get('teams') listTeams() {
     return this.organizationService.listTeams();
   }
+  @Get('teams/:teamId/members') listMembers(
+    @Param('teamId', ParseIntPipe) teamId: number,
+    @Query() query: ListQuery,
+  ) {
+    return this.organizationService.listMembers(teamId, query);
+  }
+
+  @Get('teams/:teamId/people') people(
+    @Param('teamId', ParseIntPipe) teamId: number,
+    @Query() query: OrganizationLookupQuery,
+  ) {
+    return this.organizationService.people(teamId, query.purpose, query);
+  }
+
   @Post('teams') createTeam(@Body() dto: CreateTeamDto) {
     return this.organizationService.createTeam(dto);
   }

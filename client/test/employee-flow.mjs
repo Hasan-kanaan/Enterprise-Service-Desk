@@ -1,3 +1,4 @@
+import { pageFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
@@ -142,6 +143,7 @@ async function navigate(path) {
   await delay(150)
 }
 async function click(text) {
+  await until(() => evaluate(`[...document.querySelectorAll('button,a')].some(el => el.textContent.trim() === ${JSON.stringify(text)} && !el.disabled)`), `ready: ${text}`)
   await evaluate(
     `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); el.click(); })()`,
   )
@@ -164,7 +166,7 @@ async function selectAttachment(selector, name) {
 }
 
 function response(request) {
-  const path = new URL(request.url).pathname
+  const url = new URL(request.url), path = url.pathname
   requests.push(`${request.method} ${path}`)
   const body = submission(request).body
   if (/^\/tickets\/\d+\/attachments$/.test(path)) return [200, tickets.find(t => t.id === Number(path.split('/')[2]))?.attachments ?? []]
@@ -202,10 +204,11 @@ function response(request) {
     expired = false
     return [401, { message: 'Expired token' }]
   }
+  if (path === '/tickets/summary') return [200, { counts: [tickets.filter(t => !['RESOLVED', 'CLOSED', 'CANCELLED'].includes(t.status)).length, tickets.filter(t => t.status === 'WAITING_FOR_EMPLOYEE').length, tickets.filter(t => t.status === 'RESOLVED').length] }]
   if (path === '/tickets' && request.method === 'GET')
     return listFailure
       ? [503, { message: 'Service temporarily unavailable' }]
-      : [200, tickets]
+      : [200, pageFixture(tickets, url)]
   if (path === '/tickets' && request.method === 'POST') {
     mutations.push({ path, body })
     assert.equal(body.categoryId, 4)
@@ -331,6 +334,7 @@ try {
       try {
         const [status, body] =
           request.method === 'OPTIONS' ? [200, {}] : response(request)
+        if (new URL(request.url).searchParams.get('search') === 'scale slow') await delay(1000)
         await send('Fetch.fulfillRequest', {
           requestId,
           responseCode: status,
@@ -353,6 +357,7 @@ try {
           body: Buffer.from(JSON.stringify(body)).toString('base64'),
         })
       } catch (error) {
+        if (new URL(request.url).searchParams.get('search') === 'scale slow' && String(error).includes('Invalid InterceptionId')) return
         browserErrors.push(String(error))
         await send('Fetch.failRequest', { requestId, errorReason: 'Failed' })
       }
@@ -518,8 +523,30 @@ try {
   cycles[0].outcome = 'RESOLVED'
   cycles[0].resolutionSummary = 'Reinstalled the VPN client.'
   tickets[0].resolvedAt = now
+  tickets[0].autoCloseAt = '2026-09-25T08:00:00.000Z'
   await click('Refresh')
   await waitText('Your request has been resolved.')
+  await waitText('Eligible for automatic closure on')
+  const expectedDeadline = await evaluate(`new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-09-25T08:00:00.000Z'))`)
+  await waitText(expectedDeadline)
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'), 'resolved deadline fits mobile')
+  await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false })
+  tickets[0].status = 'CLOSED'
+  tickets[0].closedAt = tickets[0].autoCloseAt
+  cycles[0].closedAt = tickets[0].autoCloseAt
+  cycles[0].closeSource = 'AUTO_TIMEOUT'
+  cycles[0].closedBy = null
+  await click('Refresh')
+  await waitText('Automatically closed')
+  assert(!await evaluate(`document.body.innerText.includes('Eligible for automatic closure on')`))
+  tickets[0].status = 'RESOLVED'
+  tickets[0].closedAt = null
+  cycles[0].closedAt = null
+  cycles[0].closeSource = null
+  await click('Refresh')
+  await waitText('Your request has been resolved.')
+  console.log('PASS: accurate auto-close date, automatic CLOSED history and resolved mobile layout')
   await click('Close ticket')
   await click('Confirm closure')
   await waitText('This request is closed.')
@@ -535,6 +562,7 @@ try {
   assert.equal(cycles.length, 2)
   assert.equal(cycles[1].outcome, 'CLOSED')
   assert.equal(tickets[0].closedAt, null)
+  assert(!await evaluate(`document.body.innerText.includes('Eligible for automatic closure on')`))
   await waitText('Message deleted')
   assert(!await evaluate(`[...document.querySelectorAll('button')].some(el => ['Edit message', 'Delete message', 'Delete attachment'].includes(el.textContent))`))
   assert(!requests.some((item) => /subtasks/.test(item)))
@@ -624,6 +652,43 @@ try {
   await waitText('VPN disconnects repeatedly')
   await fill('input[aria-label="Search tickets"]', 'no match')
   await waitText('No matching requests')
+  const originalTickets = tickets
+  tickets = Array.from({ length: 61 }, (_, i) => ({ ...originalTickets[0], id: 1000 + i, title: `scale ${i < 30 ? 'slow' : 'fast'} ${i}`, status: i < 30 ? 'NEW' : 'RESOLVED', createdAt: now }))
+  await navigate('/tickets?search=scale')
+  await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 25"), 'first bounded ticket page')
+  listFailure = true
+  await click('Load more')
+  await waitText('Service temporarily unavailable')
+  assert.equal(await evaluate("document.querySelectorAll('.ticket-row').length"), 25)
+  listFailure = false
+  await click('Try again')
+  await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 50"), 'second ticket page after retry')
+  await click('Load more')
+  await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 61"), 'final ticket page')
+  await waitText('End of results')
+  assert.equal(await evaluate("new Set([...document.querySelectorAll('.ticket-row')].map(e => e.href)).size"), 61)
+  await click('Active')
+  await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 25 && !document.body.textContent.includes('scale fast')"), 'filter resets cursor')
+  await click('Load more')
+  await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 30"), 'active final page')
+  await evaluate('history.back()')
+  await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 25 && document.body.textContent.includes('scale fast')"), 'back resets first page')
+  await evaluate('history.forward()')
+  await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 25 && !document.body.textContent.includes('scale fast')"), 'forward does not revive cursor')
+  await navigate('/tickets?search=scale&state=finished&status=RESOLVED')
+  await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 25"), 'deep linked filters')
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Filter by status\"]').value"), 'RESOLVED')
+  await navigate('/tickets?search=scale')
+  await waitText('scale fast')
+  await fill('[aria-label="Search tickets"]', 'scale slow')
+  await delay(370)
+  await fill('[aria-label="Search tickets"]', 'scale fast')
+  await until(() => evaluate("document.querySelectorAll('.ticket-row').length === 25 && !document.body.textContent.includes('scale slow')"), 'newer search wins')
+  await delay(1100)
+  assert(!await evaluate("document.body.textContent.includes('scale slow')"))
+  assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+  tickets = originalTickets
+  console.log('PASS: employee bounded pages, deterministic continuation, filter reset, deep reload, stale search exclusion and mobile results')
   emptyCategories = true
   await navigate('/tickets/new')
   await waitText('Ticket categories have not been configured')

@@ -1,10 +1,5 @@
-import {
-  Controller,
-  Get,
-  Request,
-  UseGuards,
-} from '@nestjs/common';
-import { AuthGuard } from './auth.guard';
+import { Controller, Get, Request, UseGuards } from '@nestjs/common';
+import { AuthGuard, type AuthenticatedRequest } from './auth.guard';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
 import { UserRole } from '../users/user-role.enum';
@@ -20,7 +15,7 @@ export class ProfileController {
     UserRole.AGENT,
     UserRole.EMPLOYEE,
   )
-  getProfile(@Request() req: any) {
+  getProfile(@Request() req: AuthenticatedRequest) {
     return {
       message: 'Profile access granted',
       user: req.user,

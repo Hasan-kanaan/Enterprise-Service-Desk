@@ -11,6 +11,7 @@ import {
   requireActiveActor,
   serializable,
 } from '../prisma/transactions';
+import { after, ListQuery, listPage, listWindow } from '../common/list-query';
 import { CreateTeamDto } from './dto/create-team.dto';
 
 @Injectable()
@@ -46,14 +47,6 @@ export class OrganizationService {
       orderBy: { name: 'asc' },
       include: {
         region: true,
-        members: {
-          select: {
-            userId: true,
-            user: {
-              select: { id: true, username: true, role: true, status: true },
-            },
-          },
-        },
         teamLead: { select: { id: true, username: true, role: true } },
         managers: {
           include: {
@@ -62,6 +55,61 @@ export class OrganizationService {
         },
         specialties: { include: { specialty: true } },
       },
+    });
+  }
+
+  async listMembers(teamId: number, query: ListQuery) {
+    await this.requireTeam(teamId);
+    const { limit, position, search } = listWindow(query, false);
+    const rows = await this.prisma.user.findMany({
+      where: {
+        AND: [
+          after(position),
+          { teamMemberships: { some: { teamId } } },
+          search ? { username: { contains: search, mode: 'insensitive' } } : {},
+        ],
+      },
+      select: { id: true, username: true, role: true, status: true },
+      orderBy: { id: 'desc' },
+      take: limit + 1,
+    });
+    return listPage(rows, limit, false);
+  }
+
+  async people(
+    teamId: number,
+    purpose: 'member' | 'lead' | 'manager',
+    query: ListQuery,
+  ) {
+    await this.requireTeam(teamId);
+    const { search } = listWindow(query, false);
+    if (!search) return [];
+    const eligibility: Prisma.UserWhereInput =
+      purpose === 'manager'
+        ? { role: UserRole.MANAGER }
+        : {
+            role: UserRole.AGENT,
+            teamMemberships:
+              purpose === 'member'
+                ? { none: { teamId } }
+                : { some: { teamId } },
+            ...(purpose === 'lead'
+              ? { OR: [{ ledTeam: null }, { ledTeam: { id: teamId } }] }
+              : {}),
+          };
+    return this.prisma.user.findMany({
+      where: {
+        AND: [
+          eligibility,
+          {
+            status: 'ACTIVE',
+            username: { contains: search, mode: 'insensitive' },
+          },
+        ],
+      },
+      select: { id: true, username: true },
+      orderBy: [{ username: 'asc' }, { id: 'asc' }],
+      take: 20,
     });
   }
 

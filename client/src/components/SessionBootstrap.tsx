@@ -1,16 +1,27 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAppDispatch, useAppSelector } from '@/hooks/storeHooks'
 import { clearSession, refreshSession } from '@/services/api'
+import { SessionCoordinationError } from '@/services/session-coordinator'
 import { sessionChecking, sessionRestoreFailed } from '@/store/authSlice'
 
 export function SessionBootstrap({ children }: { children: ReactNode }) {
   const status = useAppSelector((state) => state.auth.status)
   const dispatch = useAppDispatch()
+  const [recoveryMessage, setRecoveryMessage] = useState(
+    'Check your connection and try again.',
+  )
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let active = true
-    void refreshSession().catch(() => {
-      if (active) dispatch(sessionRestoreFailed())
+    void refreshSession().catch((error: unknown) => {
+      if (active) {
+        setRecoveryMessage(
+          error instanceof SessionCoordinationError
+            ? error.message
+            : 'Check your connection and try again.',
+        )
+        dispatch(sessionRestoreFailed())
+      }
     })
     return () => {
       active = false
@@ -26,7 +37,7 @@ export function SessionBootstrap({ children }: { children: ReactNode }) {
     return (
       <div className="session-state">
         <h1>Unable to connect</h1>
-        <p>Check your connection and try again.</p>
+        <p>{recoveryMessage}</p>
         <div className="button-row">
           <button
             className="button primary"

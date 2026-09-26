@@ -1,3 +1,4 @@
+import { pageFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
@@ -154,7 +155,6 @@ const viewTeam = (t) => ({
   ...t,
   region: catalogs.regions.find((r) => r.id === t.regionId) ?? null,
   teamLead: accounts.find((a) => a.id === t.teamLeadId) ?? null,
-  members: t.memberIds.map(member),
   managers: t.managerId
     ? [
         {
@@ -166,7 +166,7 @@ const viewTeam = (t) => ({
   specialties: [],
 })
 function response(request) {
-  const path = new URL(request.url).pathname,
+  const url = new URL(request.url), path = url.pathname,
     body = request.postData ? JSON.parse(request.postData) : {}
   requests.push(`${request.method} ${path}`)
   if (path === '/auth/refresh') {
@@ -206,7 +206,7 @@ function response(request) {
       ]
     }
   }
-  if (path === '/users') return [200, accounts]
+  if (path === '/users') return [200, pageFixture(accounts, url, false)]
   if (path === '/auth/accounts') {
     assert(body.role !== 'SUPER_ADMIN')
     assert(user.role === 'SUPER_ADMIN' || body.role !== 'ADMIN')
@@ -234,6 +234,14 @@ function response(request) {
       }
     }
     return [200, { id: account.id, status: account.status }]
+  }
+  const lookup = path.match(/^\/organization\/teams\/(\d+)\/(people|members)$/)
+  if (lookup && request.method === 'GET') {
+    const team = teams.find(t => t.id === Number(lookup[1]))
+    if (!team) return [404, { message: 'Team not found' }]
+    if (lookup[2] === 'members') return [200, pageFixture(team.memberIds.map(id => member(id).user), url, false)]
+    const purpose = url.searchParams.get('purpose'), search = (url.searchParams.get('search') ?? '').toLowerCase()
+    return [200, search ? accounts.filter(a => a.status === 'ACTIVE' && a.username.toLowerCase().includes(search) && (purpose === 'manager' ? a.role === 'MANAGER' : a.role === 'AGENT' && (purpose === 'member' ? !team.memberIds.includes(a.id) : team.memberIds.includes(a.id) && !teams.some(t => t.id !== team.id && t.teamLeadId === a.id)))).slice(0, 20).map(({id, username}) => ({id, username})) : []]
   }
   if (path === '/organization/teams') {
     if (request.method === 'GET') return [200, teams.map(viewTeam)]
@@ -336,12 +344,17 @@ async function navigate(path) {
   await delay(150)
 }
 async function click(text) {
+  await until(() => evaluate(`[...document.querySelectorAll('button,a')].some(el => el.textContent.trim() === ${JSON.stringify(text)} && !el.disabled)`), `ready: ${text}`)
   await evaluate(
     `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); el.click(); })()`,
   )
   await delay(70)
 }
 async function fill(selector, value) {
+  if (value && selector === '[aria-label="Organization assignee"]') {
+    await fill('[aria-label="Organization assignee search"]', accounts.find(a => a.id === Number(value)).username)
+    await until(() => evaluate(`[...document.querySelector(${JSON.stringify(selector)}).options].some(o => o.value === ${JSON.stringify(value)} && !o.disabled)`), 'lookup choice')
+  }
   await evaluate(
     `(() => { const el = document.querySelector(${JSON.stringify(selector)}); const prototype = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
   )
@@ -710,6 +723,35 @@ try {
     await confirm()
     assert.equal(accounts.find((a) => a.id === id).status, 'ACTIVE')
   }
+  const originalAccountsLength = accounts.length
+  for (let i = 0; i < 61; i++) accounts.push({ id: 1000 + i, username: `scale account ${i}`, email: `scale${i}@example.test`, role: i < 30 ? 'AGENT' : 'EMPLOYEE', status: i < 30 ? 'INACTIVE' : 'ACTIVE', region: null, department: null })
+  await navigate('/admin/accounts?search=scale')
+  await until(() => evaluate("document.querySelectorAll('[data-account-id]').length === 25"), 'bounded directory')
+  await click('Load more')
+  await until(() => evaluate("document.querySelectorAll('[data-account-id]').length === 50"), 'directory continuation')
+  await click('Load more')
+  await until(() => evaluate("document.querySelectorAll('[data-account-id]').length === 61"), 'directory final page')
+  await waitText('End of results')
+  await fill('[aria-label="Account role filter"]', 'AGENT')
+  await until(() => evaluate("document.querySelectorAll('[data-account-id]').length === 25 && !document.querySelector('[data-account-id=\"1060\"]')"), 'role reset')
+  await fill('[aria-label="Account status filter"]', 'ACTIVE')
+  await waitText('No matching accounts')
+  await navigate('/admin/accounts?search=scale&role=EMPLOYEE&status=ACTIVE')
+  await until(() => evaluate("document.querySelectorAll('[data-account-id]').length === 25"), 'directory deep filters')
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Account role filter\"]').value"), 'EMPLOYEE')
+  const scaleTeam = teams.find(t => t.id === 1)
+  const originalMemberIds = scaleTeam.memberIds
+  scaleTeam.memberIds = accounts.filter(a => a.id >= 1000).map(a => a.id)
+  await navigate('/admin/organization/teams/1')
+  await waitText('Load more')
+  await fill('[aria-label="Search team members"]', 'scale account 60')
+  await waitText('scale account 60')
+  await until(() => evaluate("!document.body.textContent.includes('scale account 59')"), 'member search is server scoped')
+  scaleTeam.memberIds = originalMemberIds
+  accounts.splice(originalAccountsLength)
+  await navigate('/admin/accounts')
+  await waitText('Accounts')
+  console.log('PASS: bounded account pages, role/status/search reset, deep reload and member lookup pagination')
   const before = refreshCount
   expired = true
   await createUser('EMPLOYEE', 'renewed')

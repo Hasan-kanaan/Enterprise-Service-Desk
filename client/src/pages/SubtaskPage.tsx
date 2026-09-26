@@ -103,6 +103,7 @@ function SubtaskContent({ id }: { id: number }) {
       </p>
       {editing && (
         <SubtaskForm
+          ticketId={task.ticketId}
           initial={task}
           teams={teams}
           canAssignTeam={permissions.assignTeam}

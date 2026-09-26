@@ -13,16 +13,18 @@ export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredRoles = this.reflector.getAllAndOverride<string[]>(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     if (!requiredRoles || requiredRoles.length === 0) {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<Request & { user?: { role?: string } }>();
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { user?: { role?: string } }>();
     const userRole = request.user?.role;
 
     if (!userRole) {
@@ -32,7 +34,9 @@ export class RolesGuard implements CanActivate {
     const hasAccess = requiredRoles.includes(userRole);
 
     if (!hasAccess) {
-      throw new ForbiddenException('You do not have permission to access this resource');
+      throw new ForbiddenException(
+        'You do not have permission to access this resource',
+      );
     }
 
     return true;

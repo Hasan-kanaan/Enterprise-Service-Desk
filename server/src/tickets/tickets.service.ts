@@ -76,12 +76,10 @@ export class TicketsService {
       const ticket = await db.ticket.create({
         data: {
           attachments: {
-            create: (batch?.files ?? []).map(
-              ({ digest: _digest, ...file }) => ({
-                ...file,
-                uploaderId: user.id,
-              }),
-            ),
+            create: (batch?.files ?? []).map(({ digest, ...file }) => {
+              void digest; // Digest participates in upload validation, not persistence.
+              return { ...file, uploaderId: user.id };
+            }),
           },
           createdAt: now,
           workCycles: {
@@ -303,7 +301,12 @@ export class TicketsService {
       if (status === TicketStatus.CLOSED)
         await db.ticketWorkCycle.update({
           where: { id: this.currentCycle(ticket).id },
-          data: { outcome: 'CLOSED', closedAt: now, closedById: user.id },
+          data: {
+            outcome: 'CLOSED',
+            closedAt: now,
+            closedById: user.id,
+            closeSource: 'MANUAL',
+          },
         });
       const result = await db.ticket.update({
         where: { id: ticketId },

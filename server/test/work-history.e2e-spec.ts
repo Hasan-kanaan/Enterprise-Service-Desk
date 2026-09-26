@@ -1,7 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import request from 'supertest';
+import request from './http-test';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -9,7 +9,7 @@ import { jwtConstants } from '../src/auth/auth.constants';
 import { User, UserRole } from '../generated/prisma/client';
 
 describe('My Work History (PostgreSQL and HTTP)', () => {
-  let app: INestApplication, db: PrismaService;
+  let app: INestApplication<import('node:http').Server>, db: PrismaService;
   let users: Record<string, User>,
     ticketId: number,
     cycleId: number,
@@ -23,11 +23,11 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
       role: users[name].role,
       sessionVersion: users[name].sessionVersion,
     });
-  const get = (path: string, who = 'agent') =>
+  const get = <P extends string>(path: P, who = 'agent') =>
     request(app.getHttpServer())
       .get(path)
       .set('Authorization', `Bearer ${token(who)}`);
-  const patch = (path: string, who: string, body: object) =>
+  const patch = <P extends string>(path: P, who: string, body: object) =>
     request(app.getHttpServer())
       .patch(path)
       .set('Authorization', `Bearer ${token(who)}`)
@@ -411,7 +411,10 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
         .send({ reason: 'Active work before offboarding' })
         .expect(201);
       const before = (await history(who).expect(200)).body.items.map(
-        ({ canOpenTicket: _access, ...row }: any) => row,
+        ({ canOpenTicket, ...row }) => {
+          void canOpenTicket;
+          return row;
+        },
       );
       await patch(`/users/${users[who].id}/status`, 'admin', {
         status: 'INACTIVE',
@@ -425,11 +428,14 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
       });
       const after = (await history(who).expect(200)).body.items;
       expect(
-        after.map(({ canOpenTicket: _access, ...row }: any) => row),
+        after.map(({ canOpenTicket, ...row }) => {
+          void canOpenTicket;
+          return row;
+        }),
       ).toEqual(before);
       // Offboarded manager's ticket returns to ordinary shared intake visibility.
       expect(
-        after.every((row: any) => row.canOpenTicket === (who === 'manager')),
+        after.every((row) => row.canOpenTicket === (who === 'manager')),
       ).toBe(true);
       const ticket = await db.ticket.findUniqueOrThrow({
         where: { id: ticketId },
@@ -458,19 +464,19 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
       ).expect(200);
       expect(body.items.length).toBe(page === 3 ? 61 : 100);
       expect(body.hasMore).toBe(page !== 3);
-      ids.push(...body.items.map((row: any) => row.id));
+      ids.push(...body.items.map((row) => row.id));
     }
     expect(new Set(ids).size).toBe(261);
     expect(ids).toEqual([...ids].sort((a, b) => b - a));
     expect(
       (
         await history('agent', '?contribution=PRIMARY_AGENT').expect(200)
-      ).body.items.map((row: any) => row.id),
+      ).body.items.map((row) => row.id),
     ).toEqual([cycleId]);
     expect(
       (
         await history('agent', '?from=2026-01-01&to=2026-01-31').expect(200)
-      ).body.items.map((row: any) => row.id),
+      ).body.items.map((row) => row.id),
     ).toEqual([cycleId]);
     expect(
       (

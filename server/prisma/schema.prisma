@@ -36,6 +36,11 @@ enum TicketWorkCycleOutcome {
   CANCELLED
 }
 
+enum TicketCloseSource {
+  MANUAL
+  AUTO_TIMEOUT
+}
+
 enum CycleStartDisposition {
   CONTINUE
   RETURN_TO_INTAKE
@@ -144,6 +149,7 @@ model User {
   managedCycles     TicketWorkCycle[] @relation("CycleManager")
   assignedCycles    TicketWorkCycle[] @relation("CycleAgent")
   completedSubtasks Subtask[]         @relation("SubtaskCompleter")
+  @@index([role, status, id])
 }
 
 model RefreshToken {
@@ -320,13 +326,15 @@ model Ticket {
   subtasks              Subtask[]
   workCycles            TicketWorkCycle[]
 
-  @@index([requesterId])
-  @@index([assignedManagerId])
-  @@index([status, assignedManagerId])
+  @@index([requesterId, createdAt, id])
+  @@index([assignedManagerId, createdAt, id])
+  @@index([status, assignedManagerId, createdAt, id])
+  @@index([status, resolvedAt])
+  @@index([createdAt, id])
   @@index([categoryId])
   @@index([status])
-  @@index([assignedTeamId])
-  @@index([assignedAgentId])
+  @@index([assignedTeamId, createdAt, id])
+  @@index([assignedAgentId, createdAt, id])
 }
 
 model TicketTagOnTicket {
@@ -413,6 +421,7 @@ model TicketWorkCycle {
   endedById              Int?
   closedAt               DateTime?
   closedById             Int?
+  closeSource            TicketCloseSource?
   resolutionSummary      String? @db.VarChar(4000)
   endingManagerId        Int?
   endingTeamId           Int?

@@ -1,5 +1,5 @@
 import type { NamedOption, Person, TicketStatus, WorkCycle } from './tickets'
-export type AssignmentTeam = NamedOption & { agents: Person[] }
+export type AssignmentTeam = NamedOption
 export type Workspace = { ledTeams: NamedOption[] }
 export type TicketOperations = {
   permissions: {
@@ -14,7 +14,6 @@ export type TicketOperations = {
   }
   teams: AssignmentTeam[]
   subtaskTeams: AssignmentTeam[]
-  managers: Person[]
 }
 export const subtaskStatuses = [
   'TODO',
