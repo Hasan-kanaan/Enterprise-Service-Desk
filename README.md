@@ -974,6 +974,98 @@ Primary agents, current collaborators, primary-team leads and responsible manage
 
 ## Attachments
 
+### Configurable private storage
+
+`AttachmentStorage` exposes `put`, `read` (bytes), and idempotent `remove`.
+`LocalAttachmentStorage` and `GoogleCloudStorageAdapter` implement that boundary;
+domain code never handles paths, Google APIs or URLs. GCS uses the official
+`@google-cloud/storage` client, the only added direct dependency.
+
+| Variable | Meaning |
+| --- | --- |
+| `STORAGE_PROVIDER` | `local` (default) or `gcs`; anything else fails startup. |
+| `ATTACHMENT_STORAGE_DIR` | Local private directory, default `.attachments` under the process working directory. Never use a public/static directory. |
+| `GCS_BUCKET_NAME` | Required in GCS mode: bucket name without `gs://` or a path. |
+| `GCS_PROJECT_ID` | Optional explicit project; otherwise Google's normal discovery applies. |
+
+The SDK uses standard Application Default Credentials (ADC), including local ADC,
+attached runtime identities, and `GOOGLE_APPLICATION_CREDENTIALS`. Application code
+does not parse credential JSON, invent authentication or expose credentials to the
+frontend. Never put credential files/private keys in the repository. See
+[Google ADC](https://docs.cloud.google.com/docs/authentication/application-default-credentials).
+
+Configuration is validated when Nest creates the provider. Startup performs no
+remote bucket operations. Invalid credentials/bucket access fail storage operations
+with sanitized errors; GCS never falls back to local. Authorized download failures
+retain the existing generic unavailable response. For an explicit operational check,
+run `npm run storage:check` from `server/` with the intended backend environment.
+It loads `.env` if present, uploads one generated probe, reads/verifies bytes and
+attempts deletion in `finally`. It creates no bucket, changes no IAM and writes no
+database rows. Cleanup failure can leave a private probe for manual removal. This
+command is never run by startup/tests and exposes no public health endpoint.
+
+GCS objects use `attachments/<generated UUID>`, no original filename metadata,
+no public ACLs and no signed/public URLs. Browsers still use authenticated
+`GET /tickets/attachments/:attachmentId/download`. Existing parent authorization,
+deleted-state denial, filename/type headers, MIME/signature validation and five-file /
+10 MiB limits are unchanged. Both providers retain bounded-buffer downloads.
+Upload completes before the parent/metadata transaction; upload failure prevents
+that transaction. Failed DB operations and duplicate replays attempt staged cleanup.
+
+Message/note deletion commits the attachment tombstone before physical deletion.
+Deleting a parent tombstones its attachments in the same transaction. Local and
+GCS cleanup run only after commit; failures do not restore access or alter the API
+success response. Logs contain a bounded message and attachment row ID, never raw
+provider errors or keys. Rows retain internal storage keys for future retry; no
+scheduler is implemented. Original ticket files remain immutable. Crashes can
+leave orphan uploads/tombstoned binaries. GCS retention, soft-delete and versioning
+settings may retain cloud copies after deletion without restoring application access.
+
+One provider/bucket serves the installation. Changing configuration does not move
+existing bytes. Before switching an installation with attachments, pause writes,
+manually copy and verify active objects under the same UUIDs (local `<UUID>` maps
+to GCS `attachments/<UUID>`), and retain the original provider until verified.
+No per-row provider routing or data migration utility is included. Schema unchanged.
+
+Local/temp storage remains available for offline development and tests. GCS unit
+tests mock the official client and PostgreSQL suites explicitly force local storage.
+Normal automated verification needs no Google account, credentials, bucket, `gcloud`
+or cloud calls. Future backend AI can obtain authorized bytes through the same
+boundary; AI and public-demo deployment remain separate, unimplemented phases.
+
+### Manual Google setup and smoke test (still required)
+
+1. Manually create/select a Google Cloud project, configure billing as needed and
+   enable the Cloud Storage API. Choose your bucket region/storage class.
+2. Manually create a **private** bucket with uniform bucket-level access and public
+   access prevention enforced. Remove `allUsers`/`allAuthenticatedUsers` grants.
+   Do not configure public URLs or browser bucket access. See
+   [Google access controls](https://docs.cloud.google.com/storage/docs/access-control).
+3. Create/select a dedicated backend identity. Bind a custom role **on this bucket**
+   with only `storage.objects.create`, `storage.objects.get`, and
+   `storage.objects.delete`. `get` includes metadata. No object listing, bucket
+   administration, ACL/IAM mutation or project Owner/Editor is needed. See
+   [Google permission definitions](https://docs.cloud.google.com/storage/docs/access-control/iam-permissions).
+4. Configure ADC outside source control. For optional local cloud testing,
+   `gcloud auth application-default login` establishes local ADC for your permitted
+   identity. For hosted use, prefer an attached service account/workload identity.
+   Any required credential file remains outside the repository and is handled by
+   the SDK. Never send or print credentials.
+5. Review retention/holds, versioning and soft-delete policies. Holds can prevent
+   deletion and soft delete may retain bytes. See
+   [Google soft delete](https://docs.cloud.google.com/storage/docs/soft-delete).
+6. Set `STORAGE_PROVIDER=gcs`, `GCS_BUCKET_NAME`, optionally `GCS_PROJECT_ID`, then
+   run `npm run storage:check` and start the backend normally.
+7. Upload ticket, message and note files; verify authorized downloads, denied
+   anonymous/guessed-ID/employee-note access, private GCS URLs, and no storage keys
+   in API projections. Delete an author's current-cycle attachment and a parent:
+   verify tombstones, download denial and object deletion. Verify ticket files
+   cannot be individually deleted. In an isolated smoke-test setup, deny object
+   deletion and verify the tombstone survives with a safe cleanup warning, then
+   restore permissions. Real GCS setup and smoke testing have not been performed.
+
+### Attachment business rules
+
 Employees can attach files when creating a ticket. These original request attachments are permanently immutable: no later additions, replacements, edits or deletion. New public messages and support-only internal notes can include attachments in the same submission. Content remains required. Files cannot be appended or replaced afterward.
 
 The parent author alone may soft-delete a message/note or one of its attachments while currently authorized and while the parent belongs to the current unfinished work cycle. Managers, Team Leads and other support users cannot delete another author's work. RESOLVED/CLOSED/CANCELLED and all previous-cycle communication stay frozen, including after reopening. ADMIN/SUPER_ADMIN have no attachment access.
@@ -982,7 +1074,7 @@ Deletion retains IDs, author/uploader, creation time, cycle and deletion time. A
 
 Up to **5 files per submission, 10 MB (10,485,760 bytes) per file**: PNG, JPEG, WebP, PDF, TXT, LOG/plain text, JSON and CSV. The server checks extension, declared MIME, signatures for binary formats, UTF-8 text and JSON syntax. Executable, HTML/script and archive extensions are rejected. Display filenames are sanitized; generated UUID keys address stored files. These checks are not malware scanning.
 
-Files use a replaceable `AttachmentStorage` interface and a local filesystem adapter. Set `ATTACHMENT_STORAGE_DIR` to a private directory; the development default is `.attachments` under the server process working directory (`server/.attachments` when started from `server/`), ignored by Git. Never configure it inside a public/static directory. Uploads are bounded in memory, written to temporary files and renamed before the database transaction. Parent and metadata commit together; failed mutations and duplicate replays clean their unused files. Storage failure prevents parent creation. Unexpected process termination can leave private unreferenced files; crash recovery/scavenging, physical purge, quotas, malware scanning and S3/object storage remain deferred deployment hardening. No files are claimed to be scanned.
+Files use a replaceable `AttachmentStorage` interface with local filesystem and Google Cloud Storage adapters (see configuration below). Set `ATTACHMENT_STORAGE_DIR` to a private directory; the development default is `.attachments` under the server process working directory (`server/.attachments` when started from `server/`), ignored by Git. Never configure it inside a public/static directory. Uploads are bounded in memory, written to temporary files and renamed before the database transaction. Parent and metadata commit together; failed mutations and duplicate replays clean their unused files. Storage failure prevents parent creation. Unexpected process termination can leave private unreferenced files; crash recovery/scavenging, cleanup retry scheduling, quotas and malware scanning remain deferred deployment hardening. No files are claimed to be scanned.
 
 Every download authorizes current access through the parent in the backend. Original ticket and public-message attachments use current ticket visibility; note attachments use current support-only visibility. Ordinary membership, past collaboration, old participation and notifications grant no access. Authorized historical downloads remain available, but access disappears when the current parent relationship is lost. Downloads use `Content-Disposition: attachment`, `nosniff`, private/no-store caching and a restrictive CSP; no static upload route or inline preview exists. Storage keys/paths never enter API projections.
 
@@ -1416,7 +1508,7 @@ AI recommendations include categorization, priority and agent suggestions, confi
 
 ### Optional Deferred Features
 
-Realtime transport, generic audit infrastructure, SSO/SCIM, notification preferences and retention, pagination of remaining subject streams, analytics, SLA tracking, advanced permissions, and further AI automation remain deferred.
+Realtime transport, generic audit infrastructure, SSO/SCIM, notification preferences and retention, analytics, SLA tracking, advanced permissions, and further AI automation remain deferred.
 
 
 ---
@@ -1820,3 +1912,144 @@ pages and an isolated browser context against Vite on port 3001, using the actua
 coordinator/Axios/Redux modules and deterministic rotating HttpOnly-cookie API
 fixtures. PostgreSQL/HTTP tests separately verify real atomic rotation, replay
 rejection, session-scoped logout, deactivation and reactivation.
+
+
+## Application security baseline
+
+The pre-change findings are in [docs/security-baseline-audit.md](docs/security-baseline-audit.md).
+Runtime setup is shared by the main Nest application and HTTP regression tests.
+Helmet 8.3.0 is the only new dependency. Its standard headers include nosniff,
+no-referrer, same-origin opener/resource policy, Origin-Agent-Cluster, disabled
+DNS prefetch, download/cross-domain policy protection and removal of X-Powered-By.
+The API uses a restrictive CSP (default-src/base-uri/frame-ancestors/form-action
+'none') and frame DENY. These are API response policies, not a CSP for Vite's
+separately hosted frontend. All API responses use no-store; downloads retain their
+private/no-store and sandbox CSP. HSTS is one year, without subdomains/preload,
+only in NODE_ENV=production. Production requires HTTPS; local HTTP has neither
+HSTS nor CSP upgrade-insecure-requests.
+
+Set server environment variables before starting Nest (for example use Node's
+--env-file=.env option with the built server, or supply variables through the
+shell). Prisma's config loads its ignored .env file; the application does not
+implicitly load it. Never put server secrets in VITE_* variables: those are public
+build inputs. Keep DATABASE_URL, JWT_SECRET and any future AI/object-storage
+credentials in server-only environment configuration and out of source control,
+responses and logs. No cloud secret manager is implemented.
+
+| Setting | Default / requirement |
+| --- | --- |
+| ALLOWED_ORIGINS | Development: http://localhost:3000. Comma-separated exact origins, no path, trailing slash, wildcard, credentials or opaque/null origin. Production must explicitly list HTTPS origins. |
+| JWT_SECRET | Production startup rejects missing, known fallback, empty or shorter-than-32-character secrets. Supply a cryptographically random secret of at least 32 characters; length alone does not guarantee entropy. Local compatibility fallback remains development-only; explicitly configure a local development value. |
+| REFRESH_COOKIE_SAME_SITE | lax; strict also supported. none requires production Secure/HTTPS and explicit deliberate cross-site frontend/API configuration. Browser third-party-cookie restrictions may still prevent cross-site use. |
+| REQUEST_BODY_LIMIT_BYTES | 102400 (100 KiB), positive integer, for JSON and URL-encoded bodies. URL-encoded bodies also cap at 100 parameters. Compressed bodies are rejected (415). |
+| RATE_LIMIT_API_MAX / RATE_LIMIT_API_WINDOW_MS | 600 requests / 60000 ms, per socket-derived client IP, across API routes. |
+| RATE_LIMIT_LOGIN_MAX / RATE_LIMIT_LOGIN_WINDOW_MS | 20 attempts / 600000 ms, POST /auth/login, successes and failures counted. |
+| RATE_LIMIT_REFRESH_MAX / RATE_LIMIT_REFRESH_WINDOW_MS | 60 requests / 60000 ms, POST /auth/refresh. |
+| RATE_LIMIT_SETUP_MAX / RATE_LIMIT_SETUP_WINDOW_MS | 5 requests / 600000 ms, POST /auth/setup, including requests after setup is complete. |
+| RATE_LIMIT_MAX_KEYS | 10000 active IP/policy keys per process; positive integer. |
+
+All rate counts/windows must be positive safe integers. A sensitive request uses
+both the general budget and its endpoint budget. Setup status and logout use the
+general budget. The fixed-window limiter runs before parsing/hashing/upload work;
+expired keys are swept lazily (at most once a second) and never evicted while
+active to admit new clients. If full, new keys receive 429 with a short retry hint.
+Preflight and origin-rejected requests do not reach the limiter. Responses contain
+only a generic temporary message and Retry-After seconds, exposed to allowed
+browser origins. The frontend displays a temporary error, preserves sessions on
+refresh 429 and never retries it automatically. Its existing shared two-second
+cooldown remains unchanged; manual retries before the server deadline can still
+receive 429.
+
+This is a single-instance, in-process foundation, reusable for future endpoint
+policies. Restart clears counters. Shared NAT clients share a budget; IPv6 address
+rotation, distributed attackers and fixed-window boundary bursts remain limits.
+A real multi-instance enterprise deployment needs shared/distributed throttling;
+this implementation does not claim to solve distributed abuse or volumetric DoS.
+The key cap is a memory bound, not an availability guarantee during saturation.
+Business tests use explicitly higher fixture limits; security tests exercise small
+budgets, defaults, expiry, spoofed forwarding and bounded errors separately.
+
+CORS uses the same exact origin allowlist as session-origin protection. An
+unauthorized Origin (including null) receives 403 before application handlers;
+allowed origins receive their own origin and credentials=true, never wildcard
+credentials. Credentials support the existing HttpOnly cookie client. Requests
+without Origin remain usable by non-browser clients and bearer mutations retain
+their existing guards. No Host or X-Forwarded-* header grants trust.
+
+Refresh/logout are the only endpoints that consume the refresh cookie. Login
+sets it; setup provisions the initial administrator. POST /auth/login,
+/auth/refresh, /auth/logout and /auth/setup require an allowed Origin, or an allowed
+Referer origin if Origin is absent. If both are absent, clients must explicitly
+send X-Requested-With: service-desk. This non-simple header forces browser
+preflight; it is not a secret or an authentication substitute. A supplied invalid
+Origin/Referer is rejected even if the custom header is present. The Axios client
+sends this header; CLI clients calling these four routes should too. Arbitrary
+bearer-authenticated application mutations need no CSRF token and retain current
+authorization. Allowed frontend origins must be trusted; initial setup remains an
+intentional first-admin bootstrap and must be performed in a controlled environment.
+
+The refresh cookie remains HttpOnly, host-only, Path=/auth, seven days, and Lax by
+default. Secure is set in production and omitted for local HTTP. Logout reuses the
+same scope/security options when clearing. Token hashing, seven-day database
+expiry, rotation/replay protection, multi-device sessions, session-scoped logout,
+ACTIVE/INACTIVE/sessionVersion rules and multi-tab Web Locks/BroadcastChannel are
+unchanged. Unknown, inactive and incorrect-password login failures remain the same
+401 Invalid credentials; all now perform a bcrypt comparison. Concurrent lifecycle
+rejection during login is also generic. This reduces an obvious timing distinction,
+not a promise of identical end-to-end latency.
+
+Attachment uploads retain their separate five-file / inclusive 10 MiB-per-file
+limit, one 64 KiB JSON payload and bounded multipart parts. Generated UUID storage
+keys, sanitized display filenames, private storage and parent/deletion authorization
+remain unchanged. Extension/canonical-MIME checks, exact PNG/JPEG/PDF/WebP signature
+bytes, UTF-8/control-byte restrictions and JSON parsing are format screening.
+PDF/WebP checks now compare bytes directly so ASCII decoding cannot mask invalid
+high-bit bytes. Files are not fully decoded, scanned or certified harmless; PDFs,
+text/CSV and other allowed files can still carry unsafe content when opened by
+external software. Downloads remain forced attachments, never a public static
+upload directory; storage keys, paths and hashes are excluded from projections.
+
+Expected 400/401/403/404/409 domain errors retain their meaning. Oversized bodies
+return intentional 413, malformed JSON 400 and unsupported encoding 415 without
+payload echoes. Unknown routes omit URLs/query strings. Unexpected/internal 5xx
+responses contain only Internal server error. Server error logs identify the HTTP
+method and registered route template without raw exception messages, stack traces,
+SQL, query values, filesystem paths, credentials or tokens.
+
+Express trust proxy is explicitly false. IP budgets use the socket peer, not an
+arbitrary X-Forwarded-For header. Before placing the app behind proxies, configure
+trust only for the actual trusted proxy topology and verify IP/header handling;
+otherwise all callers behind that proxy share a budget. No proxy provider or hop
+count is guessed here. Future deployment hardening remains distributed limiting,
+malware scanning, hosting-specific proxy/TLS configuration,
+and optional bot/CAPTCHA protection. No AI, deployment infrastructure, tenancy or
+demo-reset behavior was added, and no migration is required.
+
+Header/proxy references: [Helmet documentation](https://helmetjs.github.io/) and
+[Express proxy guidance](https://expressjs.com/en/guide/behind-proxies.html).
+
+
+### Ticket communication and history pagination
+
+`GET /tickets/:ticketId/messages`, `GET /tickets/:ticketId/internal-notes`, and
+`GET /tickets/:ticketId/history` accept `limit` (default 25, maximum 100) and
+opaque `cursor`. Invalid sizes/cursors return 400. Responses retain `records`
+(communication) or `cycles` (history) and add `hasMore` / `nextCursor`; there is
+no total count. Messages/notes start with the newest page, returned in chronological
+order. History starts with the newest cycle. Communication cycle labels cover
+only loaded records plus the current cycle, not the complete cycle catalog.
+
+History includes a shared budget of 25 authorized subtasks across the cycle
+page. `subtasksHasMore` means more *may* exist for that cycle;
+`subtasksNextCursor` continues at
+`GET /tickets/:ticketId/history/:cycleId/subtasks`, which returns
+`{ items, hasMore, nextCursor }` and accepts the same page-size bounds.
+The shared boundary is valid independently for each cycle. Employee history
+never includes support subtasks. All prior current-relationship authorization,
+cycle freeze and deleted-record redaction remain in force on every request.
+
+The UI offers Load older messages/notes/history/subtasks, preserves drafts,
+and merges successful communication mutations into loaded records. Refresh starts
+a new recent page. Older pages may show only part of a cycle. New inserts do not
+invalidate an existing older-page boundary. See [the scale audit](docs/list-scale-audit.md)
+for the focused index migration, isolated fixture and measured query plans.

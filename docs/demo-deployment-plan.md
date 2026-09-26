@@ -22,7 +22,7 @@ The likely eventual deployment shape is:
 - HTTPS everywhere.
 - Secrets only on backend/server infrastructure.
 
-Exact providers are intentionally not selected yet. Local filesystem storage remains valid for development and tests. Production/demo attachments should eventually use object storage through the existing storage abstraction. Do not store attachment binaries in PostgreSQL.
+Hosting providers are intentionally not selected yet. Google Cloud Storage is now supported through the configurable storage abstraction; its real project, private bucket and IAM setup remain manual future work. Local filesystem storage remains valid for development and tests. Production/demo attachments can use GCS. Do not store attachment binaries in PostgreSQL.
 
 ## Domain
 
@@ -127,7 +127,6 @@ Until explicitly requested, do not implement:
 
 - Tenancy.
 - Demo reset or cleanup jobs.
-- A cloud storage adapter.
 - Hosting configuration.
 - Domain configuration.
 - Public-demo security controls.

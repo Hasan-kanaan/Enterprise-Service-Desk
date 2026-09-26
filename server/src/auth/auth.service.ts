@@ -14,6 +14,12 @@ import { SetupDto } from './dto/setup.dto';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UserRole } from '../users/user-role.enum';
 
+// Same cost as stored passwords; missing/inactive accounts still perform a comparison.
+const dummyPasswordHash = bcrypt.hashSync(
+  'unused-login-timing-placeholder',
+  10,
+);
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -101,17 +107,22 @@ export class AuthService {
 
     const user = await this.usersService.findByEmail(email);
 
-    if (!user || user.status !== 'ACTIVE') {
+    const passwordMatches = await bcrypt.compare(
+      password,
+      user?.password ?? dummyPasswordHash,
+    );
+
+    if (!user || user.status !== 'ACTIVE' || !passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const passwordMatches = await bcrypt.compare(password, user.password);
-
-    if (!passwordMatches) {
-      throw new UnauthorizedException('Invalid credentials');
+    try {
+      return await this.issueTokens(user);
+    } catch (error) {
+      if (error instanceof UnauthorizedException)
+        throw new UnauthorizedException('Invalid credentials');
+      throw error;
     }
-
-    return this.issueTokens(user);
   }
 
   async refresh(refreshToken: string) {

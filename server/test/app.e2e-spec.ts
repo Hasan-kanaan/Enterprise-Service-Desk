@@ -1,3 +1,5 @@
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { configureTestSecurity } from './security-test-app';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -12,7 +14,10 @@ describe('AppController (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestExpressApplication>({
+      bodyParser: false,
+    });
+    configureTestSecurity(app as NestExpressApplication);
     await app.init();
   });
 

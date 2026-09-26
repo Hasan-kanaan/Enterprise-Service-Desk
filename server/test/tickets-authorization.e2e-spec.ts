@@ -1,8 +1,9 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { configureTestSecurity } from './security-test-app';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import request from './http-test';
-import cookieParser from 'cookie-parser';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from '../src/app.module';
@@ -48,15 +49,10 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication();
-    app.use(cookieParser());
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app = module.createNestApplication<NestExpressApplication>({
+      bodyParser: false,
+    });
+    configureTestSecurity(app as NestExpressApplication);
     await app.init();
     db = app.get(PrismaService);
   });
@@ -2335,6 +2331,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     const login = () =>
       request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:3000')
         .send({ email: users.employee.email, password: 'StrongPass123!' })
         .expect(201);
     const [laptop, phone] = await Promise.all([login(), login()]);
@@ -2342,6 +2339,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       [1, 2].map(() =>
         request(app.getHttpServer())
           .post('/auth/refresh')
+          .set('Origin', 'http://localhost:3000')
           .set('Cookie', laptop.headers['set-cookie']),
       ),
     );
@@ -2354,15 +2352,18 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     );
     await request(app.getHttpServer())
       .post('/auth/refresh')
+      .set('Origin', 'http://localhost:3000')
       .set('Cookie', laptop.headers['set-cookie'])
       .expect(401);
     const rotated = contenders.find((result) => result.status === 201)!;
     await request(app.getHttpServer())
       .post('/auth/logout')
+      .set('Origin', 'http://localhost:3000')
       .set('Cookie', rotated.headers['set-cookie'])
       .expect(201);
     await request(app.getHttpServer())
       .post('/auth/refresh')
+      .set('Origin', 'http://localhost:3000')
       .set('Cookie', rotated.headers['set-cookie'])
       .expect(401);
     await request(app.getHttpServer())
@@ -2371,6 +2372,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       .expect(200);
     await request(app.getHttpServer())
       .post('/auth/refresh')
+      .set('Origin', 'http://localhost:3000')
       .set('Cookie', phone.headers['set-cookie'])
       .expect(201);
   });
@@ -2383,21 +2385,25 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     const login = () =>
       request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:3000')
         .send({ email: users.employee.email, password: 'StrongPass123!' });
     const session = await login().expect(201);
     const cookie = session.headers['set-cookie'];
     const refreshed = await request(app.getHttpServer())
       .post('/auth/refresh')
+      .set('Origin', 'http://localhost:3000')
       .set('Cookie', cookie)
       .expect(201);
     await request(app.getHttpServer())
       .post('/auth/refresh')
+      .set('Origin', 'http://localhost:3000')
       .set('Cookie', cookie)
       .expect(401);
     await deactivate('employee').expect(200);
     await login().expect(401);
     await request(app.getHttpServer())
       .post('/auth/refresh')
+      .set('Origin', 'http://localhost:3000')
       .set('Cookie', refreshed.headers['set-cookie'])
       .expect(401);
     await request(app.getHttpServer())
@@ -2411,6 +2417,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       .expect(401);
     await request(app.getHttpServer())
       .post('/auth/refresh')
+      .set('Origin', 'http://localhost:3000')
       .set('Cookie', refreshed.headers['set-cookie'])
       .expect(401);
     const fresh = await login().expect(201);

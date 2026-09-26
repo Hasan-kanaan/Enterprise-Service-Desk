@@ -421,7 +421,7 @@ try {
             { name: 'Access-Control-Allow-Credentials', value: 'true' },
             {
               name: 'Access-Control-Allow-Headers',
-              value: 'content-type,authorization',
+              value: 'content-type,authorization,x-requested-with',
             },
             {
               name: 'Access-Control-Allow-Methods',

@@ -19,3 +19,8 @@ export function pageFixture(rows, url, dated = true) {
   const hasMore = matches.length > limit
   return { items, hasMore, nextCursor: hasMore ? Buffer.from(JSON.stringify(dated ? [1, last.id, last.createdAt] : [1, last.id])).toString('base64url') : null }
 }
+
+export function historyFixture(cycles, url) {
+  const page = pageFixture(cycles.map(cycle => ({ ...cycle, originalId: cycle.id, id: cycle.sequenceNumber })), url, false)
+  return { hasMore: page.hasMore, nextCursor: page.nextCursor, cycles: page.items.map(({ originalId, ...cycle }) => ({ ...cycle, id: originalId })) }
+}

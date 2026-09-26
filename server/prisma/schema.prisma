@@ -463,7 +463,7 @@ model TicketMessage {
   createdInCycle TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
   author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
   @@unique([authorId, clientRequestId])
-  @@index([ticketId, id])
+  @@index([ticketId, createdAt, id])
   @@index([createdInCycleId, ticketId])
 }
 
@@ -482,7 +482,7 @@ model TicketInternalNote {
   createdInCycle TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
   author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
   @@unique([authorId, clientRequestId])
-  @@index([ticketId, id])
+  @@index([ticketId, createdAt, id])
   @@index([createdInCycleId, ticketId])
 }
 

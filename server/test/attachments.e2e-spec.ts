@@ -1,8 +1,10 @@
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { configureTestSecurity } from './security-test-app';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AttachmentStorage } from '../src/tickets/attachment-storage';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import request, {
@@ -57,14 +59,10 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app = module.createNestApplication<NestExpressApplication>({
+      bodyParser: false,
+    });
+    configureTestSecurity(app as NestExpressApplication);
     await app.init();
     db = app.get(PrismaService);
   });
@@ -346,6 +344,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
           await download(file.id, who).expect(200);
       }
       await remove(record.id, 'agent', kind, file.id).expect(200);
+      expect(await readdir(storageDir)).toHaveLength(0);
       await remove(record.id, 'agent', kind, file.id).expect(200);
       for (const who of ['agent', 'manager', 'employee'])
         await download(file.id, who).expect(404);
@@ -406,7 +405,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       expect(
         await db.attachment.count({ where: { uploaderId: users.agent.id } }),
       ).toBe(1);
-      expect(await readdir(storageDir)).toHaveLength(1);
+      expect(await readdir(storageDir)).toHaveLength(0);
       await download(record.attachments[0].id, 'manager').expect(404);
       const stream = (await get(`/tickets/${ticketId}/${kind}`, 'agent')).body;
       expect(JSON.stringify(stream)).not.toContain('Private original content');
@@ -416,9 +415,70 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       });
       expect(await rows()).toEqual(before);
       await upload('agent', kind, key, 'different.txt').expect(409);
-      expect(await readdir(storageDir)).toHaveLength(1);
+      expect(await readdir(storageDir)).toHaveLength(0);
     },
   );
+
+  it.each(['messages', 'internal-notes'] as const)(
+    'keeps %s tombstones authoritative when physical cleanup fails',
+    async (kind) => {
+      const record = (await upload('agent', kind).expect(201)).body;
+      const file = record.attachments[0];
+      const stored = await db.attachment.findUniqueOrThrow({
+        where: { id: file.id },
+      });
+      const storage = app.get(AttachmentStorage);
+      let committedDeletedAt: Date | null = null;
+      const cleanup = jest
+        .spyOn(storage, 'remove')
+        .mockImplementationOnce(async () => {
+          committedDeletedAt = (
+            await db.attachment.findUniqueOrThrow({ where: { id: file.id } })
+          ).deletedAt;
+          throw new Error('private storage failure');
+        });
+      const response = await remove(record.id, 'agent', kind).expect(200);
+      expect(cleanup).toHaveBeenCalledWith(stored.storageKey);
+      expect(committedDeletedAt).not.toBeNull();
+      expect(JSON.stringify(response.body)).not.toMatch(
+        /storageKey|private storage failure/,
+      );
+      const tombstone = await db.attachment.findUniqueOrThrow({
+        where: { id: file.id },
+      });
+      expect(tombstone.deletedAt).not.toBeNull();
+      expect(tombstone.storageKey).toBe(stored.storageKey);
+      expect(await storage.read(stored.storageKey)).toEqual(
+        Buffer.from('service desk report'),
+      );
+      await download(file.id, 'agent').expect(404);
+      await remove(record.id, 'agent', kind).expect(200);
+      expect(await readdir(storageDir)).toHaveLength(0);
+    },
+  );
+
+  it('does not physically delete when the tombstone transaction fails', async () => {
+    const record = (await upload().expect(201)).body;
+    const cleanup = jest.spyOn(app.get(AttachmentStorage), 'remove');
+    jest
+      .spyOn(db, '$transaction')
+      .mockRejectedValueOnce(new Error('commit failure'));
+    await remove(
+      record.id,
+      'employee',
+      'messages',
+      record.attachments[0].id,
+    ).expect(500);
+    expect(cleanup).not.toHaveBeenCalled();
+    expect(
+      (
+        await db.attachment.findUniqueOrThrow({
+          where: { id: record.attachments[0].id },
+        })
+      ).deletedAt,
+    ).toBeNull();
+    await download(record.attachments[0].id).expect(200);
+  });
 
   it('keeps WAITING reply transition and unread notifications after requester deletion', async () => {
     await db.ticket.update({

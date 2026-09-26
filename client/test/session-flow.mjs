@@ -52,6 +52,7 @@ const user = {
   role: 'EMPLOYEE',
 }
 let refreshCookie = null
+let throttled = false, loginCount = 0
 let blockRefresh = false,
   heldRequest = null,
   closing = false
@@ -190,7 +191,10 @@ async function page(source = '', contextId = null) {
             })
             return
           }
-          if (rejection) status = 401
+          if (throttled) {
+            status = 429
+            body = { message: 'Too many requests. Please wait and try again.' }
+          } else if (rejection) status = 401
           else {
             token++
             body = { accessToken: `access-${token}`, user }
@@ -198,11 +202,17 @@ async function page(source = '', contextId = null) {
             cookie = `${refreshCookie}; HttpOnly; Path=/; SameSite=Lax`
           }
         } else if (path === '/auth/login') {
+          loginCount++
+          if (throttled) {
+            status = 429
+            body = { message: 'Too many requests. Please wait and try again.' }
+          } else {
           rejection = false
           token++
           body = { accessToken: `access-${token}`, user }
           refreshCookie = `refresh=opaque-${token}`
           cookie = `${refreshCookie}; HttpOnly; Path=/; SameSite=Lax`
+          }
         } else if (path === '/auth/logout') {
           logouts++
           rejection = true
@@ -230,7 +240,7 @@ async function page(source = '', contextId = null) {
           { name: 'Access-Control-Allow-Credentials', value: 'true' },
           {
             name: 'Access-Control-Allow-Headers',
-            value: 'content-type,authorization',
+            value: 'content-type,authorization,x-requested-with',
           },
           { name: 'Access-Control-Allow-Methods', value: 'GET,POST,OPTIONS' },
           ...(cookie ? [{ name: 'Set-Cookie', value: cookie }] : []),
@@ -354,9 +364,41 @@ try {
   await delay(2100)
   assert.equal(await refresh(b), true)
   assert.equal(await probe(a), true)
-  console.log(
-    'PASS: network failure retains auth, bounds attempts and recovers on later retry',
-  )
+    console.log(
+      'PASS: network failure retains auth, bounds attempts and recovers on later retry',
+    )
+    throttled = true
+    before = count
+    assert.deepEqual(await Promise.all([refresh(a), refresh(b)]), ['network', 'network'])
+    assert.equal(count, before + 1)
+    assert((await state(a)).user && (await state(b)).user)
+    await delay(2200)
+    assert.equal(count, before + 1, '429 must not automatically retry')
+    throttled = false
+    assert.equal(await refresh(b), true)
+    console.log('PASS: refresh throttling retains both sessions and retries only on explicit action')
+
+    await a.evaluate('auth.logout()')
+    await until(async () => !(await state(b)).user, 'logout before throttled login')
+    await until(async () => (await a.evaluate('document.body.innerText')).includes('Welcome back'), 'login form')
+    throttled = true
+    const loginsBefore = loginCount
+    await a.evaluate(`(() => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      for (const [name, value] of [['email', 'maya@example.test'], ['password', 'fixture']]) {
+        const input = document.querySelector('input[name="' + name + '"]');
+        set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      document.querySelector('button[type="submit"]').click();
+    })()`)
+    await until(async () => (await a.evaluate('document.body.innerText')).includes('Too many requests'), 'friendly login throttling')
+    await delay(2200)
+    assert.equal(loginCount, loginsBefore + 1)
+    assert.equal((await state(a)).user, null)
+    throttled = false
+    await a.evaluate('auth.login({email:"maya@example.test",password:"fixture"})')
+    await until(async () => (await state(b)).user, 'login recovery')
+    console.log('PASS: login 429 shows a temporary message, keeps sign-in usable and does not loop')
   const c = await page('window.BroadcastChannel = undefined')
   await until(async () => (await state(c)).user, 'channel fallback')
   await Promise.all([refresh(a), refresh(c)])

@@ -1,4 +1,6 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { configureTestSecurity } from './security-test-app';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
@@ -67,14 +69,10 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
       .overrideProvider(PrismaService)
       .useValue(db)
       .compile();
-    app = module.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app = module.createNestApplication<NestExpressApplication>({
+      bodyParser: false,
+    });
+    configureTestSecurity(app as NestExpressApplication);
     await app.init();
     for (const [name, role] of Object.entries({
       employee: 'EMPLOYEE',

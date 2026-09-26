@@ -80,9 +80,10 @@ export function validateUpload(file: Upload): Omit<StoredUpload, 'storageKey'> {
     valid = b[0] === 255 && b[1] === 216 && b[2] === 255;
   else if (extension === '.webp')
     valid =
-      b.toString('ascii', 0, 4) === 'RIFF' &&
-      b.toString('ascii', 8, 12) === 'WEBP';
-  else if (extension === '.pdf') valid = b.toString('ascii', 0, 5) === '%PDF-';
+      b.subarray(0, 4).equals(Buffer.from('RIFF')) &&
+      b.subarray(8, 12).equals(Buffer.from('WEBP'));
+  else if (extension === '.pdf')
+    valid = b.subarray(0, 5).equals(Buffer.from('%PDF-'));
   else {
     try {
       const text = new TextDecoder('utf-8', { fatal: true }).decode(b);
@@ -115,17 +116,21 @@ export abstract class AttachmentStorage {
 }
 @Injectable()
 export class LocalAttachmentStorage extends AttachmentStorage {
+  constructor(
+    private readonly directory = resolve(
+      process.env.ATTACHMENT_STORAGE_DIR || '.attachments',
+    ),
+  ) {
+    super();
+  }
   private path(key: string) {
     if (!/^[0-9a-f-]{36}$/.test(key))
       throw new Error('Invalid storage identifier');
-    return join(
-      resolve(process.env.ATTACHMENT_STORAGE_DIR || '.attachments'),
-      key,
-    );
+    return join(this.directory, key);
   }
   async put(key: string, bytes: Buffer) {
     const path = this.path(key);
-    await mkdir(resolve(process.env.ATTACHMENT_STORAGE_DIR || '.attachments'), {
+    await mkdir(this.directory, {
       recursive: true,
       mode: 0o700,
     });

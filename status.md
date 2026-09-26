@@ -6,7 +6,102 @@ The [future public demo deployment plan](docs/demo-deployment-plan.md) records l
 
 ## Current Phase
 
-Multi-tab authentication/session coordination is implemented on the completed pagination/search and business-authorization baseline. Multiple devices/browsers remain supported; logout remains refresh-session scoped. AI and public-demo/deployment work remain deferred. No commit or push performed.
+Application security baseline is implemented on the completed multi-tab, pagination/search and business-authorization baseline. Multiple devices/browsers remain supported; logout remains refresh-session scoped. AI and public-demo/deployment work remain deferred. No commit or push performed.
+
+## Application security baseline (2026-09-26)
+
+Implemented after recording [the security audit](docs/security-baseline-audit.md).
+No AI, deployment infrastructure, tenancy/demo reset, schema migration, commit or
+push. Business authorization and lifecycle rules remain unchanged, including
+ADMIN/SUPER_ADMIN operational exclusion, managed-regional/GLOBAL routing, primary
+Agent membership, Team Lead/collaborator/current/historical visibility, notification
+privacy, attachment-parent checks, work history and ACTIVE/INACTIVE behavior.
+Multi-device sessions and multi-tab coordination remain intact.
+
+- Actual gaps: no global headers/throttling, no explicit session-origin protection,
+  non-configurable fixed CORS, production JWT development fallback, avoidable login
+  timing distinction. Existing CORS was not wildcard; generic login errors,
+  bounded default body parsing and substantial attachment protections already existed.
+  Additional review found ASCII high-bit masking in PDF/WebP signature checks.
+- Helmet **8.3.0** is the only dependency added. Restrictive API CSP, nosniff,
+  frame DENY, no-referrer and standard defaults; production-only one-year HSTS
+  without subdomains/preload; no-store responses. Local HTTP remains usable.
+- Exact ALLOWED_ORIGINS allowlist (local default http://localhost:3000; explicit
+  HTTPS production list). Credentials remain supported, never wildcard. Reject
+  unauthorized/null Origin before handlers. Login/refresh/logout/setup require
+  allowed Origin or Referer; absent both requires preflight-protected
+  X-Requested-With: service-desk (sent by Axios, available to CLI clients).
+- Refresh cookie retains HttpOnly, host-only, /auth, seven days and SameSite=Lax;
+  production Secure; clear-cookie uses matching options. Deliberate SameSite=None
+  supported only with production HTTPS. No rotation/session model changes.
+- Per-IP in-memory fixed-window limits: API **600/minute**, login **20/10 minutes**,
+  refresh **60/minute**, setup **5/10 minutes**, **10000** active keys. Environment
+  configurable; general plus endpoint budgets apply before body parsing. Bounded
+  429 and Retry-After; no tight frontend retry or refresh-session invalidation.
+- Explicit **100 KiB** JSON/form body limit; 100 form parameters; compressed bodies
+  rejected. Multipart remains **5 files / inclusive 10 MiB each**, one **64 KiB**
+  JSON payload and bounded parts. Byte-exact PDF/WebP signature checks added;
+  existing type/filename/private-storage/download authorization and headers retained.
+- Unknown/inactive/bad-password login responses remain identical and each performs
+  bcrypt. Unexpected/internal errors return generic 500; malformed/oversized bodies
+  return intentional 400/413 (415 for encoding). Expected domain errors retained.
+  Logs contain method/registered route, not raw driver error details or tokens.
+- Production startup rejects missing/default/short JWT secrets. Root .gitignore now
+  excludes all .env variants (with .env.example exception); no secrets added.
+  Express trust proxy=false explicitly; no arbitrary forwarded-IP trust.
+- Remaining limitations: limiter is single-process, resets on restart, shares NAT
+  budgets and cannot prevent distributed/IPv6-rotation/volumetric abuse. Key-cap
+  saturation can reject new clients. Attachment checks are format screening, not
+  full decoders or malware scans. Trusted bootstrap still needs controlled initial
+  provisioning. Future deployment needs distributed limits, object storage,
+  malware scanning, hosting-specific proxy/TLS settings and optional CAPTCHA.
+  docs/demo-deployment-plan.md is unchanged.
+
+Verification (final code):
+
+- Backend ESLint: **0 errors / 0 warnings** with --max-warnings 0; typecheck and
+  Nest build passed. Unit/HTTP baseline tests: **14 suites / 152 tests passed**,
+  including 18 new security tests and one signature regression.
+- PostgreSQL/e2e: **8 suites / 239 tests passed** in the existing isolated
+  eds_stabilization_test database, with real HTTP security setup on every HTTP
+  app and explicit high fixture-only rate budgets. Complete auth/session,
+  authorization/lifecycle, pagination/search, notification, communication,
+  attachment, auto-close, work-history and organization/admin regressions passed.
+- Frontend ESLint: **0 errors / 0 warnings** with --max-warnings 0. TypeScript/Vite
+  production build passed. Complete Chromium: **Employee 18 groups, operations
+  17 groups, administration 6 groups, session 13 groups** passed. The session suite
+  includes login 429 UI and refresh 429 multi-tab retention/no-loop recovery.
+  No runtime errors in the successful run. Browser API fixtures are isolated;
+  browser-to-live-database or Firefox/Safari execution is not claimed.
+- Prisma validate/generate passed. Development enterprise_service_desk and test
+  eds_stabilization_test: **16 migrations applied each**, status up to date,
+  **zero drift** from schema. No migration deployment/reset or schema changes.
+- git diff --check passed. Full commands: backend eslint with --max-warnings 0,
+  npm run typecheck, npm run build, jest --runInBand --no-cache; e2e via Node
+  --experimental-vm-modules, test/jest-e2e.json, --runInBand --no-cache and explicit
+  TEST_DATABASE_URL; client npm run lint -- --max-warnings 0, npm run build,
+  npm run test:browser; Prisma validate/generate/migrate status and migrate diff
+  --from-config-datasource --to-schema prisma/schema.prisma --exit-code, each with
+  --config prisma7.config.ts and the appropriate database environment.
+- Initial checks fixed a new fixture guard dependency, a bcrypt spy/overload issue,
+  an incorrect expiry-test assumption and formatting. Final runs all pass. pnpm's
+  initial restricted-network/store mismatch was resolved using its existing store;
+  the temporary workspace store was removed. Existing pg/experimental VM warnings
+  and intentional injected-failure log messages remain; lint warnings are zero.
+
+Files changed:
+
+- .gitignore; README.md; docs/security-baseline-audit.md; docs/decision.md; status.md.
+- server/package.json; server/pnpm-lock.yaml; server/src/main.ts.
+- server/src/security/http-security.ts; rate-limiter.ts; security.config.ts;
+  security.spec.ts (all four under server/src/security).
+- server/src/auth/auth.constants.ts; auth.controller.ts; auth.service.ts.
+- server/src/tickets/attachment-storage.ts; attachment-storage.spec.ts.
+- server/test/security-test-app.ts; app.e2e-spec.ts; attachments.e2e-spec.ts;
+  auto-close.e2e-spec.ts; list-scale.e2e-spec.ts; notifications.e2e-spec.ts;
+  tickets-authorization.e2e-spec.ts; work-history.e2e-spec.ts.
+- client/src/services/api.ts; client/test/employee-flow.mjs; operations-flow.mjs;
+  administration-flow.mjs; session-flow.mjs.
 
 ## Multi-tab session stabilization (2026-09-26)
 
@@ -333,3 +428,84 @@ Pre-existing README/status demo-plan references were preserved. docs/demo-deploy
 - Prisma validation/generation: passed. Local development and isolated test databases: all 14 migrations applied in each; migrate status is fully up to date and migrate diff reports no difference for both.
 - git diff --check: passed.
 - Initial verification corrected a new-file encoding issue and incorrect test assumptions about cancellation and reactivated-manager intake access. The first history run left a test ticket in shared intake before fixture cleanup was added; its verified fixture was removed, then the complete 192-test run passed. Restricted-sandbox database access failed; authorized local PostgreSQL and Chromium runs completed successfully. Expected injected rollback errors and existing pg/VM warnings remain in e2e logs.
+
+
+## Google Cloud Storage attachments - 2026-09-26
+
+- Preserved AttachmentStorage put/read/remove; added GoogleCloudStorageAdapter and centralized local/gcs configuration. Local remains the default, with private ATTACHMENT_STORAGE_DIR (default .attachments). GCS requires GCS_BUCKET_NAME; GCS_PROJECT_ID is optional. Invalid provider/missing bucket fails startup, never silently falls back. No remote startup operations.
+- Added only @google-cloud/storage (8.2.0) as a direct dependency. Authentication is standard SDK ADC: optional GOOGLE_APPLICATION_CREDENTIALS, local ADC or runtime identity; no credential parsing, keys in source or frontend credentials.
+- Private attachments/<UUID> objects, checksum validation and create-only upload precondition. Original filenames remain database metadata. Downloads continue through the authenticated backend with current parent/deletion authorization and safe headers. No URLs/ACLs or business-rule changes.
+- Uploads precede metadata/parent transactions. Failed uploads prevent DB creation; DB failures and duplicate replay attempt staged cleanup. Message/note attachment tombstones commit before physical deletion. Parent deletion tombstones all its files in the same transaction. Cleanup failure leaves inaccessible tombstones, retains internal storage keys for future retry, logs only row ID/safe context and does not alter API success. Original ticket files remain immutable. Local files use the same cleanup semantics.
+- No schema changes or migrations. No cleanup scheduler, AI, cloud resource creation, IAM automation or deployment infrastructure. Public demo is not deployed. No commit or push. Pre-existing security-baseline changes preserved.
+- Explicit npm run storage:check probes upload/read/delete using current configuration and ADC, without DB writes or infrastructure changes; checked locally with an isolated temp directory only. Startup checks syntax/configuration; actual credential/bucket access fails safely when used. Failed probe deletion can leave a private object for manual removal.
+- README contains exact manual project/private bucket/IAM/ADC setup and app smoke-test steps. Backend needs bucket-scoped storage.objects.create/get/delete only, not project Owner/Editor or bucket administration. Real cloud setup/testing remains required. Review cloud retention/versioning/soft-delete policies. Switching providers does not move existing bytes; manually copy/verify before switching with writes paused.
+
+### GCS phase files changed
+
+- README.md; docs/decision.md; docs/demo-deployment-plan.md; status.md.
+- server/package.json; server/pnpm-lock.yaml.
+- server/src/tickets/storage.config.ts (new); google-cloud-storage.ts (new); google-cloud-storage.spec.ts (new).
+- server/src/tickets/attachment-storage.ts; tickets-authorization.module.ts; ticket-communication.service.ts.
+- server/src/storage-check.ts (new).
+- server/test/test-environment.ts; server/test/attachments.e2e-spec.ts.
+
+### GCS verification
+
+- Backend lint: 0 errors, 0 warnings; typecheck and Nest build passed.
+- Unit: 15 suites / 169 tests passed, including mocked GCS upload/read/delete, missing object, failures/safe errors and provider configuration. No Google calls.
+- Complete PostgreSQL/e2e: 8 suites / 242 tests passed against existing eds_stabilization_test. Includes immutable ticket files, author/current-cycle deletion, employee note denial, guessed IDs, private projections, physical local cleanup, authoritative tombstones despite cleanup failure, rollback safety, notifications and idempotency. Expected injected-error logs and existing pg/VM warnings only.
+- Frontend lint: 0 errors, 0 warnings; TypeScript/Vite build passed. All four browser suites passed (Employee 18, operations 17 emitted checks including four queue variants, administration 6, sessions 13); no runtime errors. Browser tests use API fixtures, not a live database.
+- Prisma validate/generate passed. Development and isolated test database: 16 migrations each, fully applied, zero drift. No migration applied or schema modified for this phase.
+- Local storage-check command passed. git diff --check passed.
+- First browser run hit sandbox CDP timeout; the complete permitted rerun passed. Initial test DB name assumption was corrected using a read-only catalog lookup; no database was created. The real GCS smoke test remains manual and unexecuted.
+
+
+## Ticket communication/history stabilization ? 2026-09-26
+
+Implemented the remaining lifetime-stream payload bounds. Messages and internal
+notes have separate recent-first keyset pages (25 default / 100 maximum), with
+chronological records and only loaded/current cycle labels. History has bounded
+cycle pages and a shared 25-subtask budget; explicit per-cycle subtask continuation
+keeps all authorized work reachable without automatic N+1 requests. Existing
+authorization, tombstones, attachments, lifecycle mutation/replay behavior and
+historical fields are preserved.
+
+Frontend Load older controls preserve drafts, files and loaded records during
+writes. New/edit/delete responses merge locally. Requester status refresh does
+not unmount communication. Obsolete older responses cannot replace a refreshed
+stream or a newer mutation. History and current-cycle subtasks have independent
+continuation controls and mobile coverage.
+
+Verification:
+
+- Backend: lint **0 errors / 0 warnings**, typecheck and build passed;
+  **169/169 unit tests in 15 suites**, **251/251 PostgreSQL/e2e tests in 9 suites**.
+  The new stream suite contributes 9 tests; existing authorization, attachment,
+  routing, notification, auto-close, list-scale and My Work History suites pass.
+- Frontend: lint **0 errors / 0 warnings**, TypeScript/Vite build passed;
+  **4/4 browser suites**, **58 reported acceptance groups**: Employee 20,
+  operational 19, administration 6, session 13. These are the scripts' PASS
+  groups, not an invented count of individual assertions. Coverage includes
+  long public/private streams, draft preservation, stale older-response rejection,
+  sending/editing/deleting after pagination, attachments, history continuation,
+  independent large-cycle subtask paging and mobile layouts. Browser API fixtures
+  remain isolated; real database contracts are exercised separately by e2e.
+- Prisma validate/generate passed. Both `enterprise_service_desk` and isolated
+  `eds_stabilization_test` have **17/17 migrations**, up to date, **zero drift**.
+  Focused migration `20260926180000_communication_keyset_indexes` replaces only
+  message/note `(ticketId,id)` indexes with `(ticketId,createdAt,id)`.
+- Synthetic fixture: 61 cycles, 1,201 messages, 601 notes, 671 subtasks, two
+  attachment metadata rows, six users; one extra requester message during the
+  mutation test. Removed after testing; no development fixture seeded.
+- Representative ID-projection query plans: message/note backward index scans,
+  26 rows in 0.038/0.035 ms; existing cycle-sequence index 0.022 ms; cycle-subtask
+  bitmap scan plus top-N sort over 71 live rows, 0.052 ms. These are local plan
+  observations, not full API latency or performance thresholds.
+- `git diff --check` passed. Existing working-tree changes were preserved.
+
+Remaining scale boundaries are configuration catalogs and ticket scope/tag links,
+plus explicitly accumulated browser pages. Attachment arrays retain the existing
+five-file parent bound. Subtask query sort work can grow with cycle size despite
+bounded responses; no speculative index was added. The full audit and API contracts
+are in `docs/list-scale-audit.md` and README. No AI, cloud setup, deployment/demo
+infrastructure, commit or push was performed for this phase.

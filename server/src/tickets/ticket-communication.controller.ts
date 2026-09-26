@@ -1,3 +1,4 @@
+import { ListQuery } from '../common/list-query';
 import { Delete, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { AttachmentUploads, Upload } from './attachment-storage';
 import {
@@ -14,6 +15,7 @@ import {
   Patch,
   Post,
   Req,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
@@ -54,8 +56,9 @@ export class TicketCommunicationController {
   readMessages(
     @Param('ticketId', ParseIntPipe) id: number,
     @Req() request: Request,
+    @Query() query: ListQuery = {},
   ) {
-    return this.communication.read(id, this.actor(request), 'messages');
+    return this.communication.read(id, this.actor(request), 'messages', query);
   }
   @Post(':ticketId/messages')
   @UseInterceptors(AttachmentFilesInterceptor, AttachmentPayloadInterceptor)
@@ -97,8 +100,14 @@ export class TicketCommunicationController {
   readNotes(
     @Param('ticketId', ParseIntPipe) id: number,
     @Req() request: Request,
+    @Query() query: ListQuery = {},
   ) {
-    return this.communication.read(id, this.actor(request), 'internal-notes');
+    return this.communication.read(
+      id,
+      this.actor(request),
+      'internal-notes',
+      query,
+    );
   }
   @Post(':ticketId/internal-notes')
   @UseInterceptors(AttachmentFilesInterceptor, AttachmentPayloadInterceptor)

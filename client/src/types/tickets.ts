@@ -75,6 +75,8 @@ export type TicketDetail = TicketSummary & {
 export type TicketHistory = {
   ticketId: number
   currentCycleId: number | null
+  hasMore: boolean
+  nextCursor: string | null
   subtasksAccess: 'NONE' | 'FILTERED' | 'ALL'
   cycles: WorkCycle[]
 }

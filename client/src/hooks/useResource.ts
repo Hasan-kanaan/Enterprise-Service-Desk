@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 // Keep loaders stable (module functions or useCallback). An aborted/obsolete request
 // cannot replace data after navigation or a newer reload.
 export function useResource<T>(loader: (signal: AbortSignal) => Promise<T>) {
+  const refreshVersion = useRef(0)
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<{
     loader: typeof loader
@@ -30,5 +31,21 @@ export function useResource<T>(loader: (signal: AbortSignal) => Promise<T>) {
       ? state
       : { loading: true, data: undefined, error: undefined }),
     reload,
+    refresh: async () => {
+      const version = ++refreshVersion.current
+      const controller = new AbortController()
+      try {
+        const data = await loader(controller.signal)
+        setState((previous) =>
+          version === refreshVersion.current &&
+          previous.loader === loader &&
+          previous.attempt === attempt
+            ? { ...previous, data }
+            : previous,
+        )
+      } catch {
+        if (version === refreshVersion.current) reload()
+      }
+    },
   }
 }

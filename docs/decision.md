@@ -359,7 +359,7 @@ PostgreSQL tests cover recipients, privacy, no-ops/repeated changes, current ver
 
 Use a shared Attachment model with three real, restrictive foreign keys: ticketId, messageId and internalNoteId. A PostgreSQL CHECK requires exactly one parent; uploaderId also references User. Original ticket attachments cannot have deletedAt. Other columns are generated unique UUID storageKey, sanitized filename, canonical contentType, byteSize, createdAt and nullable deletedAt. Byte size is constrained to 0..10,485,760. Parent authorship/uploader identity is set server-side. No historical attachments are inferred. The additive thirteenth migration leaves existing message/note content unchanged and deletedAt NULL.
 
-Original ticket files can only be submitted during Employee ticket creation and remain permanently immutable. Message/note files can only be submitted with a new parent; PATCH never adds or replaces them. Only the parent author may soft-delete an individual file or its parent, with current authorization and current unfinished-cycle checks. Intake-only managers cannot delete communication. No role override exists. Historical and terminal work remains frozen after reopening. Parent deletion suppresses content and all attached files, retaining database records and private binary data. Tombstones omit old attachment filenames/type/size. No restore or physical purge API exists.
+Original ticket files can only be submitted during Employee ticket creation and remain permanently immutable. Message/note files can only be submitted with a new parent; PATCH never adds or replaces them. Only the parent author may soft-delete an individual file or its parent, with current authorization and current unfinished-cycle checks. Intake-only managers cannot delete communication. No role override exists. Historical and terminal work remains frozen after reopening. Parent deletion suppresses content and all attached files, retaining database records. The GCS decision below supersedes permanent binary retention: attachment tombstones commit before best-effort physical deletion. Tombstones omit old attachment filenames/type/size. No restore or physical purge API exists.
 
 Reuse existing serializable ticket/user/subtask/team locks for deletion and creation, including active/sessionVersion checks. Deletion affects no lifecycle, ownership, collaboration, routing, subtasks or notification rows/read state. Repeat eligible deletion preserves its first timestamp. Deleted attachment downloads are rejected even while binaries remain present. All creation/edit/replay/read projections apply tombstone redaction. Existing no-file creation fingerprints stay compatible; multipart fingerprints also include ordered sanitized metadata and SHA-256 file digests. Original keys remain consumed after editing or deletion. Duplicate replay rechecks current authorization and cleans unused staged binaries without creating records or notifications.
 
@@ -492,3 +492,105 @@ concurrent rotation succeeds and logout leaves another login usable. It accepts
 the existing serialization-conflict 409 or replay 401 for the concurrent loser,
 then separately requires replay rejection. No browser-to-live-database coverage
 or Firefox/Safari runtime execution is claimed.
+
+
+## 2026-09-26 ? Application security baseline
+
+The [pre-implementation audit](security-baseline-audit.md) distinguishes existing
+protections from actual gaps. Use one shared Nest/Express HTTP setup, Helmet
+8.3.0, explicit 100 KiB body limits (multipart retains its separate limits), exact
+environment-configured CORS origins and bounded intentional parser/5xx responses.
+Keep useful method/route-template error context without logging raw driver errors.
+Production is HTTPS-only: Secure refresh cookies, HSTS without subdomain/preload
+assumptions, required explicit HTTPS frontend origins and a non-default JWT secret
+of at least 32 characters. Local HTTP remains usable. See README for all settings.
+
+Protect only the session-establishing/cookie-sensitive POST routes (login,
+refresh, logout, setup) with exact Origin, Referer fallback, or a preflight-requiring
+X-Requested-With header when both are absent. Reject untrusted supplied provenance.
+Refresh/logout consume the cookie; login sets it; setup creates the first admin.
+CORS alone does not prevent simple cross-origin mutation. No generic CSRF framework
+or change to bearer authorization is necessary. Preserve HttpOnly, host-only,
+/auth scope, seven-day expiry, Lax default and identical logout clear attributes;
+allow explicit SameSite=None only under production Secure/HTTPS. Cross-site cookies
+remain subject to browser policy. First-admin setup still requires controlled
+provisioning; no setup ownership/tenancy/reset model was introduced.
+
+Use bounded in-process fixed-window per-IP budgets: API 600/minute, login
+20/10 minutes, refresh 60/minute, setup 5/10 minutes, all configurable. All attempts
+count; endpoint and general budgets both apply. Cap active key storage at 10000;
+do not evict active entries to admit new keys. The reusable limiter is intentionally
+single-instance and resets on restart. Document shared-NAT, IPv6 rotation,
+distributed attack and saturation limitations; a real multi-instance deployment
+requires shared limiting. Keep trust proxy=false until actual topology is known.
+
+Login failures were already generic; retain those responses while performing
+bcrypt for missing/inactive users and masking a concurrent lifecycle rejection.
+Keep rotation, replay rejection, sessionVersion and multi-device/multi-tab semantics.
+Expose 429 as a temporary frontend error without automatic retries or invalidation.
+Attachment content validation already existed. Tighten only PDF/WebP signature
+comparisons from ASCII decoding to byte equality; no scanner or format overhaul.
+Do not alter role/team/collaborator visibility, ticket lifecycle, pagination,
+notifications, attachment parent authorization, auto-close or work history.
+No schema/migration or demo-deployment-plan assumption changes. Future work remains
+shared limiting, malware scanning, actual hosting proxy/TLS policy
+and optional bot/CAPTCHA protection. AI and public deployment work remain deferred.
+
+## 2026-09-26: Configurable Google Cloud attachment storage
+
+Preserve AttachmentStorage put/read/remove and the existing bounded-buffer flow.
+Select LocalAttachmentStorage (default local) or GoogleCloudStorageAdapter (gcs)
+through centralized validated storage configuration. Use only the official
+@google-cloud/storage client and normal ADC; optional project override, required
+bucket name, no credential parsing, public ACLs, signed URLs or local fallback.
+Startup validates settings without cloud I/O; the explicit storage:check command
+probes create/read/delete access without changing infrastructure. Credentials and
+bucket access failures are surfaced safely when used. Setup details and minimum
+bucket-scoped object create/get/delete permissions are documented in README.
+
+Opaque UUID keys and private attachments/<UUID> objects contain no original
+filename metadata. Downloads continue through the authenticated backend's parent
+authorization and deleted-state checks. Upload validation, five-file/10 MiB limits,
+immutable ticket files, author/current-cycle deletion, notifications, idempotency,
+safe projections and the security baseline remain intact. Bytes precede the DB
+transaction; failed DB operations/replays attempt cleanup.
+
+Supersede indefinite binary retention: individual communication-file deletion or
+parent deletion persists attachment tombstones before attempting physical cleanup.
+Parent and file tombstones share one transaction; no binary is removed on rollback.
+After commit, cleanup failure leaves truthful, inaccessible tombstones and retains
+storageKey for future retry. Log only a safe message and row ID; no raw provider
+errors, paths, keys or secrets. Both providers use these semantics. No scheduler,
+new schema, migration or cleanup-state column is needed. GCS retention/versioning
+may preserve copies independently of application deletion.
+
+Tests remain local/temp or mocked, with no Google credentials/network requirement.
+Switching providers requires manually copying/verifying existing bytes; selection
+does not migrate data or introduce per-row routing. AI can later consume authorized
+bytes through the adapter but is not implemented or coupled to GCS. Real Google
+project/bucket/IAM setup and smoke testing remain manual; no public demo is deployed.
+
+
+## Ticket stream pagination (2026-09-26)
+
+Resolve the deferred ticket communication/history scale boundary with database
+keyset pagination, default 25 and hard maximum 100. Keep public messages and
+support-only notes separate, with unchanged authorization and mutation semantics.
+Use immutable createdAt/id boundaries for communication and subtasks; ticket-scoped
+unique sequence for cycle history. Cursor validation reuses the existing list
+contract. Only the bounded record page's cycle labels plus current cycle travel
+with communication. Keep parent-bounded attachment metadata embedded.
+
+History has a fixed shared 25-subtask projection budget, not a per-cycle expansion.
+Its continuation boundary can be reused independently within any loaded cycle;
+per-cycle has-more flags are conservative and the UI says so. An explicit scoped
+subtask endpoint makes all authorized work reachable without automatic N+1 HTTP
+requests. A separate latest-cycle lookup keeps isCurrent truthful on older pages.
+No snapshots span requests, history is not denormalized, and no generic audit
+infrastructure is introduced. Local mutation responses update loaded communication;
+revision/seed checks reject stale page responses while drafts survive paging.
+
+The focused migration replaces only message/note ticket/id indexes with
+ticket/createdAt/id. Existing cycle and subtask indexes are retained based on
+measured plans. Configuration catalogs remain the documented unpaginated boundary.
+See `docs/list-scale-audit.md` for exact contracts, fixture sizes and plan limits.

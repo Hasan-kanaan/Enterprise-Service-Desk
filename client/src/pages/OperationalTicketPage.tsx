@@ -19,7 +19,8 @@ import { cycleLabel, formatDate, isTerminal } from '@/types/ticketPresentation'
 import { TicketForm } from '@/components/TicketForm'
 import { TicketHistory } from '@/components/TicketHistory'
 import { TicketCommunication } from '@/components/TicketCommunication'
-import { SubtaskRows } from '@/components/SubtaskUI'
+import { CycleSubtasks } from '@/components/CycleSubtasks'
+import type { SupportCycle } from '@/types/operations'
 import { SubtaskForm } from '@/components/SubtaskForm'
 import {
   TicketOperationForm,
@@ -231,11 +232,8 @@ function OperationalTicket({ id }: { id: number }) {
                 Subtasks are not available with your current relationship to
                 this ticket.
               </p>
-            ) : current?.subtasks?.length ? (
-              <SubtaskRows
-                subtasks={current.subtasks}
-                frozen={current.isEnded}
-              />
+            ) : current && (current.subtasks?.length || current.subtasksHasMore) ? (
+              <CycleSubtasks ticketId={id} cycle={current} />
             ) : (
               <p className="detail-body muted">
                 No authorized subtasks in this cycle.
@@ -254,18 +252,8 @@ function OperationalTicket({ id }: { id: number }) {
             </div>
             <TicketAttachments ticketId={id} /><TicketCommunication ticketId={id} cycles={history.cycles} onChanged={reload} />
             <TicketHistory
-              cycles={history.cycles}
-              renderWork={(cycle) => {
-                const tasks = history.cycles.find(
-                  (item) => item.id === cycle.id,
-                )?.subtasks
-                return tasks?.length ? (
-                  <SubtaskRows
-                    subtasks={tasks}
-                    frozen={!cycle.isCurrent || cycle.isEnded}
-                  />
-                ) : null
-              }}
+              history={history}
+              renderWork={(cycle) => <CycleSubtasks ticketId={id} cycle={cycle as SupportCycle} />}
             />
           </section>
         </div>

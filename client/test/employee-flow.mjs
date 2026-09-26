@@ -1,4 +1,4 @@
-import { pageFixture } from './list-fixture.mjs'
+import { pageFixture, historyFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
@@ -6,6 +6,7 @@ import { communicationFixture, submission } from './communication-fixture.mjs'
 import { notificationFixture } from './notification-fixture.mjs'
 const notifications = notificationFixture()
 const communication = communicationFixture()
+let slowOlder = false
 import { spawn } from 'node:child_process'
 import {
   existsSync,
@@ -252,7 +253,7 @@ function response(request) {
           ticketId: ticket.id,
           currentCycleId: cycles[0].id,
           subtasksAccess: 'NONE',
-          cycles,
+          ...historyFixture(cycles, url),
         },
       ]
     if (request.method === 'GET') return [200, ticket]
@@ -334,6 +335,7 @@ try {
       try {
         const [status, body] =
           request.method === 'OPTIONS' ? [200, {}] : response(request)
+        if (slowOlder && new URL(request.url).searchParams.has('cursor') && new URL(request.url).pathname.endsWith('/messages')) await delay(800)
         if (new URL(request.url).searchParams.get('search') === 'scale slow') await delay(1000)
         await send('Fetch.fulfillRequest', {
           requestId,
@@ -347,7 +349,7 @@ try {
             { name: 'Access-Control-Allow-Credentials', value: 'true' },
             {
               name: 'Access-Control-Allow-Headers',
-              value: 'content-type,authorization',
+              value: 'content-type,authorization,x-requested-with',
             },
             {
               name: 'Access-Control-Allow-Methods',
@@ -465,6 +467,27 @@ try {
   await click('Send message')
   await waitText('Employee context')
   await until(() => evaluate(`!![...document.querySelectorAll('button')].find(el => el.textContent === 'Edit message')`), 'message posted')
+  communication.records.push(...Array.from({ length: 61 }, (_, i) => ({ id: 10000 + i, ticketId: 142, kind: 'messages', createdInCycleId: cycles[0].id, author: { id: 20, username: 'Sara' }, content: `Older public ${i}`, createdAt: '2020-01-01T00:00:00.000Z', editedAt: null, deletedAt: null, attachments: [] })))
+  await click('Refresh conversation')
+  await waitText('Load older messages')
+  assert.equal(await evaluate(`document.querySelectorAll('.communication-records > li').length`), 25)
+  await fill('[aria-label="Message content"]', 'Paging draft')
+  slowOlder = true
+  await click('Load older messages')
+  await click('Refresh conversation')
+  await waitText('Load older messages')
+  await delay(1000)
+  assert.equal(await evaluate(`document.querySelectorAll('.communication-records > li').length`), 25)
+  slowOlder = false
+  await click('Load older messages')
+  await waitText('Older public 20')
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Message content"]').value`), 'Paging draft')
+  await click('Load older messages')
+  await waitText('Older public 0')
+  assert.equal(await evaluate(`document.querySelectorAll('.communication-records > li').length`), 62)
+  await click('Send message')
+  await until(() => evaluate(`document.querySelectorAll('.communication-records > li').length === 63`), 'send preserves loaded older messages')
+  console.log('PASS: bounded public stream, partial-cycle paging, final page and preserved draft')
   tickets[0].status = 'WAITING_FOR_EMPLOYEE'
   await click('Edit message')
   await fill('[aria-label="Message content"]', 'Employee corrected context')
@@ -481,6 +504,8 @@ try {
   await click('Send message')
   await waitText('The requested result')
   assert.equal(tickets[0].status, 'IN_PROGRESS')
+  // Refresh after the conflict resets to a bounded recent page; sending appends locally.
+  assert.equal(await evaluate(`document.querySelectorAll('.communication-records > li').length`), 26)
   assert(!requests.some(path => path.includes('internal-notes')))
   assert(!await evaluate(`document.body.textContent.includes('Internal notes — support only')`))
   console.log('PASS: requester conversation, own editing, edited marker, waiting reply, private-note exclusion and preserved 503/409 drafts')
@@ -701,6 +726,23 @@ try {
   console.log(
     'PASS: unavailable ticket, retry, search-empty and missing-catalog states',
   )
+  await navigate('/tickets')
+  await waitText('VPN disconnects repeatedly')
+  const savedCycles = [...cycles]
+  cycles.splice(0, cycles.length, ...Array.from({ length: 61 }, (_, i) => ({ ...savedCycles[0], id: 20000 + i, sequenceNumber: 61 - i, type: i === 60 ? 'ORIGINAL' : 'REOPENED', isCurrent: i === 0, isEnded: i !== 0, startReason: `Scale cycle ${61 - i}` })))
+  await navigate('/tickets/142')
+  await waitText('Load older history')
+  assert.equal(await evaluate(`document.querySelectorAll('.cycle-list > li').length`), 25)
+  await click('Load older history')
+  await waitText('Scale cycle 12')
+  await click('Load older history')
+  await waitText('Scale cycle 1')
+  assert.equal(await evaluate(`document.querySelectorAll('.cycle-list > li').length`), 61)
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+  assert(!requests.some(path => path.includes('internal-notes')))
+  cycles.splice(0, cycles.length, ...savedCycles)
+  console.log('PASS: history bounded pages, final cycle, mobile layout and employee note exclusion')
   await navigate('/tickets')
   await waitText('VPN disconnects repeatedly')
   const before = refreshCount

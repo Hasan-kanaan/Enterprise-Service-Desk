@@ -54,10 +54,16 @@ export type SubtaskInput = {
   assignedTeamId?: number | null
   assignedAgentId?: number | null
 }
-export type SupportCycle = WorkCycle & { subtasks?: Subtask[] }
+export type SupportCycle = WorkCycle & {
+  subtasks?: Subtask[]
+  subtasksHasMore?: boolean
+  subtasksNextCursor?: string | null
+}
 export type SupportHistory = {
   ticketId: number
   currentCycleId: number | null
+  hasMore: boolean
+  nextCursor: string | null
   subtasksAccess: 'NONE' | 'FILTERED' | 'ALL'
   cycles: SupportCycle[]
 }

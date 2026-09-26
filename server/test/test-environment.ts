@@ -6,3 +6,5 @@ if (!testUrl || !new URL(testUrl).pathname.endsWith('_test')) {
   );
 }
 process.env.DATABASE_URL = testUrl;
+// Never select a network storage provider from the developer/CI environment.
+process.env.STORAGE_PROVIDER = 'local';

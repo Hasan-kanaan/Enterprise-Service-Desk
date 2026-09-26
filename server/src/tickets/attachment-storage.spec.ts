@@ -55,6 +55,18 @@ describe('Attachment file boundaries', () => {
       validateUpload(upload('x.txt', Buffer.alloc(10485761, 65))),
     ).toThrow();
   });
+  it('checks PDF/WebP signature bytes without ASCII high-bit masking', () => {
+    for (const [name, prefix] of [
+      ['x.pdf', '%PDF-1.7'],
+      ['x.webp', 'RIFFxxxxWEBP'],
+    ]) {
+      const bytes = Buffer.from(prefix);
+      bytes[0] |= 0x80;
+      expect(() => validateUpload(upload(name, bytes))).toThrow(
+        'File content does not match',
+      );
+    }
+  });
   it('cleans earlier files and never calls the database when a later store fails', async () => {
     const storage = {
       put: jest

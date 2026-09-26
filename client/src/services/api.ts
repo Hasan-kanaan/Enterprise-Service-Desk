@@ -6,7 +6,7 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000',
   withCredentials: true,
   timeout: 15000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'service-desk' },
 })
 type SessionRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean
@@ -32,6 +32,7 @@ export function clearSession() {
 }
 export function getApiErrorMessage(error: unknown, fallback: string) {
   if (error instanceof AxiosError) {
+    if (error.response?.status === 429) return 'Too many requests. Please wait and try again.'
     const message = error.response?.data?.message
     if (Array.isArray(message)) return message.join(' ')
     if (typeof message === 'string') return message

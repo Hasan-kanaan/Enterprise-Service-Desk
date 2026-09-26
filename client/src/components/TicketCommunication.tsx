@@ -1,3 +1,4 @@
+import { useOlderPages, uniqueById } from '@/hooks/useOlderPages'
 import { AttachmentList, AttachmentPicker } from './Attachments'
 import {
   type Attachment,
@@ -23,6 +24,8 @@ type Entry = {
   canEdit: boolean
 }
 type Stream = {
+  hasMore: boolean
+  nextCursor: string | null
   cycles: Pick<WorkCycle, 'id' | 'sequenceNumber' | 'type' | 'isEnded'>[]
   currentCycleId: number | null
   canPost: boolean
@@ -108,7 +111,50 @@ function CommunicationStream({
   } | null>(null)
   const notes = kind === 'internal-notes'
   const title = notes ? 'Internal notes — support only' : 'Conversation'
-  const data = resource.data
+  const pages = useOlderPages(resource.data, (current, older) => ({
+    ...older,
+    records: uniqueById([...older.records, ...current.records])
+      .map((record) => ({
+        ...record,
+        canEdit:
+          record.canEdit &&
+          older.canPost &&
+          record.createdInCycleId === older.currentCycleId,
+        canDelete:
+          record.canDelete &&
+          older.canPost &&
+          record.createdInCycleId === older.currentCycleId,
+      }))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id),
+    cycles: uniqueById([...current.cycles, ...older.cycles]).sort(
+      (a, b) => b.sequenceNumber - a.sequenceNumber,
+    ),
+  }))
+  const data = pages.data
+  const integrate = (entry: Entry) =>
+    pages.update((current) => ({
+      ...current,
+      records: uniqueById([
+        ...current.records,
+        {
+          ...entry,
+          canEdit:
+            !entry.deletedAt &&
+            current.canPost &&
+            entry.createdInCycleId === current.currentCycleId,
+          canDelete:
+            !entry.deletedAt &&
+            current.canPost &&
+            entry.createdInCycleId === current.currentCycleId,
+        },
+      ]).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id),
+    }))
+  const loadOlder = () =>
+    pages.load(
+      async () =>
+        (await api.get<Stream>(path, { params: { cursor: data?.nextCursor } }))
+          .data,
+    )
   const stale =
     !!data && draftCycle !== null && draftCycle !== data.currentCycleId
   const conflict = getApiStatus(error) === 409
@@ -123,11 +169,14 @@ function CommunicationStream({
     setBusy(true)
     setError(undefined)
     try {
+      let saved: Entry
       if (editing !== null) {
-        await api.patch(`${path}/${editing}`, {
-          content,
-          expectedCycleId: cycle,
-        })
+        saved = (
+          await api.patch<Entry>(`${path}/${editing}`, {
+            content,
+            expectedCycleId: cycle,
+          })
+        ).data
       } else {
         if (
           !request.current ||
@@ -136,24 +185,26 @@ function CommunicationStream({
           request.current.files !== files
         )
           request.current = { content, cycle, key: crypto.randomUUID(), files }
-        await postWithAttachments(
-          path,
-          {
-            content,
-            expectedCycleId: cycle,
-            clientRequestId: request.current.key,
-          },
-          files,
-        )
+        saved = (
+          await postWithAttachments<Entry>(
+            path,
+            {
+              content,
+              expectedCycleId: cycle,
+              clientRequestId: request.current.key,
+            },
+            files,
+          )
+        ).data
       }
       setDraft('')
       setFiles([])
       setDraftCycle(null)
       setEditing(null)
       request.current = null
-      reload()
+      integrate(saved)
       // Only a new requester message can change ticket status. Other writes
-      // refresh their stream without discarding a draft in the sibling stream.
+      // update loaded records without discarding a draft in the sibling stream.
       if (!notes && !data?.canReadNotes && editing === null) onChanged()
     } catch (failure) {
       setError(failure)
@@ -172,7 +223,7 @@ function CommunicationStream({
     setBusy(true)
     setError(undefined)
     try {
-      await api.delete(
+      const removed = await api.delete<Entry | Attachment>(
         `${path}/${record.id}${file ? `/attachments/${file.id}` : ''}`,
         { data: { expectedCycleId: data?.currentCycleId } },
       )
@@ -181,7 +232,23 @@ function CommunicationStream({
         setDraft('')
         setDraftCycle(null)
       }
-      reload()
+      if (file)
+        pages.update((current) => ({
+          ...current,
+          records: current.records.map((item) =>
+            item.id === record.id
+              ? {
+                  ...item,
+                  attachments: item.attachments.map((attachment) =>
+                    attachment.id === file.id
+                      ? (removed.data as Attachment)
+                      : attachment,
+                  ),
+                }
+              : item,
+          ),
+        }))
+      else integrate(removed.data as Entry)
     } catch (failure) {
       setError(failure)
       if (file) throw failure
@@ -214,6 +281,32 @@ function CommunicationStream({
         ) : (
           data && (
             <>
+              {data.hasMore ? (
+                <>
+                  <button
+                    className="button secondary"
+                    disabled={pages.loading || busy}
+                    onClick={() => void loadOlder()}
+                  >
+                    {pages.loading
+                      ? 'Loading older...'
+                      : `Load older ${notes ? 'notes' : 'messages'}`}
+                  </button>
+                  <p className="muted small">
+                    Showing loaded records; the oldest cycle may be incomplete.
+                  </p>
+                </>
+              ) : (
+                <p className="muted small">
+                  Beginning of {notes ? 'notes' : 'conversation'}.
+                </p>
+              )}
+              {!!pages.error && (
+                <ErrorState
+                  error={pages.error}
+                  onRetry={() => void loadOlder()}
+                />
+              )}
               {data.records.length === 0 && (
                 <p className="muted">
                   No {notes ? 'internal notes' : 'messages'} yet.

@@ -1,9 +1,6 @@
 import { AttachmentsController } from './attachments.controller';
-import {
-  AttachmentStorage,
-  LocalAttachmentStorage,
-  AttachmentUploads,
-} from './attachment-storage';
+import { AttachmentStorage, AttachmentUploads } from './attachment-storage';
+import { createAttachmentStorage } from './google-cloud-storage';
 import { Module } from '@nestjs/common';
 import { TicketCommunicationController } from './ticket-communication.controller';
 import { TicketCommunicationService } from './ticket-communication.service';
@@ -36,7 +33,7 @@ import { AutoCloseScheduler } from './auto-close.scheduler';
     AutoCloseService,
     AutoCloseScheduler,
     WorkHistoryService,
-    { provide: AttachmentStorage, useClass: LocalAttachmentStorage },
+    { provide: AttachmentStorage, useFactory: () => createAttachmentStorage() },
     AttachmentUploads,
     TicketCommunicationService,
     TicketAuthorizationService,

@@ -1,12 +1,15 @@
+import { ListQuery, after, listPage, listWindow } from '../common/list-query';
 import {
   attachmentSelect,
   attachmentView,
   UploadBatch,
+  AttachmentStorage,
 } from './attachment-storage';
 import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
@@ -73,6 +76,7 @@ export class TicketCommunicationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly visibility: TicketVisibilityService,
+    private readonly storage: AttachmentStorage,
   ) {}
 
   private async context(
@@ -108,24 +112,40 @@ export class TicketCommunicationService {
     ticketId: number,
     user: TicketAuthorizationUser,
     kind: CommunicationKind,
+    query: ListQuery = {},
   ) {
+    const { limit, position } = listWindow(query);
     return this.prisma.$transaction(
       async (db) => {
         const context = await this.context(db, ticketId, user, kind);
         const args = {
-          where: { ticketId },
-          orderBy: { id: 'asc' as const },
+          where: { ticketId, ...after(position) },
+          take: limit + 1,
+          orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }],
           select: projection,
         };
         const records =
           kind === 'messages'
             ? await db.ticketMessage.findMany(args)
             : await db.ticketInternalNote.findMany(args);
+        const page = listPage(records, limit);
         return {
           ticketId,
+          hasMore: page.hasMore,
+          nextCursor: page.nextCursor,
           cycles: (
             await db.ticketWorkCycle.findMany({
-              where: { ticketId },
+              where: {
+                ticketId,
+                id: {
+                  in: [
+                    ...new Set([
+                      ...page.items.map((record) => record.createdInCycleId),
+                      ...(context.cycle ? [context.cycle.id] : []),
+                    ]),
+                  ],
+                },
+              },
               orderBy: { sequenceNumber: 'desc' },
               select: {
                 id: true,
@@ -138,7 +158,7 @@ export class TicketCommunicationService {
           currentCycleId: context.cycle?.id ?? null,
           canPost: context.canPost,
           canReadNotes: context.canReadNotes,
-          records: records.map((record) => ({
+          records: page.items.reverse().map((record) => ({
             ...publicRecord(record),
             canDelete:
               context.canPost &&
@@ -157,7 +177,7 @@ export class TicketCommunicationService {
     );
   }
 
-  write(
+  async write(
     ticketId: number,
     user: TicketAuthorizationUser,
     kind: CommunicationKind,
@@ -167,7 +187,8 @@ export class TicketCommunicationService {
     deleting = false,
     attachmentId?: number,
   ) {
-    return serializable(this.prisma, async (db) => {
+    const cleanup: Array<{ id: number; storageKey: string }> = [];
+    const result = await serializable(this.prisma, async (db) => {
       const rows = await db.$queryRaw<
         Array<{ id: number }>
       >`SELECT id FROM "Ticket" WHERE id = ${ticketId} FOR UPDATE`;
@@ -265,6 +286,12 @@ export class TicketCommunicationService {
               (file) => file.id === attachmentId,
             );
             if (!file) throw new NotFoundException('Attachment not found');
+            cleanup.push(
+              await db.attachment.findUniqueOrThrow({
+                where: { id: attachmentId },
+                select: { id: true, storageKey: true },
+              }),
+            );
             return attachmentView(
               await db.attachment.update({
                 where: { id: attachmentId },
@@ -273,6 +300,20 @@ export class TicketCommunicationService {
               }),
             );
           }
+          const where =
+            kind === 'messages'
+              ? { messageId: recordId }
+              : { internalNoteId: recordId };
+          cleanup.push(
+            ...(await db.attachment.findMany({
+              where,
+              select: { id: true, storageKey: true },
+            })),
+          );
+          await db.attachment.updateMany({
+            where: { ...where, deletedAt: null },
+            data: { deletedAt: record.deletedAt ?? new Date() },
+          });
           const args = {
             where: { id: recordId },
             data: { deletedAt: record.deletedAt ?? new Date() },
@@ -359,5 +400,16 @@ export class TicketCommunicationService {
         );
       throw error;
     });
+    // Only a successful commit permits physical deletion. Retain keys for retry.
+    for (const file of cleanup) {
+      try {
+        await this.storage.remove(file.storageKey);
+      } catch {
+        new Logger('AttachmentCleanup').error(
+          `Tombstoned attachment ${file.id} cleanup failed; retry required`,
+        );
+      }
+    }
+    return result;
   }
 }

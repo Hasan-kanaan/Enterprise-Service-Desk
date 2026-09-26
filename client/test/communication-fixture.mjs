@@ -1,3 +1,4 @@
+import { pageFixture } from './list-fixture.mjs'
 export function submission(request) {
   if (!request.postData) return { body: {}, files: [] }
   if (!request.postData.startsWith('--')) return { body: JSON.parse(request.postData), files: [] }
@@ -38,7 +39,8 @@ export function communicationFixture() {
           record.author.id === user.id &&
           record.createdInCycleId === cycle.id,
       })
-      if (request.method === 'GET')
+      if (request.method === 'GET') {
+        const page = pageFixture(records.filter(record => record.ticketId === ticket.id && record.kind === kind), new URL(request.url))
         return [
           200,
           {
@@ -46,14 +48,12 @@ export function communicationFixture() {
             cycles: [...cycles.values()].filter(c => c.ticketId === ticket.id).sort((a, b) => b.sequenceNumber - a.sequenceNumber).map(c => ({ ...c, isEnded: c.id !== cycle.id || ['RESOLVED', 'CLOSED', 'CANCELLED'].includes(ticket.status) })),
             canPost,
             canReadNotes: support,
-            records: records
-              .filter(
-                (record) =>
-                  record.ticketId === ticket.id && record.kind === kind,
-              )
-              .map(project),
+            hasMore: page.hasMore,
+            nextCursor: page.nextCursor,
+            records: page.items.reverse().map(project),
           },
         ]
+      }
       if (failure) {
         const status = failure
         failure = null
@@ -74,7 +74,7 @@ export function communicationFixture() {
         const record = records.find(record => record.id === Number(match[3]))
         if (!record || record.author.id !== user.id) return [403, {}]
         if (record.createdInCycleId !== cycle.id) return [409, {}]
-        if (match[4]) record.attachments.find(file => file.id === Number(match[4])).deletedAt = new Date().toISOString()
+        if (match[4]) { const file = record.attachments.find(file => file.id === Number(match[4])); file.deletedAt = new Date().toISOString(); return [200, { ...file, filename: null }] }
         else record.deletedAt = new Date().toISOString()
         return [200, project(record)]
       }

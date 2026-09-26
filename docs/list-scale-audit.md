@@ -14,7 +14,8 @@ The working tree already contains the auto-close/stability baseline. Preserve it
 | C | /notifications, /notifications/unread-count | Recent list already bounded, count query separate. Unchanged. |
 | C | /work-history | Existing server pagination. Unchanged. |
 | C | Individual ticket/subtask/workspace/profile/setup/download reads | Single subject, preserve visibility. |
-| A (deferred by scope) | Ticket messages/internal notes, ticket history and its cycle subtasks, attachments | Subject-scoped streams/history explicitly excluded from this phase. Preserve; document remaining scale boundary. |
+| A (resolved in stream phase) | Ticket messages/internal notes, ticket history and its cycle subtasks | Database keyset pages; bounded cycle labels and a shared subtask projection budget. See below. |
+| B | Ticket/message/note attachments | At most five files at parent creation; no append-upload API. Metadata stays with its bounded parent. No separate pagination. |
 
 No separate unrestricted employee lookup is needed. No change to mutation authorization,
 historical/current access rules, or lifecycle behavior. Existing single-column Ticket
@@ -26,7 +27,7 @@ createdAt/id tuple order for ticket/subtask queues, id order for directory/membe
 ## Implementation and measured limits
 
 All class A application collections above now have bounded database responses;
-the explicitly deferred subject streams remain as recorded. No authorization
+the formerly deferred subject streams are now bounded as described below. No authorization
 policy or mutation rule changed. See the README's endpoint/filter table.
 
 Migration `20260926120000_list_keyset_indexes` replaces five existing Ticket
@@ -62,3 +63,81 @@ the suite. Optional large-fixture setup/cleanup is also prefix-scoped, including
 partial setup failures, and never seeds the development database. Main browser
 fixtures exercise 61-row collections, bounded people lookups, cursor resets,
 stale responses, URL reload/back/forward and responsive layouts.
+
+## Ticket-scoped stream stabilization (2026-09-26)
+
+The exact unbounded reads were `TicketCommunicationService.read`'s message/note
+`findMany`, its independent all-cycle label query, and
+`TicketVisibilityService.history`'s all-cycle and all-authorized-subtask queries.
+Ticket detail, workspace and mutation context already select only the latest
+cycle (`take: 1`); none embeds a lifetime conversation. Attachment metadata is
+limited by the existing five-file parent-creation limit, with no upload-append
+route. Downloads, redaction, storage and parent authorization are unchanged.
+
+* `GET /tickets/:ticketId/messages` and `/internal-notes`: default 25, maximum
+  100; validated opaque `cursor`; database order `(createdAt DESC, id DESC)`.
+  A strict older-than boundary and one lookahead row determine continuation,
+  without COUNT. `records` in each page are returned chronologically; `cycles`
+  contains only labels referenced by that page plus the current cycle (at most
+  limit + 1). `hasMore` and `nextCursor` describe the record stream, not cycles.
+* `GET /tickets/:ticketId/history`: same sizes and envelope metadata, newest
+  sequence first. `(ticketId, sequenceNumber)` is unique, so sequence alone is
+  already a total order within the authorized ticket; the existing ID-form
+  opaque cursor encodes this sequence. Current cycle is selected separately,
+  never inferred from the first row of an older page.
+* History embeds at most **25 authorized subtasks in total**, across its loaded
+  cycles, ordered by `(createdAt DESC, id DESC)`. Every cycle receives the shared
+  `subtasksNextCursor` when more records exist. `subtasksHasMore` is deliberately
+  conservative: an individual cycle can have zero further records. The UI says
+  more authorized subtasks *may* be available. All records newer than the shared
+  boundary have already been included, so continuing within any cycle is safe.
+* `GET /tickets/:ticketId/history/:cycleId/subtasks` independently continues that
+  cycle, default 25 / maximum 100, with completedBy and the existing immutable
+  historical projection. Both current parent access and subtask predicates are
+  enforced before the database limit. No automatic per-cycle HTTP requests.
+
+Authorization still uses the existing parent visibility/support predicates in
+a per-request repeatable-read transaction. Pages do not share a snapshot. An
+insert between requests can appear on refresh without disturbing an older-page
+boundary. Deleted records retain their position and redacted tombstones.
+
+The UI starts with recent communication, groups only loaded records, explains
+partial old cycles, and offers Load older controls with loading/error/end states.
+Drafts and selected files survive paging. Successful writes merge their returned
+record locally; requester status refreshes without unmounting communication.
+Seed/revision checks exclude stale older responses after refresh or mutation.
+History and current-cycle subtasks have independent continuation controls.
+
+Migration `20260926180000_communication_keyset_indexes` replaces the two
+`(ticketId, id)` message/note indexes with `(ticketId, createdAt, id)`.
+No cycle/subtask index was added: existing cycle-sequence uniqueness and
+subtask cycle/ticket indexes support these predicates.
+
+The isolated `eds_stabilization_test` fixture contains one ticket, six users,
+61 cycles, 1,201 messages, 601 notes, 671 subtasks and two attachment metadata
+records. The current cycle alone contains 121 messages, 61 notes and 71 tasks,
+so a cycle demonstrably exceeds a page. Timestamps deliberately tie; edited and
+deleted records span the stream. The mutation test adds one requester message.
+Fixture-owned records are cleaned up; no development data is seeded.
+
+Representative EXPLAIN ANALYZE results on the local test database (ID-projection
+queries exercising the actual boundary/order, not end-to-end endpoint timings):
+
+| Query | Execution | Observation |
+| --- | --- | --- |
+| Messages, newest 26 | 0.038 ms | Backward index-only scan of new ticket/createdAt/id index; 26 rows. |
+| Notes, newest 26 | 0.035 ms | Same index pattern; 26 rows. |
+| Cycles, sequence < 36, limit 26 | 0.022 ms | Backward existing ticket/sequence unique index scan; 26 rows. |
+| Current cycle tasks, limit 26 | 0.052 ms | Existing cycle/ticket bitmap scan over 71 live rows, top-N sort (27 kB), 26 returned. |
+
+Authorization, payload/attachment projection and network work are additional
+costs. Subtask sorts can grow with cycle size even though responses stay bounded;
+this fixture does not justify an additional index or certify production latency.
+No millisecond assertions were added.
+
+Remaining boundaries: configuration catalogs (teams, regions, departments,
+specialties, tags/categories and ticket scope/tag links) remain intentionally
+unpaginated. Attachment arrays retain their existing application-level five-file
+bound. Explicitly loading every page can grow browser memory; initial/individual
+responses never grow with lifetime communication or work history. No remaining
+unbounded lifetime communication/cycle/subtask response is intentionally retained.

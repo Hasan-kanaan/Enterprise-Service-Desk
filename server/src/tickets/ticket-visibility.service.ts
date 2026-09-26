@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, UserRole } from '../../generated/prisma/client';
 import { operationalStatuses } from '../prisma/transactions';
-import { after, listPage, listWindow } from '../common/list-query';
+import { ListQuery, after, listPage, listWindow } from '../common/list-query';
 import { ListSubtasksDto } from './dto/list-tickets.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { cycleInclude, mapCycle, mapTicket } from './ticket-response.mapper';
@@ -252,7 +252,12 @@ export class TicketVisibilityService {
     );
   }
 
-  async history(ticketId: number, user: TicketVisibilityUser) {
+  async history(
+    ticketId: number,
+    user: TicketVisibilityUser,
+    query: ListQuery = {},
+  ) {
+    const { limit, position } = listWindow(query, false);
     // One consistent snapshot for parent authorization and independently filtered work.
     return this.prisma.$transaction(
       async (db) => {
@@ -269,22 +274,52 @@ export class TicketVisibilityService {
           },
         });
         if (!ticket) throw new NotFoundException('Ticket not found');
-        const cycles = await db.ticketWorkCycle.findMany({
+        const latest = await db.ticketWorkCycle.findFirst({
           where: { ticketId },
+          orderBy: { sequenceNumber: 'desc' },
+          select: { id: true },
+        });
+        const cycles = await db.ticketWorkCycle.findMany({
+          where: {
+            ticketId,
+            ...(position ? { sequenceNumber: { lt: position.id } } : {}),
+          },
+          take: limit + 1,
           orderBy: { sequenceNumber: 'desc' },
           include: cycleInclude,
         });
+        const page = listPage(
+          cycles.map((cycle) => ({ ...cycle, id: cycle.sequenceNumber })),
+          limit,
+          false,
+        );
+        const loadedCycles = cycles.slice(0, limit);
         const subtasks =
           user.role === UserRole.EMPLOYEE
             ? []
             : await db.subtask.findMany({
-                where: { AND: [{ ticketId }, this.buildSubtaskWhere(user)] },
-                orderBy: { createdAt: 'asc' },
+                where: {
+                  AND: [
+                    {
+                      ticketId,
+                      createdInCycleId: {
+                        in: loadedCycles.map((cycle) => cycle.id),
+                      },
+                    },
+                    this.buildSubtaskWhere(user),
+                  ],
+                },
+                take: 26,
+                orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
                 include: {
                   assignedAgent: { select: { id: true, username: true } },
                   completedBy: { select: { id: true, username: true } },
                 },
               });
+        // A shared page budget avoids cycles * tasks fan-out. The boundary is
+        // valid for each cycle: all its records newer than this boundary are
+        // already included. hasMore is conservative until that cycle is opened.
+        const tasksPage = listPage(subtasks, 25);
         const access =
           user.role === UserRole.EMPLOYEE
             ? 'NONE'
@@ -295,19 +330,58 @@ export class TicketVisibilityService {
               : 'FILTERED';
         return {
           ticketId,
-          currentCycleId: cycles[0]?.id ?? null,
+          currentCycleId: latest?.id ?? null,
+          hasMore: page.hasMore,
+          nextCursor: page.nextCursor,
           subtasksAccess: access,
-          cycles: cycles.map((cycle, index) => ({
-            ...mapCycle(cycle, index === 0, ticket),
+          cycles: loadedCycles.map((cycle) => ({
+            ...mapCycle(cycle, cycle.id === latest?.id, ticket),
             ...(access === 'NONE'
               ? {}
               : {
-                  subtasks: subtasks.filter(
+                  subtasksHasMore: tasksPage.hasMore,
+                  subtasksNextCursor: tasksPage.nextCursor,
+                  subtasks: tasksPage.items.filter(
                     (subtask) => subtask.createdInCycleId === cycle.id,
                   ),
                 }),
           })),
         };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+
+  async cycleSubtasks(
+    ticketId: number,
+    cycleId: number,
+    user: TicketVisibilityUser,
+    query: ListQuery = {},
+  ) {
+    const { limit, position } = listWindow(query);
+    return this.prisma.$transaction(
+      async (db) => {
+        const ticket = await db.ticket.findFirst({
+          where: { AND: [{ id: ticketId }, this.buildWhere(user)] },
+          select: { id: true },
+        });
+        if (!ticket) throw new NotFoundException('Ticket not found');
+        const rows = await db.subtask.findMany({
+          where: {
+            AND: [
+              { ticketId, createdInCycleId: cycleId },
+              this.buildSubtaskWhere(user),
+              after(position),
+            ],
+          },
+          take: limit + 1,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          include: {
+            assignedAgent: { select: { id: true, username: true } },
+            completedBy: { select: { id: true, username: true } },
+          },
+        });
+        return listPage(rows, limit);
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );

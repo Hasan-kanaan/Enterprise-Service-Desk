@@ -1,4 +1,6 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { configureTestSecurity } from './security-test-app';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import request from './http-test';
@@ -37,14 +39,8 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
   beforeAll(async () => {
     app = (
       await Test.createTestingModule({ imports: [AppModule] }).compile()
-    ).createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    ).createNestApplication<NestExpressApplication>({ bodyParser: false });
+    configureTestSecurity(app as NestExpressApplication);
     await app.init();
     db = app.get(PrismaService);
   });

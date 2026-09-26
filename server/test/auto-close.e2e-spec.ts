@@ -1,3 +1,5 @@
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { configureTestSecurity } from './security-test-app';
 import { Test } from '@nestjs/testing';
 import { HttpException, INestApplication } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -22,7 +24,8 @@ describe('Automatic closure (PostgreSQL)', () => {
   beforeAll(async () => {
     app = (
       await Test.createTestingModule({ imports: [AppModule] }).compile()
-    ).createNestApplication();
+    ).createNestApplication<NestExpressApplication>({ bodyParser: false });
+    configureTestSecurity(app as NestExpressApplication);
     await app.init();
     db = app.get(PrismaService);
     sweep = app.get(AutoCloseService);

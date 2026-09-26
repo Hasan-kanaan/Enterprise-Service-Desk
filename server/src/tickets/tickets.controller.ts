@@ -1,3 +1,4 @@
+import { ListQuery } from '../common/list-query';
 import { UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { AttachmentUploads, Upload } from './attachment-storage';
 import {
@@ -190,10 +191,27 @@ export class TicketsController {
   history(
     @Param('ticketId', ParseIntPipe) id: number,
     @Req() request: AuthenticatedRequest,
+    @Query() query: ListQuery = {},
   ) {
     return this.ticketVisibilityService.history(
       id,
       this.authenticatedUser(request),
+      query,
+    );
+  }
+
+  @Get(':ticketId/history/:cycleId/subtasks')
+  cycleSubtasks(
+    @Param('ticketId', ParseIntPipe) id: number,
+    @Param('cycleId', ParseIntPipe) cycleId: number,
+    @Req() request: AuthenticatedRequest,
+    @Query() query: ListQuery = {},
+  ) {
+    return this.ticketVisibilityService.cycleSubtasks(
+      id,
+      cycleId,
+      this.authenticatedUser(request),
+      query,
     );
   }
 

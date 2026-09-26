@@ -16,6 +16,7 @@ import { CreateAccountDto } from './dto/create-account.dto';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
 import { UserRole } from '../users/user-role.enum';
+import { refreshCookieOptions } from '../security/security.config';
 
 @Controller('auth')
 export class AuthController {
@@ -69,11 +70,7 @@ export class AuthController {
     @Req() request: ExpressRequest,
     @Res({ passthrough: true }) response: Response,
   ) {
-    response.clearCookie('refresh_token', {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/auth',
-    });
+    response.clearCookie('refresh_token', refreshCookieOptions());
     return this.authService.logout(
       (request.cookies as Record<string, string | undefined> | undefined)
         ?.refresh_token ?? '',
@@ -82,11 +79,8 @@ export class AuthController {
 
   private setRefreshCookie(response: Response, refreshToken: string) {
     response.cookie('refresh_token', refreshToken, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      ...refreshCookieOptions(),
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/auth',
     });
   }
 }

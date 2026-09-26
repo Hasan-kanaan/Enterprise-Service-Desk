@@ -1,4 +1,4 @@
-import { pageFixture } from './list-fixture.mjs'
+import { pageFixture, historyFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
@@ -345,6 +345,8 @@ function response(request) {
     s.completedById = s.status === 'COMPLETED' ? user.id : null
     return [200, s]
   }
+  const cycleTasks = path.match(/^\/tickets\/(\d+)\/history\/(\d+)\/subtasks$/)
+  if (cycleTasks) return [200, pageFixture(subtasks.filter(s => s.ticketId === Number(cycleTasks[1]) && s.createdInCycleId === Number(cycleTasks[2]) && taskVisible(s)).map(taskView), url)]
   const communicationTicket = tickets.find(t => t.id === Number(path.split('/')[2]))
   if (communicationTicket && /\/(messages|internal-notes)/.test(path))
     return communication.respond(request, communicationTicket, history[communicationTicket.id][0], user, visible(communicationTicket), user.role === 'AGENT' || owned(communicationTicket))
@@ -370,33 +372,12 @@ function response(request) {
             : [],
         },
       ]
-    if (match[2] === 'history')
-      return [
-        200,
-        {
-          ticketId: t.id,
-          currentCycleId: history[t.id][0].id,
-          subtasksAccess: owned(t)
-            ? 'ALL'
-            : user.role === 'MANAGER'
-              ? 'NONE'
-              : 'FILTERED',
-          cycles: history[t.id].map((c) => ({
-            ...c,
-            ownership: c.isEnded
-              ? c.ownership
-              : { ...owners(t), basis: 'CURRENT', capturedAt: null },
-            subtasks: subtasks
-              .filter(
-                (s) =>
-                  s.ticketId === t.id &&
-                  s.createdInCycleId === c.id &&
-                  taskVisible(s),
-              )
-              .map(taskView),
-          })),
-        },
-      ]
+    if (match[2] === 'history') {
+      const page = historyFixture(history[t.id], url)
+      const cycleIds = page.cycles.map(c => c.id)
+      const taskPage = pageFixture(subtasks.filter(s => s.ticketId === t.id && cycleIds.includes(s.createdInCycleId) && taskVisible(s)), new URL('http://fixture/'))
+      return [200, { ticketId: t.id, currentCycleId: history[t.id][0].id, subtasksAccess: owned(t) ? 'ALL' : user.role === 'MANAGER' ? 'NONE' : 'FILTERED', ...page, cycles: page.cycles.map(c => ({ ...c, ownership: c.isEnded ? c.ownership : { ...owners(t), basis: 'CURRENT', capturedAt: null }, subtasks: taskPage.items.filter(s => s.createdInCycleId === c.id).map(taskView), subtasksHasMore: taskPage.hasMore, subtasksNextCursor: taskPage.nextCursor })) }]
+    }
     if (request.method === 'GET')
       return [
         200,
@@ -584,7 +565,7 @@ try {
             { name: 'Access-Control-Allow-Credentials', value: 'true' },
             {
               name: 'Access-Control-Allow-Headers',
-              value: 'content-type,authorization',
+              value: 'content-type,authorization,x-requested-with',
             },
             {
               name: 'Access-Control-Allow-Methods',
@@ -793,10 +774,21 @@ try {
   await waitText('Manager public update')
   await until(() => evaluate(`!!document.querySelector('[aria-label="Internal note content"]')`), 'notes loaded')
   assert.equal(await evaluate(`document.querySelector('[aria-label="Internal note content"]').value`), 'Private draft survives public posting')
+  communication.records.push(...Array.from({ length: 61 }, (_, i) => ({ id: 11000 + i, ticketId: 142, kind: 'internal-notes', createdInCycleId: history[142][0].id, author: { id: 99, username: 'Other support' }, content: `Older private ${i}`, createdAt: '2020-01-01T00:00:00.000Z', editedAt: null, deletedAt: null, attachments: [] })))
+  await click('Refresh notes')
+  await waitText('Load older notes')
+  await click('Load older notes')
+  await waitText('Older private 20')
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Internal note content"]').value`), 'Private draft survives public posting')
+  await click('Load older notes')
+  await waitText('Older private 0')
+  assert.equal(await evaluate(`document.querySelectorAll('.communication:last-of-type .communication-records > li').length`), 61)
+  console.log('PASS: long private stream, stable older pages and draft preservation')
   await fill('[aria-label="Internal note content"]', 'Private diagnosis')
   await selectAttachment('.communication:last-of-type input[type=file]', 'note.txt')
   await click('Add internal note')
   await waitText('Private diagnosis')
+  assert.equal(await evaluate(`document.querySelectorAll('.communication:last-of-type .communication-records > li').length`), 62)
   await click('Edit note')
   await fill('[aria-label="Internal note content"]', 'Private corrected diagnosis')
   await click('Save edit')
@@ -1024,6 +1016,20 @@ try {
     join(tmpdir(), 'eds-operational-mobile.png'),
     Buffer.from(mobile.data, 'base64'),
   )
+  const savedTasks = [...subtasks]
+  subtasks.push(...Array.from({ length: 61 }, (_, i) => ({ ...makeTask(20000 + i, 143, `Scale subtask ${i}`), status: 'COMPLETED', completedAt: now, completedById: 31 })))
+  await navigate('/work/tickets/143')
+  await waitText('Load older subtasks')
+  const taskSection = `[...document.querySelectorAll('section')].find(section => section.querySelector('h2')?.textContent === 'Current-cycle subtasks')`
+  await evaluate(`[...${taskSection}.querySelectorAll('button')].find(button => button.textContent === 'Load older subtasks').click()`)
+  await waitText('Scale subtask 20')
+  await evaluate(`[...${taskSection}.querySelectorAll('button')].find(button => button.textContent === 'Load older subtasks').click()`)
+  await waitText('Scale subtask 0')
+  assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+  subtasks.splice(0, subtasks.length, ...savedTasks)
+  console.log('PASS: independently bounded current-cycle subtasks and mobile continuation')
+  await navigate('/work/team')
+  await waitText('Owned network issue')
   failure = true
   await click('Refresh workspace')
   await waitText('Service temporarily unavailable')

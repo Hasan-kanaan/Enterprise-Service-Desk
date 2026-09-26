@@ -322,7 +322,7 @@ function TicketContent({ id }: { id: number }) {
             ) : history.error ? (
               <ErrorState error={history.error} onRetry={history.reload} />
             ) : (
-              history.data && <><TicketAttachments ticketId={id} /><TicketCommunication ticketId={id} cycles={history.data.cycles} onChanged={reload} /><TicketHistory cycles={history.data.cycles} /></>
+              history.data && <><TicketAttachments ticketId={id} /><TicketCommunication ticketId={id} cycles={history.data.cycles} onChanged={() => void ticketResource.refresh()} /><TicketHistory history={history.data} /></>
             )}
           </section>
         </div>
