@@ -1,3 +1,5 @@
+import { MailProvider } from '../src/auth/mail.provider';
+import { FakeMailProvider } from './fake-mail.provider';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { configureTestSecurity } from './security-test-app';
 import { INestApplication } from '@nestjs/common';
@@ -58,7 +60,10 @@ describe('Persistent notifications (PostgreSQL and HTTP)', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MailProvider)
+      .useValue(new FakeMailProvider())
+      .compile();
     app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
     });
@@ -90,6 +95,7 @@ describe('Persistent notifications (PostgreSQL and HTTP)', () => {
           username: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',
+          activatedAt: new Date(),
           role: role as UserRole,
           status: name === 'inactive' ? 'INACTIVE' : 'ACTIVE',
         },

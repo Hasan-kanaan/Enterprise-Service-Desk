@@ -1,3 +1,4 @@
+import api, { getApiErrorMessage } from '@/services/api'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAppSelector } from '@/hooks/storeHooks'
@@ -21,6 +22,7 @@ export function UsersPage() {
     status: status || undefined,
     role: accountRole || undefined,
   })
+  const [sending, setSending] = useState<number | null>(null)
   const [creating, setCreating] = useState(false),
     [target, setTarget] = useState<Account | null>(null)
   const reload = () => {
@@ -101,6 +103,7 @@ export function UsersPage() {
               <div>
                 <h2>{account.username}</h2>
                 <p className="muted">{account.email}</p>
+                {account.phoneNumber && <p>Phone: {account.phoneNumber} (unverified)</p>}
                 <p className="quiet-note">
                   Region: {account.region?.name ?? 'Unassigned'} / Department:{' '}
                   {account.department?.name ?? 'Unassigned'}
@@ -109,6 +112,17 @@ export function UsersPage() {
               <div className="button-row">
                 <span className="status-badge">{account.role}</span>
                 <span className="status-badge">{account.status}</span>
+                <span className="status-badge">{account.activatedAt ? 'Activated' : 'Pending activation'}</span>
+                {manageableRoles(role).includes(account.role) && account.status === 'ACTIVE' && <button className="button secondary" disabled={sending !== null} onClick={async () => {
+                  setSending(account.id)
+                  try {
+                    const { data } = await api.post<{ delivery: string }>(`/auth/accounts/${account.id}/${account.activatedAt ? 'reset-password' : 'resend-activation'}`)
+                    if (data.delivery === 'FAILED') toast.error('Email delivery failed. Please retry later.')
+                    else if (data.delivery === 'NOT_SENT') toast.info('Please wait at least one minute before resending. Account must be eligible.')
+                    else toast.success('Instructions sent to the account email.')
+                  } catch (error) { toast.error(getApiErrorMessage(error, 'Could not send instructions.')) }
+                  finally { setSending(null) }
+                }}>{sending === account.id ? 'Sending...' : account.activatedAt ? 'Send password reset' : 'Resend activation'}</button>}
                 {manageableRoles(role).includes(account.role) && (
                   <button
                     className="button secondary"
@@ -174,7 +188,7 @@ export function UsersPage() {
             </>
           ) : (
             <p className="notice">
-              Reactivation permits a fresh sign-in. Previous sessions and
+              ACTIVE status permits sign-in only after account activation. Previous sessions and
               responsibilities are not restored.
             </p>
           )}

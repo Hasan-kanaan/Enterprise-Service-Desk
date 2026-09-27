@@ -1,12 +1,52 @@
 # Project Status
 
-Frontend and backend verification updated on 2026-09-26. [README.md](README.md) describes the project and [docs/decision.md](docs/decision.md) records architectural decisions.
+## Account activation and recovery (2026-09-27)
+
+Administrators manage identities; users choose passwords. Activation and recovery use single-use emailed links. ACTIVE/INACTIVE is separate from activation; pending accounts cannot log in or receive work. Legacy password-bearing users remain activated without fabricated email verification. See the [implementation, configuration and migration guide](docs/account-security.md). This supersedes earlier admin-password and email-exclusion statements below.
+
+Verification: backend lint/typecheck/build pass; **208 unit tests (17 suites)** and **270 PostgreSQL/e2e tests (11 suites)** pass. All four Chromium suites pass, including the extended account-security flow and multi-tab coordination. Frontend lint/build pass. Both databases have **19 applied migrations and zero drift**. Both frozen installs and runtime audits pass (**zero known runtime vulnerabilities**). SMTP uses Nodemailer 10.0.10; local-only Mailpit is pinned to v1.30.7. No external SMTP/GCS/AI/SMS/WhatsApp calls, deployment, commit or push. Full details and intentionally deferred work are in the linked guide.
+
+
+Frontend and backend verification updated on 2026-09-27. [README.md](README.md) describes the project and [docs/decision.md](docs/decision.md) records architectural decisions.
 
 The [future public demo deployment plan](docs/demo-deployment-plan.md) records late-phase constraints only; demo infrastructure remains deferred while normal product development continues.
 
 ## Current Phase
 
-Application security baseline is implemented on the completed multi-tab, pagination/search and business-authorization baseline. Multiple devices/browsers remain supported; logout remains refresh-session scoped. AI and public-demo/deployment work remain deferred. No commit or push performed.
+Email-based account activation and self-service password recovery are implemented on the verified pre-AI hardening, multi-tab, pagination/search and business-authorization baseline. Multiple devices/browsers remain supported; logout remains refresh-session scoped. AI and public-demo/deployment work remain deferred. No commit or push performed.
+
+## Pre-AI hardening (2026-09-27)
+
+### Server runtime dependency remediation (2026-09-27)
+
+Completed the remaining runtime dependency issue. Server audit went from **11 high / 5 moderate / 1 low** to **zero known runtime vulnerabilities**. Client runtime audit also remains clean. Both pass the unchanged CI command `pnpm audit --prod --audit-level high`; no suppression or threshold change. Full development-inclusive audits remain visible: server **14 high / 1 moderate**, client **4 high / 1 moderate**.
+
+All six affected packages were transitive; no implicated direct dependency was unused. Nest common/core/platform-express/testing moved **11.1.27 -> 11.2.6**, bringing Multer **2.1.1 -> 2.4.0**. Compatible lockfile fixes: qs **6.15.3 -> 6.16.0**, fast-uri **3.1.3 -> 3.1.8**. Three version-scoped overrides in the existing server-local pnpm settings: gaxios 6.7.1 uses uuid **9.0.1 -> 11.1.1**; Prisma config 7.10.0 uses deepmerge-ts **7.1.5 -> 8.0.0**; Prisma CLI 7.10.0 uses mysql2 **3.15.3 -> 3.23.1**. Upstream dependencies remove concat-stream/typedarray and seq-queue/sqlstring, adding sql-escaper 1.5.2. Unrelated package versions are retained. Prisma stays **7.10.0**, GCS stays **8.2.0**. [Full advisory chains, first fixes, compatibility evidence and override removal criteria](docs/dependency-audit.md).
+
+Multer now applies inclusive limits internally; removed the old extra-byte/part compensation to preserve the 10 MiB/five-file contract and oversized-file HTTP 413 response. StorageAdapter and business behavior remain unchanged. No schema migration, AI, cloud configuration, deployment, commit or push.
+
+Final verification: clean frozen server install; backend/frontend lint **0 errors / 0 warnings**; backend typecheck/Nest build and frontend TypeScript/Vite build pass. **203 unit tests in 16 suites**, **2 new offline dependency compatibility checks**, **260 PostgreSQL/e2e tests in 10 suites**, and **60 Chromium groups across all four suites** (21 employee / 19 operations / 6 administration / 14 session) pass. Compatibility checks also run in CI. Prisma validate/generate pass; both existing databases have **18 applied migrations and zero drift**. `git diff --check` passes. Initial Multer and browser verification failures, their resolution and retained tooling risks are documented in the audit.
+
+### Original application-hardening baseline
+
+Implemented bootstrap-secret protection, centralized fail-closed deployed JWT/origin/cookie configuration, explicit proxy trust, database-backed ticket-creation idempotency, shared UTF-8 password limits, self-change and (subsequently superseded) administrative reset with persisted forced-change state, and CSV formula rejection. Existing business authorization/transactions and frontend hooks remain intact. No AI, GCS configuration, deployment, commit or push.
+
+Confirmed gaps: bootstrap lacked a secret; missing/unexpected NODE_ENV allowed JWT defaults; ticket creation lacked idempotency; bcrypt byte limits and password management were absent; CSVs lacked formula checks; root Prisma 8 prerelease/package state was obsolete; client lockfile omitted declared dependencies; start:prod pointed at the wrong compiled entry. Existing proxy distrust, bootstrap locking, sessionVersion/refresh revocation, file boundaries and initially absent email were intentional foundations.
+
+- Migration `20260927120000_ticket_creation_idempotency`: nullable Ticket key/hash, requester/key unique index, User.passwordChangeRequired default false. Applied to local development and isolated test databases; **18 migrations applied, status current and zero drift** on each.
+- Independent app installs retained. Root dependencies/lock/workspace policy removed; root now orchestrates commands. Prisma remains exactly 7.10.0; server explicitly owns @types/pg 8.23.1. Client manifest/lock reproduce already-installed versions. Node 24.12.0 / pnpm 11.9.0 are explicit. Both frozen installs verified using the existing cache.
+- Added safe server/client environment examples, [configuration documentation](docs/pre-ai-hardening.md), PR/push CI with PostgreSQL 17 and complete e2e, and manual Windows Chromium workflow. Hosted workflows have not been executed from this uncommitted workspace.
+- Original dependency audit before the runtime remediation above: server **25 high / 6 moderate / 1 low**; client **4 high / 1 moderate**, all client findings in development tooling. Original runtime gate: server exit 1 (11 high / 5 moderate / 1 low); client exit 0. The follow-up resolves every server runtime finding; see [the updated audit](docs/dependency-audit.md).
+
+Verification:
+
+- Backend lint **0 errors / 0 warnings**, typecheck and Nest build pass.
+- Unit **16 suites / 203 tests pass**; PostgreSQL e2e **10 suites / 260 tests pass**. Includes concurrent bootstrap/ticket requests, attachment cleanup, full reset matrix, access/refresh invalidation, required next-login change, byte limits, CSV and trusted/untrusted IPs.
+- Frontend lint **0 errors / 0 warnings**, TypeScript/Vite build pass. All four complete Chromium suites pass, including interrupted ticket-response retry with the same key/files and password-change sibling-tab invalidation. No browser runtime errors.
+- Prisma validate/generate pass; both migration-status/drift checks pass. `git diff --check` passes.
+- Verification fixed an internal ticket fingerprint in detail projection, fixtures, a browser retry assertion, and a pre-existing login-render timing assumption (now uses the bounded harness wait). Sandboxed Chromium stalled at CDP startup; the installed-browser run outside the sandbox succeeds. Existing pg/VM warnings and intentional failure-injection logs remain; lint warnings are zero. Tests use local/mock storage, never GCS.
+
+Remaining: single-process limits, host-specific proxy/TLS configuration, no malware scanner, no persistent ticket/file drafts across navigation, no device-management UI, dependency advisories, and unverified hosted-browser stability. Broader deferred audit work remains unchanged. `docs/demo-deployment-plan.md` was not rewritten.
 
 ## Application security baseline (2026-09-26)
 
@@ -181,12 +221,12 @@ Files changed:
 - Migration 20260925120000_attachments_soft_deletion applied to development and isolated test databases: 13 migrations each, zero Prisma schema drift. Existing content is unchanged, deletedAt starts NULL, no historical attachments fabricated. Migration tests verify parent checks/FKs, immutable ticket deletion constraint and preservation of pre-existing communication.
 - Verification: 10 unit suites / 109 tests; 5 PostgreSQL/HTTP suites / 163 tests. Includes all existing regressions plus 20 new attachment/deletion scenario groups and controlled deletion races against resolution, reassignment, lead removal and deactivation. Injected storage/database/domain failures verify rollback and binary cleanup. Complete Employee (16 groups), operational (11 groups) and administration (5 groups) Chromium suites pass; fixtures cover UI contracts, PostgreSQL tests cover real access/transactions. Client lint/build, backend typecheck/build, Prisma validation/generation and migration checks pass.
 - The obsolete regression expecting no communication DELETE route now expects DTO validation failure when expectedCycleId is missing. No existing routing, membership, collaboration, notification or lifecycle behavior required correction. During implementation review, the text-edit response was corrected to redact already-deleted attachment filenames too.
-- Deferred storage hardening: malware scanning (files are not scanned), S3/object storage, physical purge/garbage collection, crash orphan scavenging, capacity/rate controls and production storage backup/permission policies. Lightweight signatures/text checks are not full document validation. Email remains intentionally out of scope.
+- Deferred storage hardening: malware scanning (files are not scanned), S3/object storage, physical purge/garbage collection, crash orphan scavenging, capacity/rate controls and production storage backup/permission policies. Lightweight signatures/text checks are not full document validation. Ordinary ticket email remains out of scope; account/security email is implemented.
 - No dependencies added, commit or push performed.
 
 ## Persistent In-App Notifications
 
-Email notifications are intentionally out of scope. The application uses persistent in-app notifications only.
+Email is out of scope for ordinary ticket notifications. Email is used only for account activation, password recovery, and security notices. Ticket events use persistent in-app notifications only.
 
 - Small Notification table with type, recipient, nullable actor/ticket/subtask references, createdAt/readAt, restrictive FKs and recipient/time/read indexes. No sensitive content/previews. Migration `20260923150000_in_app_notifications` starts empty without historical backfill.
 - Events: new primary-agent/subtask assignment, new requester/support public messages, WAITING_FOR_EMPLOYEE, RESOLVED, reopening and explicit responsible-manager transfer. Assignment no-ops/clearing, initial claims, message edits/replays and internal notes create none. Real A -> B -> A changes create separate events.

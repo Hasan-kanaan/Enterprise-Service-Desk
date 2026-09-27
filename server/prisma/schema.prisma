@@ -120,10 +120,16 @@ model User {
   id                Int             @id @default(autoincrement())
   username          String          @unique @db.VarChar(50)
   email             String          @unique @db.VarChar(255)
-  password          String          @db.VarChar(255)
+  password          String?         @db.VarChar(255)
+  activatedAt DateTime?
+  emailVerifiedAt DateTime?
+  phoneNumber String? @db.VarChar(16)
+  phoneVerifiedAt DateTime?
+  accountActionTokens AccountActionToken[]
   role              UserRole        @default(EMPLOYEE)
   status            UserStatus      @default(ACTIVE)
   sessionVersion    Int             @default(0)
+  passwordChangeRequired Boolean @default(false)
   regionId          Int?
   departmentId      Int?
   createdAt         DateTime        @default(now())
@@ -284,6 +290,9 @@ model TicketTag {
 }
 
 model Ticket {
+  clientRequestId String? @db.VarChar(128)
+  creationHash String? @db.VarChar(64)
+  @@unique([requesterId, clientRequestId])
   attachments Attachment[]
   notifications Notification[]
   id                    Int                @id @default(autoincrement())
@@ -506,4 +515,23 @@ model Attachment {
   @@index([messageId])
   @@index([internalNoteId])
   @@index([uploaderId])
+}
+
+
+enum AccountActionType {
+  ACCOUNT_ACTIVATION
+  PASSWORD_RESET
+}
+
+model AccountActionToken {
+  id Int @id @default(autoincrement())
+  userId Int
+  type AccountActionType
+  tokenHash String @unique @db.VarChar(64)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  usedAt DateTime?
+  revokedAt DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@index([userId, type, createdAt])
 }

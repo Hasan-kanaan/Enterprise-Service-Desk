@@ -12,6 +12,7 @@ export function ProtectedRoute({ roles }: { roles?: UserRole[] }) {
         state={{ from: location.pathname + location.search }}
       />
     )
+  if (user.passwordChangeRequired && location.pathname !== '/profile') return <Navigate to="/profile" replace />
   if (roles && !roles.includes(user.role))
     return (
       <div className="panel empty-state">

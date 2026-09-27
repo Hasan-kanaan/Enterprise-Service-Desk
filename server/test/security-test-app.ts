@@ -10,5 +10,6 @@ export function configureTestSecurity(app: NestExpressApplication) {
     RATE_LIMIT_LOGIN_MAX: '100000',
     RATE_LIMIT_REFRESH_MAX: '100000',
     RATE_LIMIT_SETUP_MAX: '100000',
+    RATE_LIMIT_RECOVERY_MAX: '100000',
   });
 }

@@ -1,4 +1,4 @@
-import api, { sessionCoordinator } from '@/services/api'
+import api, { sessionCoordinator, getApiStatus } from '@/services/api'
 import type { AuthResponse, AuthUser } from '@/types/auth'
 
 export type LoginInput = {
@@ -7,6 +7,7 @@ export type LoginInput = {
 }
 
 export type SetupInput = {
+  setupSecret: string
   username: string
   email: string
   password: string
@@ -30,4 +31,19 @@ export async function getSetupStatus() {
 
 export async function logout() {
   await sessionCoordinator.logout(() => api.post('/auth/logout'))
+}
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  await sessionCoordinator.changePassword(
+    () => api.post('/auth/password', { currentPassword, newPassword }),
+    (error) => getApiStatus(error) === 401,
+  )
+}
+
+export async function completeAccountAction(action: 'activate' | 'reset-password', token: string, newPassword: string) {
+  let result: { message: string } | undefined
+  await sessionCoordinator.changePassword(async () => {
+    result = (await api.post<{ message: string }>(`/auth/${action}`, { token, newPassword })).data
+  }, () => false)
+  return result!
 }

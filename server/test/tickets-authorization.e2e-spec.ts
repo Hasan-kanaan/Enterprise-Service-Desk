@@ -1,3 +1,5 @@
+import { MailProvider } from '../src/auth/mail.provider';
+import { FakeMailProvider } from './fake-mail.provider';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { configureTestSecurity } from './security-test-app';
 import { INestApplication } from '@nestjs/common';
@@ -43,12 +45,17 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     request(app.getHttpServer())
       .post(path)
       .set('Authorization', `Bearer ${token(name)}`)
-      .send(body);
+      .send(
+        path === '/tickets' ? { clientRequestId: randomUUID(), ...body } : body,
+      );
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MailProvider)
+      .useValue(new FakeMailProvider())
+      .compile();
     app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
     });
@@ -90,6 +97,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
           username: `${name}-${prefix}`,
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused-test-hash',
+          activatedAt: new Date(),
           role,
           regionId,
           departmentId,
@@ -208,6 +216,9 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     await db.ticket.deleteMany({ where: { requesterId: { in: ids } } });
     await db.team.deleteMany({
       where: { id: { in: [teamA.id, teamB.id, teamC.id] } },
+    });
+    await db.accountActionToken.deleteMany({
+      where: { userId: { in: Object.values(users).map((user) => user.id) } },
     });
     await db.user.deleteMany({ where: { id: { in: ids } } });
     await db.ticketCategory.delete({ where: { id: categoryId } });
@@ -967,7 +978,6 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         const response = await post('/auth/accounts', caller, {
           username: `new-${suffix}`,
           email: `${suffix}@test.invalid`,
-          password: 'StrongPass123!',
           role,
         }).expect(allowed.includes(role) ? 201 : 403);
         if (allowed.includes(role)) {
@@ -977,6 +987,8 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
           expect(response.body.user).not.toHaveProperty('password');
           expect(response.body.user.role).toBe(role);
           expect(users[suffix].status).toBe('ACTIVE');
+          expect(users[suffix].activatedAt).toBeNull();
+          expect(users[suffix].password).toBeNull();
           expect(users[suffix].regionId).toBeNull();
           expect(users[suffix].departmentId).toBeNull();
         }
@@ -2778,6 +2790,42 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       (await get(`/tickets/${owned.id}/history`, 'thirdManager')).body.cycles[1]
         .ownership.manager!.id,
     ).toBe(users.manager.id);
+  });
+
+  it('rejects pending operational assignees, team leads and team managers without changing history', async () => {
+    await db.user.update({
+      where: { id: users.otherManager.id },
+      data: { activatedAt: null, password: null },
+    });
+    await db.user.update({
+      where: { id: users.agent.id },
+      data: { activatedAt: null, password: null, phoneNumber: '+96170123456' },
+    });
+    await patch(`/tickets/${intake.id}/manager`, 'manager', {
+      assignedManagerId: users.otherManager.id,
+    }).expect(400);
+    await post(
+      `/organization/teams/${teamA.id}/manager/${users.otherManager.id}`,
+      'admin',
+      {},
+    ).expect(400);
+    await post(
+      `/organization/teams/${teamA.id}/lead/${users.agent.id}`,
+      'admin',
+      {},
+    ).expect(400);
+    await patch(`/tickets/${owned.id}/assignment`, 'manager', {
+      teamId: teamA.id,
+      agentId: users.agent.id,
+    }).expect(400);
+    await post(`/tickets/${owned.id}/subtasks`, 'manager', {
+      title: 'Pending assignee',
+      assignedTeamId: teamA.id,
+      assignedAgentId: users.agent.id,
+    }).expect(400);
+    const detail = await get(`/tickets/${owned.id}`, 'manager').expect(200);
+    expect(JSON.stringify(detail.body)).not.toContain('phoneNumber');
+    expect(JSON.stringify(detail.body)).not.toContain('+96170123456');
   });
 
   it('rejects inactive manager assignment and organizational management assignment', async () => {

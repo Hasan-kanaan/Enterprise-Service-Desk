@@ -1,3 +1,5 @@
+import { MailProvider } from '../src/auth/mail.provider';
+import { FakeMailProvider } from './fake-mail.provider';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { configureTestSecurity } from './security-test-app';
 import { INestApplication } from '@nestjs/common';
@@ -68,6 +70,8 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
       .useValue(db)
+      .overrideProvider(MailProvider)
+      .useValue(new FakeMailProvider())
       .compile();
     app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
@@ -92,6 +96,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
           username: `${prefix}-${name}`,
           email: `${prefix}-${name}@test.invalid`,
           password: 'test-only',
+          activatedAt: new Date(),
           role,
           status: name === 'inactive' ? 'INACTIVE' : 'ACTIVE',
         },
@@ -128,6 +133,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
         username: `${prefix}-person-${String(i).padStart(4, '0')}`,
         email: `${prefix}-${i}@test.invalid`,
         password: 'test-only',
+        activatedAt: new Date(),
         role: UserRole.AGENT,
       })),
     });

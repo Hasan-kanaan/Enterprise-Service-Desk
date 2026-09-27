@@ -1,3 +1,4 @@
+import { Password } from '../password';
 import {
   IsEmail,
   IsNotEmpty,
@@ -7,6 +8,10 @@ import {
 } from 'class-validator';
 
 export class SetupDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(512)
+  setupSecret!: string;
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
@@ -20,5 +25,6 @@ export class SetupDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(8)
+  @Password()
   password!: string;
 }

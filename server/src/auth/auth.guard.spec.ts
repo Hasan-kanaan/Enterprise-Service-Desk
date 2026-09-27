@@ -28,6 +28,7 @@ describe('Database-backed authentication', () => {
       id: 1,
       role: 'EMPLOYEE',
       status: 'ACTIVE',
+      activatedAt: new Date(),
       sessionVersion: 0,
     });
   });

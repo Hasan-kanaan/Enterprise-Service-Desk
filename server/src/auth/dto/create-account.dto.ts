@@ -1,3 +1,6 @@
+import { Transform } from 'class-transformer';
+import { IsOptional, Matches } from 'class-validator';
+import { normalizePhone } from '../phone';
 import {
   IsEmail,
   IsEnum,
@@ -19,10 +22,10 @@ export class CreateAccountDto {
   @IsNotEmpty()
   email!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(8)
-  password!: string;
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => normalizePhone(value))
+  @Matches(/^\+[1-9]\d{7,14}$/)
+  phoneNumber?: string;
 
   @IsEnum(UserRole)
   role!: UserRole;

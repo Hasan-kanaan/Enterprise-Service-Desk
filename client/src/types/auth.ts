@@ -1,6 +1,7 @@
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'AGENT' | 'EMPLOYEE'
 
 export type AuthUser = {
+  passwordChangeRequired?: boolean
   id: number
   username: string
   email: string

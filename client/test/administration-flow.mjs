@@ -165,11 +165,52 @@ const viewTeam = (t) => ({
     : [],
   specialties: [],
 })
+let securitySession = true
+let securitySequence = 0
+let securityRateLimit = false
+const securityMail = []
+const securityPasswords = new Map()
+function sendSecurityMail(account, type) {
+  const token = `fixture-${++securitySequence}`
+  securityMail.push({ account, type, token, used: false })
+  return token
+}
 function response(request) {
   const url = new URL(request.url), path = url.pathname,
     body = request.postData ? JSON.parse(request.postData) : {}
   requests.push(`${request.method} ${path}`)
+  if (path === '/auth/activate' || path === '/auth/reset-password') {
+    const type = path.endsWith('activate') ? 'activation' : 'reset'
+    const message = securityMail.find(m => m.token === body.token && m.type === type && !m.used)
+    if (!message) return [400, { message: 'Invalid, expired or used link' }]
+    message.used = true
+    message.account.activatedAt = new Date().toISOString()
+    securityPasswords.set(message.account.email, body.newPassword)
+    securitySession = false
+    return [201, { message: 'Password saved. Sign in to continue.' }]
+  }
+  if (path === '/auth/forgot-password' || path === '/auth/resend-activation') {
+    if (securityRateLimit) return [429, { message: 'Too many requests' }]
+    const account = accounts.find(a => a.email === body.email)
+    if (account) sendSecurityMail(account, path.endsWith('forgot-password') ? 'reset' : 'activation')
+    return [201, { message: 'If an eligible account exists, instructions have been sent.' }]
+  }
+  if (path === '/auth/login') {
+    const account = accounts.find(a => a.email === body.email)
+    if (!account?.activatedAt || securityPasswords.get(body.email) !== body.password) return [401, { message: 'Invalid credentials' }]
+    user = account; securitySession = true
+    return [201, { accessToken: 'security-session', user }]
+  }
+  if (path === '/auth/setup/status') return [200, { available: false }]
+  const securityAction = path.match(/^\/auth\/accounts\/(\d+)\/(reset-password|resend-activation)$/)
+  if (securityAction) {
+    assert.deepEqual(body, {})
+    sendSecurityMail(accounts.find(a => a.id === Number(securityAction[1])), securityAction[2] === 'reset-password' ? 'reset' : 'activation')
+    return [201, { delivery: 'SENT' }]
+  }
   if (path === '/auth/refresh') {
+    if (!securitySession) return [401, { message: 'Invalid session' }]
+
     refreshCount++
     return [201, { accessToken: `token-${refreshCount}`, user }]
   }
@@ -217,9 +258,11 @@ function response(request) {
       region: null,
       department: null,
     }
-    delete created.password
+    assert(!('password' in body))
+    created.activatedAt = null
+    sendSecurityMail(created, 'activation')
     accounts.push(created)
-    return [201, { user: created }]
+    return [201, { user: created, delivery: 'SENT' }]
   }
   const lifecycle = path.match(/^\/users\/(\d+)\/status$/)
   if (lifecycle) {
@@ -351,6 +394,7 @@ async function click(text) {
   await delay(70)
 }
 async function fill(selector, value) {
+  await until(() => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`), `input ready: ${selector}`)
   if (value && selector === '[aria-label="Organization assignee"]') {
     await fill('[aria-label="Organization assignee search"]', accounts.find(a => a.id === Number(value)).username)
     await until(() => evaluate(`[...document.querySelector(${JSON.stringify(selector)}).options].some(o => o.value === ${JSON.stringify(value)} && !o.disabled)`), 'lookup choice')
@@ -494,7 +538,7 @@ try {
       '[aria-label="Account email"]',
       `${prefix}-${role.toLowerCase()}@test.invalid`,
     )
-    await fill('[aria-label="Account password"]', 'TestingPass123!')
+    assert.equal(await evaluate(`!!document.querySelector('[aria-label="Account password"]')`), false)
     await fill('[aria-label="Account role"]', role)
     await confirm()
     await waitText(`${prefix}-${role.toLowerCase()}`)
@@ -821,6 +865,87 @@ try {
       )
     }
   }
+  // Account/security browser flows use the same in-memory mail boundary as API fixtures.
+  user = accounts.find(a => a.role === 'SUPER_ADMIN')
+  await navigate('/admin/accounts')
+  await waitText('Pending activation')
+  const invited = accounts.find(a => a.role === 'ADMIN' && a.activatedAt === null)
+  assert(invited)
+  await evaluate(`document.querySelector('[data-account-id="${invited.id}"]').querySelector('button').click()`)
+  await waitText('Instructions sent to the account email.')
+  const activation = securityMail.filter(m => m.account.id === invited.id && m.type === 'activation').at(-1)
+  securitySession = false
+  await navigate(`/activate#token=${activation.token}`)
+  await waitText('Activate account')
+  assert.equal(await evaluate('location.hash'), '')
+  assert(!(await evaluate('JSON.stringify(localStorage) + JSON.stringify(sessionStorage)')).includes(activation.token))
+  await fill('input[autocomplete="new-password"]', 'UserChosenPassword123!')
+  await fill('input[autocomplete="new-password"]:last-of-type', 'UserChosenPassword123!')
+  // Each input lives in its own label; select by label order.
+  await fill('label:nth-child(2) input', 'UserChosenPassword123!')
+  await click('Save password')
+  await waitText('Password saved. Sign in to continue.')
+  assert.equal(await evaluate('location.pathname'), '/activate')
+  await click('Go to login')
+  await waitText('Forgot password?')
+  await fill('input[name="email"], input[type="email"]', invited.email)
+  await fill('input[type="password"]', 'UserChosenPassword123!')
+  await evaluate(`document.querySelector('form').requestSubmit()`)
+  await waitText('Administration workspace')
+  // Super Admin can send the activated Admin a link.
+  user = accounts.find(a => a.role === 'SUPER_ADMIN')
+  await navigate('/admin/accounts')
+  await waitText('Send password reset')
+  await evaluate(`document.querySelector('[data-account-id="${invited.id}"]').querySelector('button').click()`)
+  await waitText('Instructions sent to the account email.')
+  assert(securityMail.some(m => m.account.id === invited.id && m.type === 'reset'))
+  securitySession = false
+  await navigate('/forgot-password')
+  await fill('input[name="email"], input[type="email"]', invited.email)
+  await click('Send instructions')
+  await waitText('If an eligible account exists')
+  const reset = securityMail.filter(m => m.account.id === invited.id && m.type === 'reset').at(-1)
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  securitySession = true
+  user = invited
+  await navigate(`/reset-password#token=${reset.token}`)
+  await waitText('Reset password')
+  assert.equal(await evaluate('location.hash'), '')
+  assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'))
+  await fill('label:nth-child(1) input', 'NewUserPassword456!')
+  await fill('label:nth-child(2) input', 'Mismatch')
+  await click('Save password')
+  await waitText('Use matching passwords')
+  await fill('label:nth-child(2) input', 'NewUserPassword456!')
+  await click('Save password')
+  await waitText('Password saved. Sign in to continue.')
+  assert.equal(await evaluate('location.pathname'), '/reset-password')
+  await click('Go to login')
+  await waitText('Welcome back')
+  await fill('input[name="email"], input[type="email"]', invited.email)
+  await fill('input[type="password"]', 'UserChosenPassword123!')
+  await evaluate(`document.querySelector('form').requestSubmit()`)
+  await waitText('Invalid credentials')
+  await fill('input[type="password"]', 'NewUserPassword456!')
+  await evaluate(`document.querySelector('form').requestSubmit()`)
+  await waitText('Administration workspace')
+  securitySession = false
+  await navigate(`/reset-password#token=${reset.token}`)
+  await fill('label:nth-child(1) input', 'AnotherPassword789!')
+  await fill('label:nth-child(2) input', 'AnotherPassword789!')
+  await click('Save password')
+  await waitText('Invalid, expired or used link')
+  await navigate('/activate')
+  await waitText('Invalid or missing link')
+  await navigate('/resend-activation')
+  securityRateLimit = true
+  await fill('input[name="email"], input[type="email"]', 'unknown@example.test')
+  await click('Send instructions')
+  await waitText('Too many requests')
+  securityRateLimit = false
+  await click('Send instructions')
+  await waitText('If an eligible account exists')
+  console.log('PASS: activation mail, memory-only fragment, no auto-login, user-owned passwords, admin resend/reset links, forgot/reset, old password rejection, replay, rate limits and mobile security pages')
   assert.deepEqual(browserErrors, [])
   console.log(
     'PASS: protected administration routes, no administrative ticket requests, no runtime/console errors',

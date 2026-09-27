@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { UploadBatch } from './attachment-storage';
 import {
   BadRequestException,
@@ -70,51 +71,114 @@ export class TicketsService {
     await this.requireDepartments(dto.affectedDepartmentIds);
     await this.requireTags(dto.tagIds ?? []);
 
-    return serializable(this.prisma, async (db) => {
-      await requireActiveActor(db, user);
-      const now = new Date();
-      const ticket = await db.ticket.create({
-        data: {
-          attachments: {
-            create: (batch?.files ?? []).map(({ digest, ...file }) => {
-              void digest; // Digest participates in upload validation, not persistence.
-              return { ...file, uploaderId: user.id };
-            }),
-          },
-          createdAt: now,
-          workCycles: {
-            create: {
-              sequenceNumber: 1,
-              type: 'ORIGINAL',
-              startedAt: now,
-              startedById: user.id,
-            },
-          },
-          title: dto.title,
-          description: dto.description,
-          requesterId: user.id,
-          assignedManagerId: null,
-          assignedTeamId: null,
-          assignedAgentId: null,
-          status: TicketStatus.NEW,
-          categoryId: dto.categoryId,
-          priority: dto.priority,
+    const creationHash = createHash('sha256')
+      .update(
+        JSON.stringify([
+          dto.title,
+          dto.description,
+          dto.categoryId,
+          dto.priority ?? 'MEDIUM',
           allRegions,
           allDepartments,
-          affectedRegions: {
-            create: dto.affectedRegionIds.map((regionId) => ({ regionId })),
+          [...dto.affectedRegionIds].sort((a, b) => a - b),
+          [...dto.affectedDepartmentIds].sort((a, b) => a - b),
+          [...(dto.tagIds ?? [])].sort((a, b) => a - b),
+          (batch?.files ?? []).map(
+            ({ filename, contentType, byteSize, digest }) => ({
+              filename,
+              contentType,
+              byteSize,
+              digest,
+            }),
+          ),
+        ]),
+      )
+      .digest('hex');
+    const replay = async (db: Database) => {
+      const existing = await db.ticket.findUnique({
+        where: {
+          requesterId_clientRequestId: {
+            requesterId: user.id,
+            clientRequestId: dto.clientRequestId,
           },
-          affectedDepartments: {
-            create: dto.affectedDepartmentIds.map((departmentId) => ({
-              departmentId,
-            })),
-          },
-          tags: { create: (dto.tagIds ?? []).map((tagId) => ({ tagId })) },
         },
       });
-      if (batch) batch.used = true;
-      return ticket;
-    });
+      if (existing && existing.creationHash !== creationHash)
+        throw new ConflictException(
+          'Request key was already used for different content',
+        );
+      return existing;
+    };
+    let created = false;
+    try {
+      const result = await serializable(this.prisma, async (db) => {
+        await requireActiveActor(db, user);
+        const existing = await replay(db);
+        if (existing) return existing;
+        const now = new Date();
+        const ticket = await db.ticket.create({
+          data: {
+            attachments: {
+              create: (batch?.files ?? []).map(({ digest, ...file }) => {
+                void digest; // Digest participates in upload validation, not persistence.
+                return { ...file, uploaderId: user.id };
+              }),
+            },
+            clientRequestId: dto.clientRequestId,
+            creationHash,
+            createdAt: now,
+            workCycles: {
+              create: {
+                sequenceNumber: 1,
+                type: 'ORIGINAL',
+                startedAt: now,
+                startedById: user.id,
+              },
+            },
+            title: dto.title,
+            description: dto.description,
+            requesterId: user.id,
+            assignedManagerId: null,
+            assignedTeamId: null,
+            assignedAgentId: null,
+            status: TicketStatus.NEW,
+            categoryId: dto.categoryId,
+            priority: dto.priority,
+            allRegions,
+            allDepartments,
+            affectedRegions: {
+              create: dto.affectedRegionIds.map((regionId) => ({ regionId })),
+            },
+            affectedDepartments: {
+              create: dto.affectedDepartmentIds.map((departmentId) => ({
+                departmentId,
+              })),
+            },
+            tags: { create: (dto.tagIds ?? []).map((tagId) => ({ tagId })) },
+          },
+        });
+        created = true;
+        return ticket;
+      });
+      if (batch && created) batch.used = true;
+      return result;
+    } catch (error) {
+      // Resolve a committed competing creation with a fresh read, never retry a mutation.
+      if (
+        !(error instanceof ConflictException) &&
+        !(
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        )
+      )
+        throw error;
+      const existing = await serializable(this.prisma, async (db) => {
+        await requireActiveActor(db, user);
+        return replay(db);
+      });
+      if (existing) return existing;
+      throw error;
+    }
   }
 
   async update(
@@ -192,7 +256,7 @@ export class TicketsService {
       this.authorization.assertCanAssignManager(user, ticket);
       const manager = await lockUser(db, dto.assignedManagerId);
       if (!manager) throw new NotFoundException('Manager not found');
-      if (manager.status !== 'ACTIVE')
+      if (manager.status !== 'ACTIVE' || !manager.activatedAt)
         throw new BadRequestException('Responsible manager must be active');
       if (manager?.role !== UserRole.MANAGER)
         throw new BadRequestException('Responsible user must be a MANAGER');
@@ -457,7 +521,7 @@ export class TicketsService {
     if (!team) throw new NotFoundException('Team not found');
     if (agentId !== null) {
       const agent = await lockUser(db, agentId);
-      if (!agent || agent.status !== 'ACTIVE')
+      if (!agent || agent.status !== 'ACTIVE' || !agent.activatedAt)
         throw new BadRequestException('Assigned agent must be active');
       const member = await db.teamMember.findUnique({
         where: { teamId_userId: { teamId, userId: agentId } },
@@ -546,7 +610,8 @@ export class TicketsService {
         ticket.assignedManagerId === null
           ? null
           : await lockUser(db, ticket.assignedManagerId);
-      let intake = !manager || manager.status !== 'ACTIVE';
+      let intake =
+        !manager || manager.status !== 'ACTIVE' || !manager.activatedAt;
       let agentId = ticket.assignedAgentId;
       if (!intake) {
         if (manager?.role !== UserRole.MANAGER)
@@ -565,7 +630,8 @@ export class TicketsService {
           intake = true;
         } else if (agentId !== null) {
           const agent = await lockUser(db, agentId);
-          if (agent?.status === 'INACTIVE') agentId = null;
+          if (agent && (agent.status === 'INACTIVE' || !agent.activatedAt))
+            agentId = null;
           else {
             const member = await db.teamMember.findUnique({
               where: { teamId_userId: { teamId: team.id, userId: agentId } },

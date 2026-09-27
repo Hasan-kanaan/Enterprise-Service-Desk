@@ -68,8 +68,12 @@ export function mapTicket(
     tags,
     affectedRegions,
     affectedDepartments,
+    creationHash,
+    clientRequestId,
     ...scalars
   } = ticket;
+  void creationHash;
+  void clientRequestId;
   return {
     ...scalars,
     autoCloseAt: autoCloseAt(ticket),

@@ -1,5 +1,18 @@
 # Enterprise Service Desk
 
+## Account activation and recovery (2026-09-27)
+
+Administrators manage identities; users choose passwords. Activation and recovery use single-use emailed links. ACTIVE/INACTIVE is separate from activation; pending accounts cannot log in or receive work. Legacy password-bearing users remain activated without fabricated email verification. See the [implementation, configuration and migration guide](docs/account-security.md). This supersedes earlier admin-password and email-exclusion statements below.
+
+
+## Pre-AI hardening (2026-09-27)
+
+Current installation/security/package instructions are in [Pre-AI hardening and repository operation](docs/pre-ai-hardening.md), superseding older phase descriptions below. Setup requires a server-only `INITIAL_SETUP_SECRET`; only explicit development/test modes permit JWT defaults. Proxy trust is configurable, ticket creation requires an idempotency key, password flows enforce UTF-8 byte limits, and CSV formula cells are rejected. Profile supports self-change; administrators now send reset links, and users choose their own passwords. See [account activation and recovery](docs/account-security.md).
+
+Use Node 24.12.0 and pnpm 11.9.0. Client/server retain independent frozen lockfiles; root commands only orchestrate them. Prisma remains pinned to 7.10.0. Configure [server/.env.example](server/.env.example) and optionally [client/.env.example](client/.env.example), then follow the linked migration/start instructions. PR/push CI includes isolated PostgreSQL e2e; Chromium has a separate manual Windows workflow.
+
+Both runtime dependency gates now pass with zero known vulnerabilities; development-tooling advisories remain visible. Keep `server/pnpm-workspace.yaml` with the server manifest and lockfile: pnpm 11 reads the scoped security overrides and explicit install-script policy there. See [the audit](docs/dependency-audit.md) and [verification results](status.md). AI, cloud provisioning and public-demo deployment remain deferred.
+
 An AI-powered full-stack Enterprise IT Service Desk built as a real-world learning project.
 
 The application simulates an internal IT support platform for a large company. Employees can submit IT support tickets, support agents can work on those tickets, managers can oversee and assign tickets, and administrators can manage the system.
@@ -904,7 +917,7 @@ Refresh is explicit REST: initial authenticated load, opening the panel, the ref
 
 ## Email System
 
-Email notifications are intentionally out of scope. The application uses persistent in-app notifications only.
+Email is out of scope for ordinary ticket notifications. Email is used only for account activation, password recovery, and security notices. Ticket events use persistent in-app notifications only.
 
 ---
 
@@ -1326,7 +1339,7 @@ ADMIN/SUPER_ADMIN account and supported organization management are implemented 
 
 ADMIN and SUPER_ADMIN use a dedicated administration navigation with `/admin`, `/admin/accounts`, `/admin/organization`, and `/admin/organization/teams/:teamId`. Their dashboard opens `/admin`; the old `/users` URL redirects to the protected accounts route. EMPLOYEE/AGENT/MANAGER cannot enter these routes. Administration never loads ticket queues, details, history, or support subtasks.
 
-The account directory displays username, email, role, ACTIVE/INACTIVE status, and existing nullable region/department labels. Search and status filtering operate on the authorized directory. Creation requires a username, email, password of at least eight characters, and an explicitly chosen permitted role. SUPER_ADMIN can create ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN can create MANAGER/AGENT/EMPLOYEE. No normal workflow creates SUPER_ADMIN or offers public registration. The backend SUPER_ADMIN creation matrix was explicitly expanded to these four roles in this phase and is covered by unit/HTTP tests.
+The account directory displays username, email, role, ACTIVE/INACTIVE status, and existing nullable region/department labels. Search and status filtering operate on the authorized directory. Creation requires a username, email and an explicitly chosen permitted role, with an optional international phone number. It provisions a pending account and sends activation email; users choose their passwords. Status and activation are shown separately. SUPER_ADMIN can create ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN can create MANAGER/AGENT/EMPLOYEE. No normal workflow creates SUPER_ADMIN or offers public registration. The backend SUPER_ADMIN creation matrix was explicitly expanded to these four roles in this phase and is covered by unit/HTTP tests.
 
 Activation/deactivation uses the existing lifecycle API and authority matrix. Confirmation explains administrative offboarding of current responsibilities, preservation of historical attribution, and that no replacements are selected. Reactivation explicitly requires fresh sign-in and does not restore previous sessions or responsibilities. The resulting account status is refreshed from the directory. There is no delete-user control, operational preview, or replacement-person picker. Account creation also participates in existing access-token renewal; only session/bootstrap endpoints bypass the ordinary 401 retry mechanism.
 

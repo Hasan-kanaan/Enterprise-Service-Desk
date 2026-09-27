@@ -216,6 +216,9 @@ function response(request) {
     assert.deepEqual(body.affectedRegionIds, [2])
     assert.deepEqual(body.affectedDepartmentIds, [3])
     assert(!('assignedManagerId' in body))
+    assert.equal(typeof body.clientRequestId, 'string')
+    const replay = tickets.find(ticket => ticket.clientRequestId === body.clientRequestId)
+    if (replay) return [201, replay]
     const id = 142
     cycles = [original(id)]
     const ticket = {
@@ -235,7 +238,7 @@ function response(request) {
       currentCycle: cycles[0],
     }
     tickets.push(ticket)
-    return [201, ticket]
+    return [503, { message: 'Submission response interrupted' }]
   }
   const communicationTicket = tickets.find(item => item.id === Number(path.split('/')[2]))
   if (communicationTicket && /\/(messages|internal-notes)/.test(path))
@@ -399,8 +402,16 @@ try {
   await click('Remove remove.txt')
   await selectAttachment('input[type=file]', 'original.txt')
   await click('Submit ticket')
+  await waitText('Submission response interrupted')
+  await waitText('Remove original.txt')
+  await click('Submit ticket')
   await waitText('Request #142')
-  assert.equal(mutations.filter((item) => item.path === '/tickets').length, 1)
+  assert.equal(mutations.filter((item) => item.path === '/tickets').length, 2)
+  assert.equal(tickets.length, 1)
+  const creates = mutations.filter((item) => item.path === '/tickets')
+  assert.equal(creates[0].body.clientRequestId, creates[1].body.clientRequestId)
+  assert.equal(tickets[0].attachments.length, 1)
+  console.log('PASS: interrupted ticket response preserves idempotency key and attachment draft on explicit retry')
   console.log(
     'PASS: validated form submits real category/scope IDs and opens detail',
   )

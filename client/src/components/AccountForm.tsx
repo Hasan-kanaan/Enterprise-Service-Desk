@@ -17,7 +17,7 @@ export function AccountForm({
   const roles = creatableRoles(caller)
   const [username, setUsername] = useState(''),
     [email, setEmail] = useState(''),
-    [password, setPassword] = useState(''),
+    [phoneNumber, setPhoneNumber] = useState(''),
     [role, setRole] = useState<UserRole | ''>('')
   return (
     <AdminDialog
@@ -28,14 +28,13 @@ export function AccountForm({
       valid={
         username.trim().length >= 3 &&
         !!email.trim() &&
-        password.length >= 8 &&
         roles.includes(role as UserRole)
       }
       submit={() =>
         createAccount({
           username: username.trim(),
           email: email.trim(),
-          password,
+          ...(phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}),
           role: role as UserRole,
         })
       }
@@ -64,21 +63,11 @@ export function AccountForm({
         />
       </label>
       <label className="field">
-        Initial password
-        <input
-          aria-label="Account password"
-          required
-          type="password"
-          minLength={8}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="new-password"
-        />
-        <span className="quiet-note">
-          At least 8 characters. Share credentials through your approved secure
-          channel.
-        </span>
+        Phone number (optional)
+        <input aria-label="Account phone" type="tel" placeholder="+961..." value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
+        <span className="quiet-note">Unverified. Not used for sign-in or password recovery.</span>
       </label>
+      <p>The user will receive an activation email to choose their own password.</p>
       <label className="field">
         Role
         <select

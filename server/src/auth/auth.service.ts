@@ -1,3 +1,4 @@
+import { mailLogger } from './mail.provider';
 import {
   BadRequestException,
   ConflictException,
@@ -7,7 +8,10 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { initialSetupSecret } from '../security/security.config';
+import { AccountSecurityService } from './account-security.service';
+import { assertPassword } from './password';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { SetupDto } from './dto/setup.dto';
@@ -25,6 +29,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly accountSecurity: AccountSecurityService,
   ) {}
 
   async getSetupStatus() {
@@ -34,6 +39,13 @@ export class AuthService {
   }
 
   async setup(dto: SetupDto) {
+    const expected = createHash('sha256').update(initialSetupSecret()).digest();
+    const supplied = createHash('sha256')
+      .update(dto.setupSecret ?? '')
+      .digest();
+    if (!timingSafeEqual(expected, supplied))
+      throw new ForbiddenException('Invalid setup credentials');
+    assertPassword(dto.password);
     const username = dto.username?.trim().toLowerCase();
     const email = dto.email?.trim().toLowerCase();
     const password = dto.password;
@@ -82,22 +94,33 @@ export class AuthService {
 
     const username = dto.username.trim().toLowerCase();
     const email = dto.email.trim().toLowerCase();
-    const password = await bcrypt.hash(dto.password, 10);
 
     const user = await this.usersService.create({
       username,
       email,
-      password,
+      phoneNumber: dto.phoneNumber,
       role: dto.role,
     });
 
+    let delivery: 'SENT' | 'FAILED' | 'NOT_SENT';
+    try {
+      delivery = await this.accountSecurity.issue(
+        user.id,
+        'ACCOUNT_ACTIVATION',
+      );
+    } catch {
+      mailLogger.warn('Provisioned account invitation could not be issued');
+      delivery = 'FAILED';
+    }
     return {
-      message: 'Account created successfully',
+      message: 'Account created pending activation',
+      delivery,
       user,
     };
   }
 
   async login(dto: LoginDto) {
+    assertPassword(dto.password, 1);
     const email = dto.email?.trim().toLowerCase();
     const password = dto.password;
 
@@ -112,7 +135,13 @@ export class AuthService {
       user?.password ?? dummyPasswordHash,
     );
 
-    if (!user || user.status !== 'ACTIVE' || !passwordMatches) {
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      !user.activatedAt ||
+      !user.password ||
+      !passwordMatches
+    ) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -141,7 +170,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    if (storedToken.user.status !== 'ACTIVE')
+    if (
+      storedToken.user.status !== 'ACTIVE' ||
+      !storedToken.user.activatedAt ||
+      !storedToken.user.password
+    )
       throw new UnauthorizedException('Invalid or expired refresh token');
     return this.issueTokens(storedToken.user, tokenHash);
   }
@@ -193,6 +226,7 @@ export class AuthService {
         username: user.username,
         email: user.email,
         role: user.role,
+        passwordChangeRequired: current.passwordChangeRequired,
       },
     };
   }

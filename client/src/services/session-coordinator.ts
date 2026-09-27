@@ -195,6 +195,18 @@ export class SessionCoordinator {
     })
   }
 
+  changePassword(request: () => Promise<unknown>, rejected: (error: unknown) => boolean) {
+    return this.exclusive(async () => {
+      try {
+        await request()
+        this.publish('out')
+      } catch (error) {
+        if (rejected(error)) this.publish('out')
+        throw error
+      }
+    })
+  }
+
   logout(request: () => Promise<unknown>) {
     const started = this.read()?.id
     return this.exclusive(async () => {

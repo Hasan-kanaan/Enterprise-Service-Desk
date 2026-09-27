@@ -1,5 +1,6 @@
 import {
   CanActivate,
+  ForbiddenException,
   ExecutionContext,
   Injectable,
   UnauthorizedException,
@@ -17,6 +18,7 @@ export type AuthenticatedRequest = Request & {
     role: import('../../generated/prisma/client').UserRole;
     status: string;
     sessionVersion: number;
+    passwordChangeRequired: boolean;
   };
 };
 
@@ -58,12 +60,15 @@ export class AuthGuard implements CanActivate {
           email: true,
           role: true,
           status: true,
+          activatedAt: true,
           sessionVersion: true,
+          passwordChangeRequired: true,
         },
       });
       if (
         !user ||
         user.status !== 'ACTIVE' ||
+        !user.activatedAt ||
         user.sessionVersion !== (payload.sessionVersion ?? 0)
       )
         throw new UnauthorizedException();
@@ -74,9 +79,20 @@ export class AuthGuard implements CanActivate {
         role: user.role,
         status: user.status,
         sessionVersion: user.sessionVersion,
+        passwordChangeRequired: user.passwordChangeRequired,
       };
+      const path = request.path?.toLowerCase().replace(/\/+$/, '');
+      if (
+        user.passwordChangeRequired &&
+        !(
+          (request.method === 'POST' && path === '/auth/password') ||
+          (request.method === 'GET' && path === '/users/profile')
+        )
+      )
+        throw new ForbiddenException('Change your password before continuing');
       return true;
-    } catch {
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
       throw new UnauthorizedException('Invalid or expired token');
     }
   }

@@ -1,3 +1,7 @@
+import { AccountSecurityService } from './account-security.service';
+const accountSecurity = {
+  issue: jest.fn().mockResolvedValue('SENT'),
+} as unknown as AccountSecurityService;
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -8,10 +12,15 @@ import { UserRole } from '../users/user-role.enum';
 import { ForbiddenException } from '@nestjs/common';
 
 describe('AuthService', () => {
+  beforeAll(() => {
+    process.env.INITIAL_SETUP_SECRET =
+      'test-bootstrap-9xQ4rT7vB2nM6pL8-fixture';
+  });
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        { provide: AccountSecurityService, useValue: accountSecurity },
         {
           provide: UsersService,
           useValue: {
@@ -48,6 +57,7 @@ describe('AuthService', () => {
         email: 'admin@company.com',
         password: passwordHash,
         status: 'ACTIVE',
+        activatedAt: new Date(),
         sessionVersion: 0,
         role: UserRole.ADMIN,
       }),
@@ -57,6 +67,7 @@ describe('AuthService', () => {
         email: 'admin@company.com',
         role: UserRole.ADMIN,
         status: 'ACTIVE',
+        activatedAt: new Date(),
         sessionVersion: 0,
       }),
     };
@@ -66,6 +77,7 @@ describe('AuthService', () => {
     const auth = new AuthService(
       usersService as unknown as UsersService,
       jwtService as unknown as JwtService,
+      accountSecurity,
     );
 
     const result = await auth.login({
@@ -87,6 +99,7 @@ describe('AuthService', () => {
         email: 'employee@company.com',
         password: passwordHash,
         status: 'ACTIVE',
+        activatedAt: new Date(),
         sessionVersion: 0,
         role: UserRole.EMPLOYEE,
       }),
@@ -96,6 +109,7 @@ describe('AuthService', () => {
         email: 'admin@company.com',
         role: UserRole.ADMIN,
         status: 'ACTIVE',
+        activatedAt: new Date(),
         sessionVersion: 0,
       }),
     };
@@ -103,6 +117,7 @@ describe('AuthService', () => {
     const auth = new AuthService(
       usersService as unknown as UsersService,
       { sign: jest.fn() } as unknown as JwtService,
+      accountSecurity,
     );
 
     await expect(
@@ -127,6 +142,7 @@ describe('AuthService', () => {
     const auth = new AuthService(
       usersService as unknown as UsersService,
       {} as unknown as JwtService,
+      accountSecurity,
     );
 
     await expect(auth.getSetupStatus()).resolves.toEqual({ available: true });
@@ -144,10 +160,12 @@ describe('AuthService', () => {
     const auth = new AuthService(
       usersService as unknown as UsersService,
       {} as unknown as JwtService,
+      accountSecurity,
     );
 
     await expect(
       auth.setup({
+        setupSecret: process.env.INITIAL_SETUP_SECRET!,
         username: 'RootAdmin',
         email: 'root@company.com',
         password: 'StrongPass123!',
@@ -171,10 +189,12 @@ describe('AuthService', () => {
     const auth = new AuthService(
       usersService as unknown as UsersService,
       {} as unknown as JwtService,
+      accountSecurity,
     );
 
     await expect(
       auth.setup({
+        setupSecret: process.env.INITIAL_SETUP_SECRET!,
         username: 'anotheradmin',
         email: 'another@company.com',
         password: 'StrongPass123!',
@@ -202,23 +222,19 @@ describe('AuthService', () => {
     const auth = new AuthService(
       users as unknown as UsersService,
       {} as unknown as JwtService,
+      accountSecurity,
     );
     const result = await auth.createAccount(UserRole.SUPER_ADMIN, {
       username: 'NewUser',
       email: 'new@company.test',
-      password: 'StrongPass123!',
       role,
     });
     expect(result.user.role).toBe(role);
     expect(users.create).toHaveBeenCalledWith(
       expect.objectContaining({ username: 'newuser', role }),
     );
-    expect(
-      await bcrypt.compare(
-        'StrongPass123!',
-        users.create.mock.calls[0][0].password,
-      ),
-    ).toBe(true);
+    expect(users.create.mock.calls[0][0]).not.toHaveProperty('password');
+    expect(result.delivery).toBe('SENT');
   });
 
   it('never provisions SUPER_ADMIN or lets operational users provision accounts', async () => {
@@ -226,6 +242,7 @@ describe('AuthService', () => {
     const auth = new AuthService(
       { create } as unknown as UsersService,
       {} as unknown as JwtService,
+      accountSecurity,
     );
     for (const [caller, role] of [
       [UserRole.SUPER_ADMIN, UserRole.SUPER_ADMIN],
@@ -238,7 +255,6 @@ describe('AuthService', () => {
         auth.createAccount(caller, {
           username: 'someone',
           email: 'someone@test.invalid',
-          password: 'StrongPass123!',
           role,
         }),
       ).rejects.toBeInstanceOf(ForbiddenException);
@@ -262,6 +278,7 @@ describe('AuthService', () => {
     const auth = new AuthService(
       usersService as unknown as UsersService,
       {} as unknown as JwtService,
+      accountSecurity,
     );
 
     for (const role of [UserRole.EMPLOYEE, UserRole.AGENT, UserRole.MANAGER]) {
@@ -269,7 +286,6 @@ describe('AuthService', () => {
         auth.createAccount(UserRole.ADMIN, {
           username: `new${role.toLowerCase()}`,
           email: `${role.toLowerCase()}@company.com`,
-          password: 'StrongPass123!',
           role,
         }),
       ).resolves.toMatchObject({ user: { role } });
@@ -280,13 +296,13 @@ describe('AuthService', () => {
     const auth = new AuthService(
       { create: jest.fn() } as unknown as UsersService,
       {} as unknown as JwtService,
+      accountSecurity,
     );
 
     await expect(
       auth.createAccount(UserRole.ADMIN, {
         username: 'root2',
         email: 'root2@company.com',
-        password: 'StrongPass123!',
         role: UserRole.SUPER_ADMIN,
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -305,6 +321,7 @@ describe('AuthService', () => {
           email: 'admin@company.com',
           password: 'hash',
           status: 'ACTIVE',
+          activatedAt: new Date(),
           sessionVersion: 0,
           role: UserRole.ADMIN,
         },
@@ -316,6 +333,7 @@ describe('AuthService', () => {
         email: 'admin@company.com',
         role: UserRole.ADMIN,
         status: 'ACTIVE',
+        activatedAt: new Date(),
         sessionVersion: 0,
       }),
     };
@@ -326,6 +344,7 @@ describe('AuthService', () => {
     const auth = new AuthService(
       usersService as unknown as UsersService,
       jwtService as unknown as JwtService,
+      accountSecurity,
     );
 
     const result = await auth.refresh('valid-refresh-token');
@@ -357,6 +376,7 @@ describe('AuthService', () => {
       {
         verifyAsync: jest.fn().mockResolvedValue({ sub: 1 }),
       } as unknown as JwtService,
+      accountSecurity,
     );
 
     await expect(auth.refresh('revoked-refresh-token')).rejects.toThrow(
@@ -371,6 +391,7 @@ describe('AuthService', () => {
     const auth = new AuthService(
       usersService as unknown as UsersService,
       {} as unknown as JwtService,
+      accountSecurity,
     );
 
     await expect(auth.logout('refresh-token')).resolves.toEqual({

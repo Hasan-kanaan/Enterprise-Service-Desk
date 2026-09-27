@@ -1,10 +1,12 @@
 {
-	"devDependencies": {
-		"@types/pg": "^8.23.1",
-		"prisma": "8.1.0-dev.6"
-	},
-	"dependencies": {
-		"@prisma/adapter-pg": "^7.10.0",
-		"pg": "^8.23.0"
-	}
+  "name": "enterprise-service-desk",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "install:apps": "pnpm --dir server install --frozen-lockfile && pnpm --dir client install --frozen-lockfile",
+    "build": "pnpm --dir server build && pnpm --dir client build"
+  }
 }

@@ -14,6 +14,11 @@ import { TicketPriority } from '../../../generated/prisma/client';
 export class CreateTicketDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(128)
+  clientRequestId!: string;
+
+  @IsString()
+  @MinLength(1)
   @MaxLength(200)
   title!: string;
 

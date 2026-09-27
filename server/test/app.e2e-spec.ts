@@ -1,3 +1,5 @@
+import { MailProvider } from '../src/auth/mail.provider';
+import { FakeMailProvider } from './fake-mail.provider';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { configureTestSecurity } from './security-test-app';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -12,7 +14,10 @@ describe('AppController (e2e)', () => {
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MailProvider)
+      .useValue(new FakeMailProvider())
+      .compile();
 
     app = moduleFixture.createNestApplication<NestExpressApplication>({
       bodyParser: false,

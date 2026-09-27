@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
+import { validateCsv } from './csv-validation';
 
 export type Upload = {
   originalname: string;
@@ -100,6 +101,8 @@ export function validateUpload(file: Upload): Omit<StoredUpload, 'storageKey'> {
     throw new BadRequestException(
       'File content does not match an allowed format',
     );
+  if (extension === '.csv')
+    validateCsv(new TextDecoder('utf-8', { fatal: true }).decode(b));
   return {
     filename,
     contentType,

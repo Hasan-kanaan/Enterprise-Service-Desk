@@ -51,6 +51,7 @@ export async function requireActiveActor(
   if (
     !user ||
     user.status !== 'ACTIVE' ||
+    !user.activatedAt ||
     user.role !== actor.role ||
     (actor.sessionVersion !== undefined &&
       user.sessionVersion !== actor.sessionVersion)

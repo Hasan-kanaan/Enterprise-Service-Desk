@@ -89,6 +89,11 @@ api.interceptors.response.use(
         '/auth/logout',
         '/auth/setup',
         '/auth/setup/status',
+        '/auth/password',
+        '/auth/activate',
+        '/auth/reset-password',
+        '/auth/forgot-password',
+        '/auth/resend-activation',
       ].includes(original.url ?? '')
     )
       throw error

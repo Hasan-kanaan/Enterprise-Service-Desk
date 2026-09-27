@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -14,6 +15,8 @@ import { UserRole } from './user-role.enum';
 import { UserStatus } from '../../generated/prisma/client';
 import { after, listPage, listWindow } from '../common/list-query';
 import { ListUsersDto } from './dto/list-users.dto';
+import * as bcrypt from 'bcryptjs';
+import { assertPassword } from '../auth/password';
 import {
   lockUser,
   operationalStatuses,
@@ -33,7 +36,8 @@ export type UserRecord = {
   id: number;
   username: string;
   email: string;
-  password: string;
+  password: string | null;
+  activatedAt: Date | null;
   role: UserRole;
   status: UserStatus;
   sessionVersion: number;
@@ -42,6 +46,53 @@ export type UserRecord = {
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async changePassword(
+    actor: { id: number; role: PrismaUserRole; sessionVersion: number },
+    targetId: number,
+    newPassword: string,
+    currentPassword?: string,
+  ) {
+    assertPassword(newPassword);
+    if (currentPassword !== undefined) assertPassword(currentPassword, 1);
+    const password = await bcrypt.hash(newPassword, 10);
+    return serializable(this.prisma, async (db) => {
+      for (const id of [...new Set([actor.id, targetId])].sort((a, b) => a - b))
+        await lockUser(db, id);
+      await requireActiveActor(db, actor);
+      const target = await db.user.findUnique({ where: { id: targetId } });
+      if (!target) throw new NotFoundException('User not found');
+      if (currentPassword !== undefined) {
+        if (
+          actor.id !== targetId ||
+          !target.password ||
+          !(await bcrypt.compare(currentPassword, target.password))
+        )
+          throw new BadRequestException('Current password is incorrect');
+        if (await bcrypt.compare(newPassword, target.password))
+          throw new BadRequestException('Choose a different new password');
+      } else {
+        throw new ForbiddenException('Use a password reset email');
+      }
+      await db.user.update({
+        where: { id: targetId },
+        data: {
+          password,
+          passwordChangeRequired: false,
+          sessionVersion: { increment: 1 },
+        },
+      });
+      await db.refreshToken.updateMany({
+        where: { userId: targetId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await db.accountActionToken.updateMany({
+        where: { userId: targetId, usedAt: null, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return { message: 'Password updated. Sign in again.' };
+    });
+  }
 
   async updateStatus(
     actor: { id: number; role: PrismaUserRole; sessionVersion?: number },
@@ -163,6 +214,8 @@ export class UsersService {
       if (
         !user ||
         user.status !== 'ACTIVE' ||
+        !user.activatedAt ||
+        !user.password ||
         user.sessionVersion !== expectedVersion
       )
         throw new UnauthorizedException(
@@ -223,6 +276,7 @@ export class UsersService {
             username: normalizedUsername,
             email: normalizedEmail,
             password: data.password,
+            activatedAt: new Date(),
             role: PrismaUserRole.SUPER_ADMIN,
           },
           select: {
@@ -232,6 +286,7 @@ export class UsersService {
             role: true,
             status: true,
             sessionVersion: true,
+            activatedAt: true,
           },
         });
 
@@ -278,6 +333,8 @@ export class UsersService {
         role: true,
         status: true,
         sessionVersion: true,
+        activatedAt: true,
+        phoneNumber: true,
         region: { select: { id: true, name: true } },
         department: { select: { id: true, name: true } },
       },
@@ -299,6 +356,7 @@ export class UsersService {
         role: true,
         status: true,
         sessionVersion: true,
+        activatedAt: true,
       },
     });
 
@@ -318,6 +376,7 @@ export class UsersService {
         role: true,
         status: true,
         sessionVersion: true,
+        activatedAt: true,
       },
     });
 
@@ -327,7 +386,7 @@ export class UsersService {
   async create(data: {
     username: string;
     email: string;
-    password: string;
+    phoneNumber?: string;
     role: UserRole;
   }): Promise<Omit<UserRecord, 'password'>> {
     const normalizedUsername = data.username.trim().toLowerCase();
@@ -348,7 +407,7 @@ export class UsersService {
           data: {
             username: normalizedUsername,
             email: normalizedEmail,
-            password: data.password,
+            phoneNumber: data.phoneNumber,
             role: data.role,
           },
           select: {
@@ -358,6 +417,7 @@ export class UsersService {
             role: true,
             status: true,
             sessionVersion: true,
+            activatedAt: true,
           },
         })
         .then((user) => ({ ...user, role: user.role as UserRole }));

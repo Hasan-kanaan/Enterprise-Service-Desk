@@ -1,3 +1,5 @@
+import { MailProvider } from '../src/auth/mail.provider';
+import { FakeMailProvider } from './fake-mail.provider';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { configureTestSecurity } from './security-test-app';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
@@ -58,7 +60,10 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     process.env.ATTACHMENT_STORAGE_DIR = storageDir;
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MailProvider)
+      .useValue(new FakeMailProvider())
+      .compile();
     app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
     });
@@ -95,6 +100,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
           username: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',
+          activatedAt: new Date(),
           role: role as UserRole,
           status: name === 'inactive' ? 'INACTIVE' : 'ACTIVE',
         },
@@ -250,7 +256,10 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     const created = await request(app.getHttpServer())
       .post('/tickets')
       .set('Authorization', `Bearer ${token('employee')}`)
-      .field('payload', JSON.stringify(body))
+      .field(
+        'payload',
+        JSON.stringify({ clientRequestId: randomUUID(), ...body }),
+      )
       .attach('files', Buffer.from('original'), 'original.log')
       .expect(201);
     const list = await get(
@@ -639,7 +648,10 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     await request(app.getHttpServer())
       .post('/tickets')
       .set('Authorization', `Bearer ${token('employee')}`)
-      .field('payload', JSON.stringify(body))
+      .field(
+        'payload',
+        JSON.stringify({ clientRequestId: randomUUID(), ...body }),
+      )
       .attach('files', Buffer.from('x'), 'file.txt')
       .expect(500);
     expect(

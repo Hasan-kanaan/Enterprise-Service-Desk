@@ -220,6 +220,7 @@ export class TicketWorkspaceController {
           where,
           {
             status: 'ACTIVE',
+            activatedAt: { not: null },
             username: { contains: search, mode: 'insensitive' },
           },
         ],

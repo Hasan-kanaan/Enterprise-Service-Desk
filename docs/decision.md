@@ -1,5 +1,10 @@
 # Project Decisions
 
+## Account activation and recovery (2026-09-27)
+
+Administrators manage identities; users choose passwords. Activation and recovery use single-use emailed links. ACTIVE/INACTIVE is separate from activation; pending accounts cannot log in or receive work. Legacy password-bearing users remain activated without fabricated email verification. See the [implementation, configuration and migration guide](account-security.md). This supersedes earlier admin-password and email-exclusion statements below.
+
+
 ## Product
 
 We are building an Enterprise IT Service Desk for internal company support. AI assistance is planned after the non-AI workflow is functional.
@@ -335,7 +340,7 @@ Administration dialogs show validation/errors, block repeat submission while pen
 
 ## Persistent In-App Notifications
 
-Email notifications are intentionally out of scope. The application uses persistent in-app notifications only.
+Email is out of scope for ordinary ticket notifications. Email is used only for account activation, password recovery, and security notices. Ticket events use persistent in-app notifications only.
 
 Use one PostgreSQL Notification table and authenticated REST endpoints. Store recipientUserId, enum type, nullable actorUserId/ticketId/subtaskId, createdAt and nullable readAt. References use ON DELETE RESTRICT. Recipient/time and recipient/read indexes support the recent list and count. Migration `20260923150000_in_app_notifications` creates an empty table without historical backfill. No event log, audit system, queue, worker or new dependency is required.
 
@@ -369,7 +374,7 @@ Downloads and original-ticket metadata reads reuse current parent authorization 
 
 Uploads use Nest's existing multipart support with a JSON payload field and files parts, preserving JSON-only clients. Maximum five files, 10 MB each; extension/MIME checks, PNG/JPEG/WebP/PDF signatures, valid UTF-8 text and valid JSON are enforced. Allowed formats are PNG, JPEG, WebP, PDF, TXT, LOG, JSON and CSV. These lightweight format checks are not a malware scanner or full document parser. Deployment hardening still needs malware scanning, capacity/rate controls, suitable filesystem permissions/backups, crash recovery and physical purge policies. S3-compatible object storage is an adapter extension point only, not implemented.
 
-The responsive UI selects/removes files before submission, preserves drafts on recoverable errors, downloads through authenticated API calls, confirms eligible author deletion, and renders message/note/attachment tombstones. Ticket attachments have no delete controls. Employees never receive note content or note attachments. Email notifications remain intentionally out of scope; persistent in-app notifications are the only notification channel.
+The responsive UI selects/removes files before submission, preserves drafts on recoverable errors, downloads through authenticated API calls, confirms eligible author deletion, and renders message/note/attachment tombstones. Ticket attachments have no delete controls. Employees never receive note content or note attachments. Ticket email remains out of scope; ticket notifications are in-app only. Account/security email is implemented separately.
 
 ## 2026-09-25 - Limited personal work history
 
@@ -594,3 +599,16 @@ The focused migration replaces only message/note ticket/id indexes with
 ticket/createdAt/id. Existing cycle and subtask indexes are retained based on
 measured plans. Configuration catalogs remain the documented unpaginated boundary.
 See `docs/list-scale-audit.md` for exact contracts, fixture sizes and plan limits.
+
+
+## 2026-09-27 ? Focused pre-AI hardening and deterministic package ownership
+
+Keep bootstrap locking, Serializable business transactions, TicketAuthorizationService, frontend data hooks, the custom browser harness and business behavior. Add a server-only bootstrap secret and centralized fail-closed runtime rules: only explicit development/test environments permit local JWT defaults. Trust only configured proxy hops/IPs/CIDRs; default to no forwarded-header trust.
+
+Ticket creation uses a database-unique requester/request key with an immutable content/attachment fingerprint. Concurrent conflicts can resolve by reading a committed creation without retrying a mutation. Keys remain consumed after edits/closure. Self-service password change requires current credentials; ordinary admin reset cannot target SUPER_ADMIN. Both revoke all refresh tokens and increment sessionVersion. The later account-security phase replaces direct admin reset with reset-link email. Existing forced-change flags remain enforced for legacy compatibility. Shared password validation caps UTF-8 bytes. CSV formula cells are rejected, not rewritten.
+
+Keep two independent pnpm applications with app-owned lockfiles and a dependency-free root manifest. Remove obsolete root Prisma 8 prerelease/workspace state; keep Prisma 7.10.0. Declare server pg types explicitly and repair the client lockfile using already-installed direct versions. Pin verified Node/pnpm tools and correct the compiled server entry path.
+
+Add PR/push checks with isolated PostgreSQL migration/e2e tests and a separate manual Chromium workflow until hosted stability is demonstrated. Gate high/critical production advisories and report all others; known server advisories remain visible and currently fail this gate. No broad dependency upgrades, cloud/AI/demo work, commit or push.
+
+See [implementation/configuration/limitations](pre-ai-hardening.md), [dependency findings](dependency-audit.md), and [verification](../status.md). The future demo plan remains unchanged.

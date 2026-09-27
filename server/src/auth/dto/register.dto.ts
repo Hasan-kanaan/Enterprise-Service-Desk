@@ -1,3 +1,4 @@
+import { Password } from '../password';
 import {
   IsEmail,
   IsEnum,
@@ -21,6 +22,7 @@ export class RegisterDto {
 
   @IsNotEmpty()
   @MinLength(8)
+  @Password()
   password!: string;
 
   @IsEnum(UserRole)

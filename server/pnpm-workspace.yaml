@@ -2,3 +2,9 @@ allowBuilds:
   '@prisma/engines': true
   prisma: true
   unrs-resolver: true
+# Server-local pnpm 11 settings; client and root remain independent.
+# Compatibility evidence and removal criteria: ../docs/dependency-audit.md
+overrides:
+  'gaxios@6.7.1>uuid': 11.1.1
+  '@prisma/config@7.10.0>deepmerge-ts': 8.0.0
+  'prisma@7.10.0>mysql2': 3.23.1

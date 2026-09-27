@@ -2,8 +2,10 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { configureHttpSecurity } from './security/http-security';
+import { initialSetupSecret } from './security/security.config';
 
 async function bootstrap() {
+  initialSetupSecret();
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });

@@ -213,6 +213,9 @@ async function page(source = '', contextId = null) {
           refreshCookie = `refresh=opaque-${token}`
           cookie = `${refreshCookie}; HttpOnly; Path=/; SameSite=Lax`
           }
+        } else if (path === '/auth/password') {
+          rejection = true
+          body = { message: 'Password updated' }
         } else if (path === '/auth/logout') {
           logouts++
           rejection = true
@@ -337,7 +340,7 @@ try {
   )
   await delay(150)
   assert.equal((await state(b)).user, null)
-  assert.match(await b.evaluate('document.body.innerText'), /Welcome back/)
+  await until(async () => /Welcome back/.test(await b.evaluate('document.body.innerText')), 'login route rendered after logout')
   console.log(
     'PASS: concurrent logout waits for refresh, revokes once, clears sibling UI/credentials and rejects stale broadcasts',
   )
@@ -399,6 +402,11 @@ try {
     await a.evaluate('auth.login({email:"maya@example.test",password:"fixture"})')
     await until(async () => (await state(b)).user, 'login recovery')
     console.log('PASS: login 429 shows a temporary message, keeps sign-in usable and does not loop')
+  await a.evaluate('auth.changePassword("fixture", "ReplacementPassword123!")')
+  await until(async () => !(await state(a)).user && !(await state(b)).user, 'password-change sibling invalidation')
+  await a.evaluate('auth.login({email:"maya@example.test",password:"fixture"})')
+  await until(async () => (await state(b)).user, 'login after password change')
+  console.log('PASS: password change clears both tabs and requires fresh authentication')
   const c = await page('window.BroadcastChannel = undefined')
   await until(async () => (await state(c)).user, 'channel fallback')
   await Promise.all([refresh(a), refresh(c)])

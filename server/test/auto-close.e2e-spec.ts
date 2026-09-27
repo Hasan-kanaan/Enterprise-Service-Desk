@@ -1,3 +1,5 @@
+import { MailProvider } from '../src/auth/mail.provider';
+import { FakeMailProvider } from './fake-mail.provider';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { configureTestSecurity } from './security-test-app';
 import { Test } from '@nestjs/testing';
@@ -23,7 +25,10 @@ describe('Automatic closure (PostgreSQL)', () => {
   const ids: number[] = [];
   beforeAll(async () => {
     app = (
-      await Test.createTestingModule({ imports: [AppModule] }).compile()
+      await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(MailProvider)
+        .useValue(new FakeMailProvider())
+        .compile()
     ).createNestApplication<NestExpressApplication>({ bodyParser: false });
     configureTestSecurity(app as NestExpressApplication);
     await app.init();
@@ -36,6 +41,7 @@ describe('Automatic closure (PostgreSQL)', () => {
         username: prefix,
         email: `${prefix}@test.invalid`,
         password: 'unused',
+        activatedAt: new Date(),
         role: 'EMPLOYEE',
       },
     });
@@ -44,6 +50,7 @@ describe('Automatic closure (PostgreSQL)', () => {
         username: `m${prefix}`,
         email: `m${prefix}@test.invalid`,
         password: 'unused',
+        activatedAt: new Date(),
         role: 'MANAGER',
       },
     });

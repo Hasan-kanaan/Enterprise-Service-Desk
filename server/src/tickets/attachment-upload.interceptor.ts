@@ -9,13 +9,13 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 
 export const AttachmentFilesInterceptor = FilesInterceptor('files', 5, {
   limits: {
-    // Busboy emits limit at equality; validateUpload enforces the inclusive 10 MB cap.
-    fileSize: 10 * 1024 * 1024 + 1,
+    // Multer 2.4 applies inclusive limits itself; keep the public 10 MB cap.
+    fileSize: 10 * 1024 * 1024,
     files: 5,
     fields: 1,
     fieldSize: 64 * 1024,
-    // One payload + five files; Busboy counts the final boundary toward this limit.
-    parts: 7,
+    // One payload + five files; Multer 2.4 also applies inclusive part limits.
+    parts: 6,
   },
 });
 // Multipart carries a JSON `payload` field plus files, keeping DTO validation

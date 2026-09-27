@@ -103,6 +103,7 @@ export class OrganizationService {
           eligibility,
           {
             status: 'ACTIVE',
+            activatedAt: { not: null },
             username: { contains: search, mode: 'insensitive' },
           },
         ],
@@ -241,7 +242,7 @@ export class OrganizationService {
   ) {
     const user = await lockUser(db, id);
     if (!user) throw new NotFoundException('User not found');
-    if (user.status !== 'ACTIVE' || user.role !== role)
+    if (user.status !== 'ACTIVE' || !user.activatedAt || user.role !== role)
       throw new BadRequestException(`User must be an active ${role}`);
     return user;
   }

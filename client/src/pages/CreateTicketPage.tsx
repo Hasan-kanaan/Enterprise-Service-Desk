@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
@@ -9,13 +9,14 @@ import { createTicket, getTicketOptions } from '@/services/tickets.service'
 import type { TicketInput } from '@/types/tickets'
 
 export function CreateTicketPage() {
+  const requestKey = useRef(crypto.randomUUID())
   const navigate = useNavigate()
   const options = useResource(getTicketOptions)
   const [error, setError] = useState<unknown>()
   const save = async (input: TicketInput, files: File[] = []) => {
     setError(undefined)
     try {
-      const ticket = await createTicket(input, files)
+      const ticket = await createTicket(input, requestKey.current, files)
       toast.success(`Ticket #${ticket.id} submitted`)
       navigate(`/tickets/${ticket.id}`, { replace: true })
     } catch (failure) {
@@ -54,7 +55,7 @@ export function CreateTicketPage() {
               {error && (
                 <ErrorState
                   error={error}
-                  message="We could not confirm submission. Check My tickets before trying again."
+                  message="We could not confirm submission. Retry the same request to safely confirm submission. If you change its content after submitting, start a new request."
                 />
               )}
               <TicketForm

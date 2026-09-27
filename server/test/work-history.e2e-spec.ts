@@ -1,3 +1,5 @@
+import { MailProvider } from '../src/auth/mail.provider';
+import { FakeMailProvider } from './fake-mail.provider';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { configureTestSecurity } from './security-test-app';
 import { INestApplication } from '@nestjs/common';
@@ -38,7 +40,10 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
     get(`/my-work-history${query}`, who);
   beforeAll(async () => {
     app = (
-      await Test.createTestingModule({ imports: [AppModule] }).compile()
+      await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(MailProvider)
+        .useValue(new FakeMailProvider())
+        .compile()
     ).createNestApplication<NestExpressApplication>({ bodyParser: false });
     configureTestSecurity(app as NestExpressApplication);
     await app.init();
@@ -67,6 +72,7 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
           username: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',
+          activatedAt: new Date(),
           role: role as UserRole,
         },
       });

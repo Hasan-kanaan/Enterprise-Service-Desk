@@ -1,3 +1,5 @@
+import { AccountSecurityService } from './account-security.service';
+import { MailProvider, SmtpMailProvider } from './mail.provider';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { UsersModule } from '../users/users.module';
@@ -17,7 +19,13 @@ import { jwtConstants } from './auth.constants';
     }),
   ],
   controllers: [AuthController, ProfileController],
-  providers: [AuthService, AuthGuard, RolesGuard],
+  providers: [
+    AccountSecurityService,
+    { provide: MailProvider, useClass: SmtpMailProvider },
+    AuthService,
+    AuthGuard,
+    RolesGuard,
+  ],
   exports: [AuthGuard, RolesGuard],
 })
 export class AuthModule {}

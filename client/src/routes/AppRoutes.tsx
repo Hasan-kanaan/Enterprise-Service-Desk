@@ -1,3 +1,4 @@
+import { AccountSecurityPage } from '@/pages/AccountSecurityPage'
 import { WorkHistoryPage } from '@/pages/WorkHistoryPage'
 import { OperationalWorkspacePage } from '@/pages/OperationalWorkspacePage'
 import { Navigate, Route, Routes } from 'react-router-dom'
@@ -59,6 +60,7 @@ export function AppRoutes() {
     <Suspense fallback={<LoadingState label="Loading workspace..." />}>
       <Routes>
         <Route element={<PublicLayout />}>
+          {(['activate', 'reset-password', 'forgot-password', 'resend-activation'] as const).map(action => <Route key={action} path={`/${action}`} element={<AccountSecurityPage key={action} action={action} />} />)}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/setup" element={<SetupPage />} />
         </Route>

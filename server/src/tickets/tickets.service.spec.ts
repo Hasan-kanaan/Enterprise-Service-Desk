@@ -83,6 +83,7 @@ describe('TicketsService', () => {
         Promise.resolve({
           id: where.id,
           role: where.id === 20 ? UserRole.AGENT : UserRole.MANAGER,
+          activatedAt: new Date(),
           status: 'ACTIVE',
           sessionVersion: 0,
         }),

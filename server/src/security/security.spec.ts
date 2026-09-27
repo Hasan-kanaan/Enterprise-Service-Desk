@@ -1,5 +1,7 @@
+import { AccountSecurityService } from '../auth/account-security.service';
 import {
   Body,
+  Req,
   Controller,
   Get,
   Post,
@@ -24,6 +26,7 @@ import {
 } from './security.config';
 import { RateLimiter } from './rate-limiter';
 import type { Server } from 'node:http';
+import type { Request } from 'express';
 
 jest.mock('bcryptjs', () => {
   const actual = jest.requireActual<typeof bcrypt>('bcryptjs');
@@ -37,6 +40,9 @@ jest.mock('bcryptjs', () => {
 
 @Controller('probe')
 class ProbeController {
+  @Get('ip') ip(@Req() req: Request) {
+    return { ip: req.ip };
+  }
   @Get() read() {
     return { ok: true };
   }
@@ -60,6 +66,7 @@ describe('Application HTTP security baseline', () => {
     email: 'known@example.test',
     password: hash,
     status: 'ACTIVE',
+    activatedAt: new Date(),
     sessionVersion: 0,
     role: UserRole.EMPLOYEE,
   };
@@ -88,6 +95,15 @@ describe('Application HTTP security baseline', () => {
       controllers: [AuthController, ProbeController],
       providers: [
         AuthService,
+        {
+          provide: AccountSecurityService,
+          useValue: {
+            request: jest.fn().mockResolvedValue({
+              message:
+                'If an eligible account exists, instructions have been sent.',
+            }),
+          },
+        },
         { provide: UsersService, useValue: users },
         {
           provide: JwtService,
@@ -110,12 +126,53 @@ describe('Application HTTP security baseline', () => {
     });
     await app.init();
   }
+  it('applies a shared requester-IP recovery budget and Origin protection to new public flows', async () => {
+    await app.close();
+    await createApplication({ RATE_LIMIT_RECOVERY_MAX: '2' });
+    await post('/auth/forgot-password')
+      .send({ email: 'unknown@example.test' })
+      .expect(201);
+    await post('/auth/resend-activation')
+      .send({ email: 'other@example.test' })
+      .expect(201);
+    await post('/auth/forgot-password')
+      .send({ email: 'third@example.test' })
+      .expect(429);
+    await request(app.getHttpServer())
+      .post('/auth/activate')
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/auth/reset-password')
+      .set('Origin', 'https://untrusted.example')
+      .send({})
+      .expect(403);
+  });
   beforeEach(() => createApplication());
   afterEach(async () => {
     await app?.close();
     jest.restoreAllMocks();
   });
 
+  it('ignores forwarded IPs by default and resolves explicitly trusted hops', async () => {
+    const plain = await request(app.getHttpServer()).get('/probe/ip');
+    const spoof = await request(app.getHttpServer())
+      .get('/probe/ip')
+      .set('X-Forwarded-For', '192.0.2.9');
+    expect(spoof.body).toEqual(plain.body);
+    await app.close();
+    await createApplication({ TRUST_PROXY: '1' });
+    await request(app.getHttpServer())
+      .get('/probe/ip')
+      .set('X-Forwarded-For', '192.0.2.8, 192.0.2.9')
+      .expect(200, { ip: '192.0.2.9' });
+    await app.close();
+    await createApplication({ TRUST_PROXY: '127.0.0.1/8,::1' });
+    await request(app.getHttpServer())
+      .get('/probe/ip')
+      .set('X-Forwarded-For', '192.0.2.9')
+      .expect(200, { ip: '192.0.2.9' });
+  });
   it('throttles failed logins with a bounded 429 and Retry-After; forwarded headers cannot bypass it', async () => {
     for (let i = 0; i < 3; i++)
       await post('/auth/login')
@@ -374,8 +431,11 @@ describe('Security configuration and limiter boundaries', () => {
         'Production requires',
       );
     expect(
-      jwtSecret({ NODE_ENV: 'production', JWT_SECRET: 'a'.repeat(32) }),
-    ).toBe('a'.repeat(32));
+      jwtSecret({
+        NODE_ENV: 'production',
+        JWT_SECRET: 'xT9rQ2vB4nM6pL8sK3wY5zA7cD1fG0hJ',
+      }),
+    ).toBe('xT9rQ2vB4nM6pL8sK3wY5zA7cD1fG0hJ');
     for (const ALLOWED_ORIGINS of [
       '*',
       'null',
@@ -386,7 +446,7 @@ describe('Security configuration and limiter boundaries', () => {
       expect(() => securityConfig({ ALLOWED_ORIGINS })).toThrow();
     expect(() => securityConfig({ NODE_ENV: 'production' })).toThrow();
     expect(() => securityConfig({ RATE_LIMIT_LOGIN_MAX: '0' })).toThrow();
-    expect(securityConfig({}).policies.login.limit).toBe(20);
+    expect(securityConfig({ NODE_ENV: 'test' }).policies.login.limit).toBe(20);
   });
   it('preserves HttpOnly/path/Lax with Secure production and deliberate cross-site HTTPS opt-in', () => {
     expect(refreshCookieOptions({ NODE_ENV: 'production' })).toEqual({
@@ -402,7 +462,10 @@ describe('Security configuration and limiter boundaries', () => {
       }).sameSite,
     ).toBe('none');
     expect(() =>
-      refreshCookieOptions({ REFRESH_COOKIE_SAME_SITE: 'none' }),
+      refreshCookieOptions({
+        NODE_ENV: 'test',
+        REFRESH_COOKIE_SAME_SITE: 'none',
+      }),
     ).toThrow();
   });
 });

@@ -1,3 +1,5 @@
+import { MailProvider } from '../src/auth/mail.provider';
+import { FakeMailProvider } from './fake-mail.provider';
 import { Test } from '@nestjs/testing';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
@@ -57,7 +59,10 @@ describe('Ticket stream scale (isolated PostgreSQL)', () => {
       );
   beforeAll(async () => {
     app = (
-      await Test.createTestingModule({ imports: [AppModule] }).compile()
+      await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(MailProvider)
+        .useValue(new FakeMailProvider())
+        .compile()
     ).createNestApplication<NestExpressApplication>({ bodyParser: false });
     configureTestSecurity(app);
     await app.init();
@@ -75,6 +80,7 @@ describe('Ticket stream scale (isolated PostgreSQL)', () => {
           username: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',
+          activatedAt: new Date(),
           role: role as UserRole,
         },
       });

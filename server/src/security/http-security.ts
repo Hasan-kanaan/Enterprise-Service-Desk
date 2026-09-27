@@ -53,7 +53,7 @@ export function configureHttpSecurity(
   env: NodeJS.ProcessEnv = process.env,
 ) {
   const config = securityConfig(env);
-  app.set('trust proxy', false);
+  app.set('trust proxy', config.trustProxy);
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -98,9 +98,16 @@ export function configureHttpSecurity(
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const sensitive =
       req.method === 'POST' &&
-      ['/auth/login', '/auth/refresh', '/auth/logout', '/auth/setup'].includes(
-        path,
-      );
+      [
+        '/auth/login',
+        '/auth/refresh',
+        '/auth/logout',
+        '/auth/setup',
+        '/auth/forgot-password',
+        '/auth/resend-activation',
+        '/auth/activate',
+        '/auth/reset-password',
+      ].includes(path);
     if (sensitive && !req.get('Origin')) {
       const referer = req.get('Referer');
       let allowed = false;
@@ -128,6 +135,10 @@ export function configureHttpSecurity(
               '/auth/login': 'login',
               '/auth/refresh': 'refresh',
               '/auth/setup': 'setup',
+              '/auth/forgot-password': 'recovery',
+              '/auth/resend-activation': 'recovery',
+              '/auth/activate': 'login',
+              '/auth/reset-password': 'login',
             } as const
           )[path]
         : undefined;
@@ -188,6 +199,7 @@ export function configureHttpSecurity(
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      validationError: { target: false, value: false },
     }),
   );
 }
