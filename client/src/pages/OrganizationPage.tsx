@@ -13,6 +13,7 @@ import {
   OrganizationMaintenanceForm,
   type MaintenanceAction,
   TeamActionForm,
+  TeamCoverageForm,
   type TeamAction,
 } from '@/components/OrganizationForms'
 import type { Catalog } from '@/types/administration'
@@ -23,6 +24,7 @@ export function OrganizationPage() {
     [creating, setCreating] = useState(false),
     [action, setAction] = useState<TeamAction | null>(null)
   const [maintenance, setMaintenance] = useState<MaintenanceAction | null>(null)
+  const [coverage, setCoverage] = useState(false)
   const [memberSearch, setMemberSearch] = useState('')
   const search = useDebouncedValue(memberSearch)
   const members = usePagedList<Account>(
@@ -30,6 +32,7 @@ export function OrganizationPage() {
     { search: search || undefined },
   )
   const reload = () => {
+    setCoverage(false)
     members.reload()
     setMaintenance(null)
     setCreating(false)
@@ -103,6 +106,12 @@ export function OrganizationPage() {
                 </dd>
               </div>
             </dl>
+            <button
+              className="button secondary"
+              onClick={() => setCoverage(true)}
+            >
+              Change coverage
+            </button>
           </section>
           <SpecialtyLinks
             kind="teams"
@@ -217,9 +226,16 @@ export function OrganizationPage() {
               )}
             </section>
           </div>
-          <p className="quiet-note">
-            Team coverage editing remains unavailable.
-          </p>
+          {coverage && (
+            <TeamCoverageForm
+              key={team.id}
+              team={team}
+              regions={data.regions}
+              onClose={() => setCoverage(false)}
+              onReload={reload}
+              onDone={done}
+            />
+          )}
           {action && (
             <TeamActionForm
               key={`${team.id}-${action.kind}`}

@@ -42,6 +42,15 @@ export const createTeam = async (
   ).data
 export const addMember = async (team: number, user: number) =>
   api.post(`/organization/teams/${team}/members/${user}`)
+export const changeTeamCoverage = (
+  id: number,
+  scope: 'REGION' | 'GLOBAL',
+  regionId: number | null,
+) =>
+  api.patch(`/organization/teams/${id}/coverage`, {
+    scope,
+    ...(scope === 'REGION' ? { regionId } : {}),
+  })
 export const removeMember = async (team: number, user: number) =>
   api.delete(`/organization/teams/${team}/members/${user}`)
 export const setTeamLead = async (team: number, user: number) =>

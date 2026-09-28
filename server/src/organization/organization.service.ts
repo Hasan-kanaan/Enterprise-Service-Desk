@@ -4,6 +4,7 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma, TeamScope, UserRole } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,6 +16,7 @@ import {
 } from '../prisma/transactions';
 import { after, ListQuery, listPage, listWindow } from '../common/list-query';
 import { CreateTeamDto } from './dto/create-team.dto';
+import { ChangeTeamCoverageDto } from './dto/change-team-coverage.dto';
 
 @Injectable()
 export class OrganizationService {
@@ -141,6 +143,64 @@ export class OrganizationService {
       this.throwConflict(
         error,
         'A team with this name and region already exists',
+      );
+      throw error;
+    }
+  }
+
+  async changeTeamCoverage(
+    id: number,
+    change: ChangeTeamCoverageDto,
+    actor: { id: number; role: UserRole; sessionVersion: number; sid: string },
+  ) {
+    if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN')
+      throw new ForbiddenException('Organization administration required');
+    if (
+      (change.scope !== 'GLOBAL' && change.scope !== 'REGION') ||
+      (change.scope === 'GLOBAL' && change.regionId != null) ||
+      (change.scope === 'REGION' &&
+        (!Number.isSafeInteger(change.regionId) ||
+          (change.regionId ?? 0) < 1 ||
+          (change.regionId ?? 0) > 2147483647))
+    )
+      throw new BadRequestException('Invalid team coverage');
+    try {
+      return await serializable(this.prisma, async (db) => {
+        await requireActiveActor(db, actor);
+        await db.$queryRaw`SELECT id FROM "UserSession" WHERE id = ${actor.sid} FOR SHARE`;
+        if (
+          !(await db.userSession.findFirst({
+            where: { id: actor.sid, userId: actor.id, revokedAt: null },
+            select: { id: true },
+          }))
+        )
+          throw new UnauthorizedException(
+            'Account or session is no longer active',
+          );
+        await db.$queryRaw`SELECT id FROM "Team" WHERE id = ${id} FOR UPDATE`;
+        const team = await db.team.findUnique({ where: { id } });
+        if (!team) throw new NotFoundException('Team not found');
+        const regionId = change.scope === 'REGION' ? change.regionId! : null;
+        // Same Team -> Region order as reactivation. Region archival shares this
+        // Region lock; Serializable rejects stale archival/eligibility reads.
+        if (regionId !== null) await this.requireRegion(regionId, db);
+        // Coverage is future eligibility only: never reconcile existing work.
+        return db.team.update({
+          where: { id },
+          data: { scope: change.scope, regionId },
+          select: {
+            id: true,
+            name: true,
+            scope: true,
+            regionId: true,
+            archivedAt: true,
+          },
+        });
+      });
+    } catch (error) {
+      this.throwConflict(
+        error,
+        'A team with this name and coverage already exists',
       );
       throw error;
     }

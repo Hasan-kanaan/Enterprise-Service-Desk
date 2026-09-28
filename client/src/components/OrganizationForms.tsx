@@ -4,6 +4,7 @@ import { AdminDialog } from './AdminDialog'
 import type { Catalog, Reference, Team } from '@/types/administration'
 import {
   createReference,
+  changeTeamCoverage,
   maintainOrganization,
   createTeam,
   addMember,
@@ -97,6 +98,77 @@ export function OrganizationCreateForm({
     </AdminDialog>
   )
 }
+export function TeamCoverageForm({
+  team,
+  regions,
+  ...callbacks
+}: { team: Team; regions: Reference[] } & Callbacks) {
+  const activeRegions = regions.filter((region) => !region.archivedAt)
+  const [scope, setScope] = useState(team.scope)
+  const [regionId, setRegionId] = useState<number | null>(
+    activeRegions.some((region) => region.id === team.regionId)
+      ? team.regionId
+      : null,
+  )
+  return (
+    <AdminDialog
+      title="Change coverage"
+      {...callbacks}
+      valid={
+        scope === 'GLOBAL' ||
+        activeRegions.some((region) => region.id === regionId)
+      }
+      submit={() => changeTeamCoverage(team.id, scope, regionId)}
+    >
+      <p className="quiet-note">
+        Changing coverage affects future routing eligibility. Existing ticket
+        assignments, memberships, responsibilities, specialties and history are
+        preserved.
+      </p>
+      <label className="field">
+        Coverage
+        <select
+          aria-label="Team coverage"
+          value={scope}
+          onChange={(event) => {
+            const next = event.target.value as typeof scope
+            setScope(next)
+            if (next === 'GLOBAL') setRegionId(null)
+          }}
+        >
+          <option value="GLOBAL">GLOBAL</option>
+          <option value="REGION">REGION</option>
+        </select>
+      </label>
+      {scope === 'REGION' && (
+        <label className="field">
+          Region
+          <select
+            aria-label="Team region"
+            required
+            value={regionId ?? ''}
+            onChange={(event) =>
+              setRegionId(Number(event.target.value) || null)
+            }
+          >
+            <option value="">Choose active region</option>
+            {activeRegions.map((region) => (
+              <option key={region.id} value={region.id}>
+                {region.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <p className="quiet-note">
+        {scope === 'GLOBAL'
+          ? 'GLOBAL Teams may be selected by any responsible Manager for future routing.'
+          : 'REGION Teams may be selected for future routing only by their organizational TeamManager.'}
+      </p>
+    </AdminDialog>
+  )
+}
+
 export type TeamAction = {
   kind:
     | 'member'

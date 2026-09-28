@@ -299,6 +299,15 @@ function response(request) {
     }
     return [200, { id: account.id, status: account.status }]
   }
+  const coverage = path.match(/^\/organization\/teams\/(\d+)\/coverage$/)
+  if (coverage) {
+    assert.equal(request.method, 'PATCH')
+    const team = teams.find(t => t.id === Number(coverage[1]))
+    assert(body.scope === 'GLOBAL' ? !('regionId' in body) : catalogs.regions.some(r => r.id === body.regionId && !r.archivedAt))
+    team.scope = body.scope
+    team.regionId = body.regionId ?? null
+    return [200, { id: team.id, name: team.name, scope: team.scope, regionId: team.regionId, archivedAt: team.archivedAt ?? null }]
+  }
   const maintenance = path.match(/^\/organization\/(regions|departments|specialties|teams)\/(\d+)(?:\/(archive|reactivate))?$/)
   if (maintenance) {
     const [ , catalog, id, operation ] = maintenance
@@ -578,7 +587,59 @@ try {
     await confirm()
     await waitText(`${prefix}-${role.toLowerCase()}`)
   }
-  if (process.argv.includes('--ticket-configuration')) {
+  if (process.argv.includes('--team-coverage')) {
+    catalogs.regions.push({id: 2, name: 'Tripoli'}, {id: 3, name: 'Archived region', archivedAt: new Date().toISOString()})
+    teams.push({id: 1, name: 'Network', scope: 'REGION', regionId: 1, teamLeadId: 4, managerId: 5, memberIds: [4]})
+    await navigate('/admin/organization/teams/1')
+    await waitText('REGION - Beirut')
+    await action('Change coverage')
+    await waitText('Existing ticket assignments, memberships, responsibilities, specialties and history are preserved.')
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Team region"]').options.length`), 3)
+    await fill('[aria-label="Team region"]', '2')
+    await confirm()
+    await waitText('REGION - Tripoli')
+    await action('Change coverage')
+    await fill('[aria-label="Team coverage"]', 'GLOBAL')
+    assert.equal(await evaluate(`!!document.querySelector('[aria-label="Team region"]')`), false)
+    await waitText('GLOBAL Teams may be selected by any responsible Manager')
+    await fill('[aria-label="Team coverage"]', 'REGION')
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Team region"]').value`), '')
+    await fill('[aria-label="Team coverage"]', 'GLOBAL')
+    const before = mutations.length
+    await evaluate(`(() => {const f = document.querySelector('dialog form'); f.requestSubmit(); f.requestSubmit()})()`)
+    await until(() => evaluate('!document.querySelector("dialog")'), 'saved')
+    assert.equal(mutations.length, before + 1)
+    await waitText('GLOBAL - all regions')
+    assert.equal(teams[0].regionId, null)
+    for (const code of [400,404,409]) {
+      await action('Change coverage')
+      failureCode = code; rejectMutation = true
+      await click('Confirm')
+      await until(() => evaluate('!!document.querySelector("[role=alert]")'), 'coverage error')
+      rejectMutation = false
+      await click(code === 400 ? 'Cancel' : 'Reload administration')
+      await waitText('GLOBAL - all regions')
+    }
+    await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+    await action('Change coverage')
+    await fill('[aria-label="Team coverage"]', 'REGION')
+    await waitText('REGION Teams may be selected for future routing only by their organizational TeamManager.')
+    assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+    await fill('[aria-label="Team region"]', '1')
+    await confirm()
+    await waitText('REGION - Beirut')
+    assert.deepEqual(teams[0].memberIds, [4]); assert.equal(teams[0].teamLeadId, 4); assert.equal(teams[0].managerId, 5)
+    teams[0].archivedAt = new Date().toISOString(); catalogs.regions[0].archivedAt = new Date().toISOString()
+    await click('Refresh organization'); await waitText('ARCHIVED')
+    await action('Change coverage')
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Team region"]').value`), '')
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Team region"]').options.length`), 2)
+    await fill('[aria-label="Team coverage"]', 'GLOBAL'); await confirm()
+    await waitText('GLOBAL - all regions'); await waitText('ARCHIVED')
+    assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+    assert.deepEqual(browserErrors, [])
+    console.log('PASS: focused Team coverage transitions, active destinations, confirmation, duplicate submit, 400/404/409, archived Team and mobile')
+  } else if (process.argv.includes('--ticket-configuration')) {
     await navigate('/admin/ticket-configuration')
     await waitText('No records yet')
     for (const kind of ['category', 'tag']) {

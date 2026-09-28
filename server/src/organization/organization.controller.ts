@@ -20,6 +20,7 @@ import { UserRole as PrismaUserRole } from '../../generated/prisma/client';
 import { UserRole } from '../users/user-role.enum';
 import { CreateNameDto, RenameTeamDto } from './dto/create-name.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
+import { ChangeTeamCoverageDto } from './dto/change-team-coverage.dto';
 import { OrganizationService } from './organization.service';
 
 class OrganizationLookupQuery extends ListQuery {
@@ -28,7 +29,12 @@ class OrganizationLookupQuery extends ListQuery {
 }
 
 type ActorRequest = {
-  user: { sub: number; role: PrismaUserRole; sessionVersion: number };
+  user: {
+    sub: number;
+    role: PrismaUserRole;
+    sessionVersion: number;
+    sid: string;
+  };
 };
 
 @Controller('organization')
@@ -200,6 +206,19 @@ export class OrganizationController {
         sessionVersion: req.user.sessionVersion,
       },
     );
+  }
+  @Patch('teams/:id/coverage')
+  changeTeamCoverage(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ChangeTeamCoverageDto,
+  ) {
+    return this.organizationService.changeTeamCoverage(id, dto, {
+      sid: req.user.sid,
+      id: req.user.sub,
+      role: req.user.role,
+      sessionVersion: req.user.sessionVersion,
+    });
   }
   @Post('teams/:id/archive')
   archiveTeam(@Req() req: ActorRequest, @Param('id', ParseIntPipe) id: number) {
