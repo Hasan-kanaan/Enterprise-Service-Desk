@@ -439,6 +439,18 @@ describe('Organization maintenance (focused PostgreSQL and HTTP)', () => {
         affectedRegionIds: [regionId],
         affectedDepartmentIds: [departmentId],
       });
+      expect(visible.affectedRegions).toEqual([
+        await db.region.findUniqueOrThrow({
+          where: { id: regionId },
+          select: { id: true, name: true },
+        }),
+      ]);
+      expect(visible.affectedDepartments).toEqual([
+        await db.department.findUniqueOrThrow({
+          where: { id: departmentId },
+          select: { id: true, name: true },
+        }),
+      ]);
       await reactivate('regions', regionId).expect(201);
       expect(
         (await db.team.findUniqueOrThrow({ where: { id: teamA.id } }))

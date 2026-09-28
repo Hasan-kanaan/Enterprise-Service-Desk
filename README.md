@@ -746,7 +746,7 @@ Current responsibility controls ticket/history visibility. Historical participat
 
 `GET /tickets?active=true` filters current visible operational tickets; `status=RESOLVED` supports exact status filtering. Subtask list routes support `currentWork=true` to exclude ended-cycle or completed/cancelled work. Future React labels can derive ?Current Work ? Reopening #2?, ?Reopening #1?, and ?Original Investigation? directly from cycle sequence/type.
 
-Work-cycle history, requester-visible conversations, separate internal notes and persistent in-app notifications are implemented. Communication belongs to its actual work cycle; reopening never moves or resets old records. Automatic RESOLVED -> CLOSED behavior remains on the roadmap; generic audit logs remain deferred.
+Work-cycle history, requester-visible conversations, separate internal notes and persistent in-app notifications are implemented. Communication belongs to its actual work cycle; reopening never moves or resets old records. Automatic RESOLVED -> CLOSED behavior is implemented; generic audit logs remain deferred.
 
 ---
 
@@ -1315,7 +1315,7 @@ These reads and their `/people` lookup routes require MANAGER or AGENT authentic
 
 `pnpm test:browser` runs Employee, operational and administration suites. Communication coverage includes requester/support posting, own editing, internal-note separation, collaborator controls, frozen history, waiting replies and draft recovery across failures/reopening. Existing lifecycle, organization, mobile, session and error flows remain covered. Browser tests use isolated API fixtures; PostgreSQL e2e separately exercises actual authorization and atomicity. No browser-to-live-database coverage is claimed.
 
-ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Persistent in-app notifications are implemented in the shared shell. My Work History is implemented. The remaining roadmap, in order, is automatic RESOLVED -> CLOSED behavior, general polish/stabilization, and AI routing/recommendations. Generic audits and SSO/SCIM remain deferred.
+ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Persistent in-app notifications are implemented in the shared shell. My Work History is implemented. Automatic RESOLVED -> CLOSED behavior is implemented. The remaining roadmap, in order, is general polish/stabilization and AI routing/recommendations. Generic audits and SSO/SCIM remain deferred.
 
 ---
 
@@ -1501,9 +1501,8 @@ Focus on:
 
 ### Remaining Roadmap
 
-1. Automatic RESOLVED -> CLOSED behavior
-2. General polish/stabilization
-3. AI routing/recommendations
+1. General polish/stabilization
+2. AI routing/recommendations
 
 AI recommendations include categorization, priority and agent suggestions, confidence scores, reasoning, and manager review. Secure attachments and author-controlled communication soft deletion are implemented.
 

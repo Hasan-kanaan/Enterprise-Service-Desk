@@ -195,7 +195,10 @@ function OperationalTicket({ id }: { id: number }) {
                     <dd>
                       {ticket.allRegions
                         ? 'All regions'
-                        : names(ticket.affectedRegionIds, options.regions)}
+                        : names(
+                            ticket.affectedRegionIds,
+                            ticket.affectedRegions ?? options.regions,
+                          )}
                     </dd>
                   </div>
                   <div>
@@ -205,7 +208,7 @@ function OperationalTicket({ id }: { id: number }) {
                         ? 'All departments'
                         : names(
                             ticket.affectedDepartmentIds,
-                            options.departments,
+                            ticket.affectedDepartments ?? options.departments,
                           )}
                     </dd>
                   </div>

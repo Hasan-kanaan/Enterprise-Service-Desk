@@ -382,18 +382,26 @@ try {
   })
   if (process.argv.includes('--ticket-configuration')) {
     cycles = [original(142)]
-    tickets.push({ id: 142, title: 'Retained configuration', description: 'Details', requesterId: 10, status: 'NEW', priority: 'MEDIUM', categoryId: 4, category: { id: 4, name: 'Archived category' }, tagIds: [7], tags: [{ id: 7, name: 'Archived tag' }], allRegions: true, allDepartments: true, affectedRegionIds: [], affectedDepartmentIds: [], assignedManagerId: null, assignedTeamId: null, assignedAgentId: null, ownership: { manager: null, team: null, agent: null }, createdAt: now, updatedAt: now, resolvedAt: null, closedAt: null, currentCycle: cycles[0] })
+    tickets.push({ id: 142, title: 'Retained configuration', description: 'Details', requesterId: 10, status: 'NEW', priority: 'MEDIUM', categoryId: 4, category: { id: 4, name: 'Archived category' }, tagIds: [7], tags: [{ id: 7, name: 'Archived tag' }], allRegions: false, allDepartments: false, affectedRegionIds: [71], affectedDepartmentIds: [72], affectedRegions: [{ id: 71, name: 'Archived region' }], affectedDepartments: [{ id: 72, name: 'Archived department' }], assignedManagerId: null, assignedTeamId: null, assignedAgentId: null, ownership: { manager: null, team: null, agent: null }, createdAt: now, updatedAt: now, resolvedAt: null, closedAt: null, currentCycle: cycles[0] })
     options.categories = [{ id: 8, name: 'Active category' }]
     options.tags = [{ id: 9, name: 'Active tag' }]
     await navigate('/tickets/new'); await waitText('Active category')
     assert.deepEqual(await evaluate(`[...document.querySelector('#ticket-category').options].map(o => o.value)`), ['0', '8'])
     assert(!await evaluate(`document.body.textContent.includes('Archived tag')`))
+    assert(!await evaluate(`document.body.textContent.includes('Archived region') || document.body.textContent.includes('Archived department')`))
     await navigate('/tickets/142'); await waitText('Archived category'); await waitText('Archived tag')
+    await waitText('Archived region'); await waitText('Archived department')
+    assert(!await evaluate(`document.body.textContent.includes('Name unavailable')`))
     await click('Edit details'); await waitText('Archived category (ARCHIVED)'); await waitText('Archived tag (ARCHIVED)')
+    for (const label of ['Archived region (ARCHIVED)', 'Archived department (ARCHIVED)']) {
+      await waitText(label)
+      assert(await evaluate(`[...document.querySelectorAll('label')].find(el => el.textContent.trim() === ${JSON.stringify(label)}).querySelector('input').checked`))
+    }
     assert.equal(await evaluate(`document.querySelector('#ticket-category').value`), '4')
     await fill('#ticket-title', 'Unrelated edit'); await click('Save changes'); await waitText('Unrelated edit')
     await until(() => evaluate(`!document.querySelector('#ticket-title')`), 'saved')
     assert.deepEqual(mutations.at(-1).body.tagIds, [7]); assert.equal(mutations.at(-1).body.categoryId, 4)
+    assert.deepEqual(mutations.at(-1).body.affectedRegionIds, [71]); assert.deepEqual(mutations.at(-1).body.affectedDepartmentIds, [72])
     await click('Edit details'); await checkLabel('Archived tag (ARCHIVED)'); await click('Save changes')
     await until(() => evaluate(`!document.querySelector('#ticket-title')`), 'saved removal')
     assert.deepEqual(mutations.at(-1).body.tagIds, [])

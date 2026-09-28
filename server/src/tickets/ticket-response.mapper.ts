@@ -56,8 +56,12 @@ export function mapTicket(
       assignedTeam: { select: { id: true; name: true } };
       category: { select: { id: true; name: true } };
       tags: { include: { tag: { select: { id: true; name: true } } } };
-      affectedRegions: true;
-      affectedDepartments: true;
+      affectedRegions: {
+        include: { region: { select: { id: true; name: true } } };
+      };
+      affectedDepartments: {
+        include: { department: { select: { id: true; name: true } } };
+      };
     };
   }>,
 ) {
@@ -80,10 +84,12 @@ export function mapTicket(
     autoCloseAt: autoCloseAt(ticket),
     tagIds: tags.map((tag) => tag.tagId),
     tags: tags.map((link) => link.tag),
-    affectedRegionIds: affectedRegions.map((region) => region.regionId),
+    affectedRegionIds: affectedRegions.map((item) => item.regionId),
     affectedDepartmentIds: affectedDepartments.map(
-      (department) => department.departmentId,
+      (item) => item.departmentId,
     ),
+    affectedRegions: affectedRegions.map((item) => item.region),
+    affectedDepartments: affectedDepartments.map((item) => item.department),
     ownership: {
       manager: assignedManager,
       team: assignedTeam,

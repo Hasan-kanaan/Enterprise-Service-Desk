@@ -238,8 +238,16 @@ export class TicketVisibilityService {
             assignedTeam: { select: { id: true, name: true } },
             category: { select: { id: true, name: true } },
             tags: { include: { tag: { select: { id: true, name: true } } } },
-            affectedRegions: true,
-            affectedDepartments: true,
+            affectedRegions: {
+              include: {
+                region: { select: { id: true, name: true } },
+              },
+            },
+            affectedDepartments: {
+              include: {
+                department: { select: { id: true, name: true } },
+              },
+            },
           },
         });
 

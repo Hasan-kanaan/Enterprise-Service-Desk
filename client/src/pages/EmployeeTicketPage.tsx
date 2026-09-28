@@ -279,7 +279,7 @@ function TicketContent({ id }: { id: number }) {
                         ? 'All regions'
                         : names(
                             ticket.affectedRegionIds,
-                            options.data?.regions,
+                            ticket.affectedRegions ?? options.data?.regions,
                           )}
                     </dd>
                   </div>
@@ -290,7 +290,7 @@ function TicketContent({ id }: { id: number }) {
                         ? 'All departments'
                         : names(
                             ticket.affectedDepartmentIds,
-                            options.data?.departments,
+                            ticket.affectedDepartments ?? options.data?.departments,
                           )}
                     </dd>
                   </div>

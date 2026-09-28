@@ -11,7 +11,12 @@ import { ticketPriorities } from '@/types/tickets'
 
 type Props = {
   options: TicketOptions
-  existingReferences?: { category?: NamedOption; tags?: NamedOption[] }
+  existingReferences?: {
+    category?: NamedOption
+    tags?: NamedOption[]
+    affectedRegions?: NamedOption[]
+    affectedDepartments?: NamedOption[]
+  }
   initial?: TicketInput
   onSave: (values: TicketInput, files?: File[]) => Promise<void>
   allowAttachments?: boolean
@@ -42,6 +47,23 @@ export function TicketForm({
 }: Props) {
   const options = {
     ...activeOptions,
+    regions: [
+      ...activeOptions.regions,
+      ...(existingReferences?.affectedRegions ?? [])
+        .filter(
+          (item) => !activeOptions.regions.some((active) => active.id === item.id),
+        )
+        .map((item) => ({ ...item, name: `${item.name} (ARCHIVED)` })),
+    ],
+    departments: [
+      ...activeOptions.departments,
+      ...(existingReferences?.affectedDepartments ?? [])
+        .filter(
+          (item) =>
+            !activeOptions.departments.some((active) => active.id === item.id),
+        )
+        .map((item) => ({ ...item, name: `${item.name} (ARCHIVED)` })),
+    ],
     categories: [
       ...activeOptions.categories,
       ...(existingReferences?.category &&
