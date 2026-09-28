@@ -62,6 +62,7 @@ describe('AuthService', () => {
         role: UserRole.ADMIN,
       }),
       issueSession: jest.fn().mockResolvedValue({
+        sid: '11111111-1111-4111-8111-111111111111',
         id: 1,
         username: 'adminuser',
         email: 'admin@company.com',
@@ -86,6 +87,11 @@ describe('AuthService', () => {
     });
 
     expect(result.accessToken).toBe('signed-test-token');
+    expect(jwtService.sign).toHaveBeenCalledWith({
+      sub: 1,
+      sid: '11111111-1111-4111-8111-111111111111',
+      sessionVersion: 0,
+    });
     expect(result.user.role).toBe(UserRole.ADMIN);
     expect(result.user.username).toBe('adminuser');
   });
@@ -104,6 +110,7 @@ describe('AuthService', () => {
         role: UserRole.EMPLOYEE,
       }),
       issueSession: jest.fn().mockResolvedValue({
+        sid: '11111111-1111-4111-8111-111111111111',
         id: 1,
         username: 'adminuser',
         email: 'admin@company.com',
@@ -328,6 +335,7 @@ describe('AuthService', () => {
       }),
       revokeRefreshToken: jest.fn().mockResolvedValue(true),
       issueSession: jest.fn().mockResolvedValue({
+        sid: '11111111-1111-4111-8111-111111111111',
         id: 1,
         username: 'adminuser',
         email: 'admin@company.com',
@@ -357,6 +365,7 @@ describe('AuthService', () => {
       expect.any(String),
       expect.any(Date),
       expect.any(String),
+      undefined,
     );
     expect(usersService.revokeRefreshToken).not.toHaveBeenCalled();
   });

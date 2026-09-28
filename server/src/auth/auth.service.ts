@@ -4,11 +4,14 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  HttpException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { RateLimiter } from '../security/rate-limiter';
+import { positiveInteger } from '../security/security.config';
 import { initialSetupSecret } from '../security/security.config';
 import { AccountSecurityService } from './account-security.service';
 import { assertPassword } from './password';
@@ -26,6 +29,18 @@ const dummyPasswordHash = bcrypt.hashSync(
 
 @Injectable()
 export class AuthService {
+  private readonly loginLimiter = new RateLimiter(
+    positiveInteger(process.env, 'RATE_LIMIT_MAX_KEYS', 10000),
+  );
+  private readonly loginPolicy = {
+    limit: positiveInteger(process.env, 'RATE_LIMIT_LOGIN_ACCOUNT_MAX', 10),
+    windowMs: positiveInteger(
+      process.env,
+      'RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_MS',
+      600000,
+    ),
+  };
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -119,7 +134,7 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, userAgent?: string) {
     assertPassword(dto.password, 1);
     const email = dto.email?.trim().toLowerCase();
     const password = dto.password;
@@ -128,6 +143,17 @@ export class AuthService {
       throw new BadRequestException('Email and password are required');
     }
 
+    const key = createHash('sha256').update(email).digest('hex');
+    const retryAfter = this.loginLimiter.consume(key, this.loginPolicy);
+    if (retryAfter)
+      throw new HttpException(
+        {
+          statusCode: 429,
+          message: 'Too many login attempts. Try again later.',
+          retryAfter,
+        },
+        429,
+      );
     const user = await this.usersService.findByEmail(email);
 
     const passwordMatches = await bcrypt.compare(
@@ -146,7 +172,9 @@ export class AuthService {
     }
 
     try {
-      return await this.issueTokens(user);
+      const result = await this.issueTokens(user, undefined, userAgent);
+      this.loginLimiter.reset(key);
+      return result;
     } catch (error) {
       if (error instanceof UnauthorizedException)
         throw new UnauthorizedException('Invalid credentials');
@@ -200,6 +228,7 @@ export class AuthService {
       sessionVersion: number;
     },
     consumedHash?: string,
+    userAgent?: string,
   ) {
     const refreshToken = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -209,12 +238,11 @@ export class AuthService {
       this.hashRefreshToken(refreshToken),
       expiresAt,
       consumedHash,
+      userAgent ? deviceDescription(userAgent) : undefined,
     );
     const accessToken = this.jwtService.sign({
       sub: current.id,
-      username: current.username,
-      email: current.email,
-      role: current.role,
+      sid: current.sid,
       sessionVersion: current.sessionVersion,
     });
 
@@ -234,4 +262,30 @@ export class AuthService {
   private hashRefreshToken(refreshToken: string) {
     return createHash('sha256').update(refreshToken).digest('hex');
   }
+}
+
+// Coarse, untrusted browser hints only; never persist the raw user-agent.
+function deviceDescription(raw: string) {
+  const ua = raw.slice(0, 512);
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /Firefox\//.test(ua)
+      ? 'Firefox'
+      : /Chrome\//.test(ua)
+        ? 'Chrome'
+        : /Safari\//.test(ua)
+          ? 'Safari'
+          : 'Browser';
+  const os = /Android/.test(ua)
+    ? 'Android'
+    : /iPhone|iPad/.test(ua)
+      ? 'iOS'
+      : /Windows/.test(ua)
+        ? 'Windows'
+        : /Macintosh/.test(ua)
+          ? 'macOS'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : 'unknown platform';
+  return `${browser} on ${os}`;
 }

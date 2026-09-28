@@ -67,6 +67,10 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
           'INSERT INTO "User" (username, email, password, "updatedAt", "passwordChangeRequired") VALUES ($1, $2, $3, NOW(), true)',
           ['legacy', 'legacy@example.test', await bcrypt.hash(password, 10)],
         );
+      if (migration === '20260927180000_user_sessions')
+        await sql.query(
+          `INSERT INTO "RefreshToken" ("tokenHash", "userId", "expiresAt") SELECT 'legacy-refresh-digest', id, NOW() + INTERVAL '7 days' FROM "User" WHERE email = 'legacy@example.test'`,
+        );
       await sql.query(
         readFileSync(
           join(__dirname, '../prisma/migrations', migration, 'migration.sql'),
@@ -111,6 +115,14 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
     const legacy = await db.user.findUniqueOrThrow({
       where: { email: 'legacy@example.test' },
     });
+    const oldRefresh = await db.refreshToken.findUniqueOrThrow({
+      where: { tokenHash: 'legacy-refresh-digest' },
+    });
+    expect(oldRefresh.sessionId).toBeNull();
+    expect(oldRefresh.revokedAt).not.toBeNull();
+    expect(await db.userSession.count({ where: { userId: legacy.id } })).toBe(
+      0,
+    );
     expect(legacy.activatedAt).toEqual(legacy.createdAt);
     expect(legacy.emailVerifiedAt).toBeNull();
     const session = await login(legacy);
@@ -291,6 +303,11 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
         .set('Authorization', `Bearer ${device.token}`)
         .expect(401);
     }
+    expect(
+      await db.userSession.count({
+        where: { userId: user.id, revokedAt: null },
+      }),
+    ).toBe(0);
     await login(user, nextPassword);
   });
   it('rejects expired/revoked reset tokens and concurrent consumption has one winner', async () => {
@@ -360,5 +377,200 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
         })
         .expect(400);
     }
+  });
+  it('keeps stable sessions through atomic rotation and scopes revocation to the owner', async () => {
+    const owner = await seed('EMPLOYEE');
+    const foreign = await login(await seed('EMPLOYEE'));
+    const a = await login(owner),
+      b = await login(owner);
+    const get = (token: string) =>
+      request(app.getHttpServer())
+        .get('/auth/sessions')
+        .set('Authorization', `Bearer ${token}`);
+    const claims = JSON.parse(
+      Buffer.from(a.token.split('.')[1], 'base64url').toString(),
+    ) as { sid: string };
+    expect(Object.keys(claims).sort()).toEqual([
+      'exp',
+      'iat',
+      'sessionVersion',
+      'sid',
+      'sub',
+    ]);
+    const list = await get(a.token).expect(200);
+    const rows = list.body as { id: string; current: boolean }[];
+    expect(rows).toHaveLength(2);
+    expect(rows.filter((row) => row.current).map((row) => row.id)).toEqual([
+      claims.sid,
+    ]);
+    expect(Object.keys(rows[0]).sort()).toEqual([
+      'createdAt',
+      'current',
+      'deviceLabel',
+      'id',
+      'lastUsedAt',
+    ]);
+    const rotated = await post('/auth/refresh')
+      .set('Cookie', a.cookie)
+      .expect(201);
+    expect(
+      (
+        JSON.parse(
+          Buffer.from(
+            (rotated.body as Login).accessToken.split('.')[1],
+            'base64url',
+          ).toString(),
+        ) as { sid: string }
+      ).sid,
+    ).toBe(claims.sid);
+    await post('/auth/refresh').set('Cookie', a.cookie).expect(401);
+    expect(await db.userSession.count({ where: { userId: owner.id } })).toBe(2);
+    await request(app.getHttpServer())
+      .delete(`/auth/sessions/${claims.sid}`)
+      .set('Authorization', `Bearer ${foreign.token}`)
+      .expect(404);
+    await get(a.token).expect(200);
+    const otherId = rows.find((row) => !row.current)!.id;
+    await request(app.getHttpServer())
+      .delete(`/auth/sessions/${otherId}`)
+      .set('Authorization', `Bearer ${a.token}`)
+      .expect(200);
+    await get(b.token).expect(401);
+    await post('/auth/refresh').set('Cookie', b.cookie).expect(401);
+    const c = await login(owner);
+    await post('/auth/sessions/logout-others', a.token).expect(201);
+    await get(c.token).expect(401);
+    await post('/auth/refresh').set('Cookie', c.cookie).expect(401);
+    await get(a.token).expect(200);
+    expect(
+      (await db.user.findUniqueOrThrow({ where: { id: owner.id } }))
+        .sessionVersion,
+    ).toBe(owner.sessionVersion);
+    await post('/auth/logout')
+      .set('Cookie', rotated.headers['set-cookie'] as unknown as string[])
+      .expect(201);
+    await get(a.token).expect(401);
+    await post('/auth/refresh')
+      .set('Cookie', rotated.headers['set-cookie'] as unknown as string[])
+      .expect(401);
+  });
+
+  it('permits only one concurrent rotation and revokes current access immediately', async () => {
+    const owner = await seed('EMPLOYEE');
+    const a = await login(owner);
+    const responses = await Promise.all([
+      post('/auth/refresh').set('Cookie', a.cookie),
+      post('/auth/refresh').set('Cookie', a.cookie),
+    ]);
+    expect(
+      responses.filter((response) => response.status === 201),
+    ).toHaveLength(1);
+    expect([401, 409]).toContain(
+      responses.find((response) => response.status !== 201)!.status,
+    );
+    const sid = (
+      await db.userSession.findFirstOrThrow({ where: { userId: owner.id } })
+    ).id;
+    await request(app.getHttpServer())
+      .delete(`/auth/sessions/${sid}`)
+      .set('Authorization', `Bearer ${a.token}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get('/auth/sessions')
+      .set('Authorization', `Bearer ${a.token}`)
+      .expect(401);
+    await post('/auth/refresh')
+      .set(
+        'Cookie',
+        responses.find((response) => response.status === 201)!.headers[
+          'set-cookie'
+        ] as unknown as string[],
+      )
+      .expect(401);
+  });
+
+  it('throttles normalized real and missing identities equally, resetting after successful login', async () => {
+    const owner = await seed('EMPLOYEE');
+    for (const email of [owner.email, `${randomUUID()}@example.test`]) {
+      for (let attempt = 0; attempt < 10; attempt++)
+        await post('/auth/login')
+          .send({
+            email: attempt % 2 ? email.toUpperCase() : email,
+            password: 'Incorrect123!',
+          })
+          .expect(401);
+      const blocked = await post('/auth/login')
+        .send({ email, password })
+        .expect(429);
+      expect(blocked.headers['retry-after']).toBeDefined();
+    }
+    const fresh = await seed('EMPLOYEE');
+    for (let attempt = 0; attempt < 9; attempt++)
+      await post('/auth/login')
+        .send({ email: fresh.email, password: 'Incorrect123!' })
+        .expect(401);
+    await login(fresh);
+    await login(fresh);
+  });
+  it('deactivation revokes every persistent session and reactivation requires fresh login', async () => {
+    const admin = await login(await seed('ADMIN'));
+    const owner = await seed('EMPLOYEE');
+    const devices = [await login(owner), await login(owner)];
+    for (const status of ['INACTIVE', 'ACTIVE']) {
+      await request(app.getHttpServer())
+        .patch(`/users/${owner.id}/status`)
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ status })
+        .expect(200);
+      for (const device of devices) {
+        await request(app.getHttpServer())
+          .get('/auth/sessions')
+          .set('Authorization', `Bearer ${device.token}`)
+          .expect(401);
+        await post('/auth/refresh').set('Cookie', device.cookie).expect(401);
+      }
+    }
+    expect(
+      await db.userSession.count({
+        where: { userId: owner.id, revokedAt: null },
+      }),
+    ).toBe(0);
+    await login(owner);
+  });
+
+  it('bounds last-active writes and excludes expired or revoked sessions', async () => {
+    const owner = await seed('EMPLOYEE');
+    const a = await login(owner);
+    const initial = await db.userSession.findFirstOrThrow({
+      where: { userId: owner.id },
+    });
+    const rotation = await post('/auth/refresh')
+      .set('Cookie', a.cookie)
+      .expect(201);
+    expect(
+      (await db.userSession.findUniqueOrThrow({ where: { id: initial.id } }))
+        .lastUsedAt,
+    ).toEqual(initial.lastUsedAt);
+    await db.userSession.update({
+      where: { id: initial.id },
+      data: { lastUsedAt: new Date(Date.now() - 120000) },
+    });
+    await post('/auth/refresh')
+      .set('Cookie', rotation.headers['set-cookie'] as unknown as string[])
+      .expect(201);
+    expect(
+      (
+        await db.userSession.findUniqueOrThrow({ where: { id: initial.id } })
+      ).lastUsedAt.getTime(),
+    ).toBeGreaterThan(initial.lastUsedAt.getTime());
+    await db.refreshToken.updateMany({
+      where: { sessionId: initial.id },
+      data: { expiresAt: new Date(0) },
+    });
+    const response = await request(app.getHttpServer())
+      .get('/auth/sessions')
+      .set('Authorization', `Bearer ${a.token}`)
+      .expect(200);
+    expect(response.body).toEqual([]);
   });
 });

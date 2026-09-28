@@ -51,6 +51,11 @@ const user = {
   email: 'maya@example.test',
   role: 'EMPLOYEE',
 }
+let sessionRows = [
+  { id: 'current-session', current: true, deviceLabel: 'Chrome on Windows', createdAt: '2026-09-27T10:00:00Z', lastUsedAt: '2026-09-27T11:00:00Z' },
+  { id: 'remote-session', current: false, deviceLabel: null, createdAt: '2026-09-26T10:00:00Z', lastUsedAt: '2026-09-26T11:00:00Z' },
+  { id: 'another-session', current: false, deviceLabel: 'Browser on unknown platform', createdAt: '2026-09-26T10:00:00Z', lastUsedAt: '2026-09-26T11:00:00Z' },
+]
 let refreshCookie = null
 let throttled = false, loginCount = 0
 let blockRefresh = false,
@@ -213,6 +218,12 @@ async function page(source = '', contextId = null) {
           refreshCookie = `refresh=opaque-${token}`
           cookie = `${refreshCookie}; HttpOnly; Path=/; SameSite=Lax`
           }
+        } else if (path === '/auth/sessions') {
+          body = sessionRows
+        } else if (path === '/auth/sessions/logout-others') {
+          sessionRows = sessionRows.filter(row => row.current)
+        } else if (path.startsWith('/auth/sessions/') && request.method === 'DELETE') {
+          sessionRows = sessionRows.filter(row => row.id !== path.split('/').pop())
         } else if (path === '/auth/password') {
           rejection = true
           body = { message: 'Password updated' }
@@ -245,7 +256,7 @@ async function page(source = '', contextId = null) {
             name: 'Access-Control-Allow-Headers',
             value: 'content-type,authorization,x-requested-with',
           },
-          { name: 'Access-Control-Allow-Methods', value: 'GET,POST,OPTIONS' },
+          { name: 'Access-Control-Allow-Methods', value: 'GET,POST,DELETE,OPTIONS' },
           ...(cookie ? [{ name: 'Set-Cookie', value: cookie }] : []),
         ],
         body: Buffer.from(JSON.stringify(body)).toString('base64'),
@@ -295,6 +306,29 @@ try {
     async () => (await state(a)).user && (await state(b)).user,
     'two authenticated pages',
   )
+  await until(() => a.evaluate("document.body.innerText.includes('Your sessions') && document.body.innerText.includes('Other device')"), 'session management loaded')
+  await a.evaluate("window.confirm = () => false; [...document.querySelectorAll('button')].find(b => b.textContent === 'Log out').click()")
+  assert.equal(sessionRows.length, 3)
+  await a.evaluate("window.confirm = () => true; [...document.querySelectorAll('button')].find(b => b.textContent === 'Log out').click()")
+  await until(() => sessionRows.length === 2, 'remote session revoked')
+  await until(() => a.evaluate("[...document.querySelectorAll('li')].filter(li => li.textContent.includes('Other device')).length === 1"), 'session list refreshed')
+  await a.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+  assert(await a.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+  await a.evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Log out all other sessions').click()")
+  await until(() => sessionRows.length === 1, 'other sessions revoked')
+  assert((await state(a)).user && (await state(b)).user)
+  await a.send('Emulation.clearDeviceMetricsOverride')
+  console.log('PASS: session UI identifies current device, confirms remote logout, logs out other sessions and fits mobile')
+  await a.evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Log out this device').click()")
+  await until(async () => !(await state(a)).user && !(await state(b)).user, 'current-device UI logout clears siblings')
+  await until(() => logouts === 1, 'current-device logout reaches server')
+  logouts = 0
+  await until(() => a.evaluate("document.body.innerText.includes('Welcome back')"), 'login page after current-device logout')
+  await a.evaluate('auth.login({email:"maya@example.test",password:"fixture"})')
+  await until(async () => (await state(a)).user && (await state(b)).user, 'fresh login after device logout')
+  await until(() => a.evaluate("document.body.innerText.includes('Your sessions')"), 'profile restored after current-device login')
+  console.log('PASS: current-device session UI signs out both tabs and permits fresh login')
+
   assert.equal(peak, 1)
   let before = count
   assert.deepEqual(await Promise.all([refresh(a), refresh(b)]), [true, true])

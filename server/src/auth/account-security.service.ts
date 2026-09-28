@@ -162,6 +162,10 @@ export class AccountSecurityService {
             : {}),
         },
       });
+      await db.userSession.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: now },
+      });
       await db.refreshToken.updateMany({
         where: { userId: user.id, revokedAt: null },
         data: { revokedAt: now },

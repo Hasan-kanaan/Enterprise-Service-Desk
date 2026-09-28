@@ -14,12 +14,19 @@ describe('Database-backed authentication', () => {
   } as unknown as ExecutionContext;
   const verifyAsync = jest.fn();
   const findUnique = jest.fn();
+  const findSession = jest.fn();
+  const sid = '11111111-1111-4111-8111-111111111111';
   const guard = new AuthGuard(
     { verifyAsync } as unknown as JwtService,
-    { user: { findUnique } } as unknown as PrismaService,
+    {
+      user: { findUnique },
+      userSession: { findFirst: findSession },
+    } as unknown as PrismaService,
   );
   beforeEach(() => {
+    findSession.mockResolvedValue({ id: sid });
     verifyAsync.mockResolvedValue({
+      sid,
       sub: 1,
       role: 'SUPER_ADMIN',
       sessionVersion: 0,
@@ -45,5 +52,26 @@ describe('Database-backed authentication', () => {
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
+  });
+  it('rejects a missing, revoked, or foreign session', async () => {
+    findSession.mockResolvedValue(null);
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(findSession).toHaveBeenCalledWith({
+      where: { id: sid, userId: 1, revokedAt: null },
+    });
+  });
+  it('rejects legacy tokens and malformed identity claims', async () => {
+    for (const payload of [
+      { sub: 1, sessionVersion: 0 },
+      { sub: 1, sid },
+      { sub: -1, sid, sessionVersion: 0 },
+    ]) {
+      verifyAsync.mockResolvedValue(payload);
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    }
   });
 });

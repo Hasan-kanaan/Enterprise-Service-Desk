@@ -1,6 +1,8 @@
 import { AccountSecurityService } from './account-security.service';
 import {
   Body,
+  Delete,
+  ParseUUIDPipe,
   Controller,
   Get,
   Post,
@@ -35,6 +37,37 @@ export class AuthController {
     private readonly usersService: UsersService,
     private readonly accountSecurity: AccountSecurityService,
   ) {}
+
+  @Get('sessions')
+  @UseGuards(AuthGuard)
+  sessions(@Req() request: { user: { sub: number; sid: string } }) {
+    return this.usersService.listSessions(request.user.sub, request.user.sid);
+  }
+
+  @Delete('sessions/:sessionId')
+  @UseGuards(AuthGuard)
+  async revokeSession(
+    @Req() request: { user: { sub: number; sid: string } },
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+  ) {
+    return this.usersService.revokeSessions(
+      request.user.sub,
+      sessionId,
+      false,
+      request.user.sid,
+    );
+  }
+
+  @Post('sessions/logout-others')
+  @UseGuards(AuthGuard)
+  logoutOthers(@Req() request: { user: { sub: number; sid: string } }) {
+    return this.usersService.revokeSessions(
+      request.user.sub,
+      request.user.sid,
+      true,
+      request.user.sid,
+    );
+  }
 
   @Post('password')
   @UseGuards(AuthGuard)
@@ -140,9 +173,13 @@ export class AuthController {
   @Post('login')
   async login(
     @Body() dto: LoginDto,
+    @Req() request: ExpressRequest,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const result = await this.authService.login(dto);
+    const result = await this.authService.login(
+      dto,
+      request.headers['user-agent'],
+    );
     this.setRefreshCookie(response, result.refreshToken);
     return { accessToken: result.accessToken, user: result.user };
   }

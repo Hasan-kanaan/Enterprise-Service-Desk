@@ -1,5 +1,16 @@
 # Project Decisions
 
+## Account sessions and login throttling (2026-09-27)
+
+Stable `UserSession` rows represent logins across atomic refresh rotation. New access JWTs carry only `sub`, `sid`, `sessionVersion` plus standard timestamps. AuthGuard validates the current database user and owned non-revoked session; profile and role claims are never trusted. Last-used dates update on refresh at most once per minute; coarse browser/platform labels are hints, with no raw user-agent, fingerprint, location or IP history.
+
+Profile now includes Your sessions. Authenticated owner-only GET /auth/sessions, DELETE /auth/sessions/:sessionId and POST /auth/sessions/logout-others expose safe fields and revoke sessions plus outstanding refresh tokens. Current-session logout invalidates access immediately and preserves multi-tab coordination. Logout-others does not increment sessionVersion. Completed password change/recovery and deactivation revoke every session; admin reset still only sends email, and activation/recovery never auto-login.
+
+Additive migration `20260927180000_user_sessions` preserves historical refresh/account-action/user data. Legacy refresh rows remain unassociated and are revoked; access JWTs without sid are rejected. Existing devices sign in once after upgrade; no legacy device labels or last-used history are fabricated. Indexes support owner listing and refresh/session validation/revocation.
+
+Login retains the per-IP limit and adds SHA-256 normalized-email limiting for real and nonexistent identities: RATE_LIMIT_LOGIN_ACCOUNT_MAX=10 and RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_MS=600000. Successful login resets only its account budget; generic failures and bounded 429/Retry-After remain. In-process key caps, restart resets, possible temporary account denial and lack of cross-instance coordination remain; distributed limiting is deferred.
+
+
 ## Account activation and recovery (2026-09-27)
 
 Administrators manage identities; users choose passwords. Activation and recovery use single-use emailed links. ACTIVE/INACTIVE is separate from activation; pending accounts cannot log in or receive work. Legacy password-bearing users remain activated without fabricated email verification. See the [implementation, configuration and migration guide](account-security.md). This supersedes earlier admin-password and email-exclusion statements below.

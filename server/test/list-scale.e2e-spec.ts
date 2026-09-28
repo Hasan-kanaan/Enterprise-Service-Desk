@@ -36,20 +36,21 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
   let app: INestApplication<import('node:http').Server>;
   const users: Record<
     string,
-    { id: number; role: UserRole; username: string }
+    { id: number; role: UserRole; username: string; sessionVersion: number }
   > = {};
   const groups: Record<string, number[]> = {};
   let teamId: number,
     otherTeamId: number,
     globalTeamId: number,
     categoryId: number;
+  const sessionIds: Record<string, string> = {};
   const jwt = new JwtService({ secret: jwtConstants.secret });
   const get = (path: string, who = 'employee') =>
     request(app.getHttpServer())
       .get(path)
       .set(
         'Authorization',
-        `Bearer ${jwt.sign({ sub: users[who].id, role: users[who].role })}`,
+        `Bearer ${jwt.sign({ sub: users[who].id, sid: sessionIds[who], sessionVersion: users[who].sessionVersion })}`,
       );
   const page = async (path: string, who = 'employee') => {
     const response = await get(path, who).expect(200);
@@ -91,8 +92,10 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
       admin: 'ADMIN',
       superAdmin: 'SUPER_ADMIN',
     } as const)) {
+      sessionIds[name] = randomUUID();
       users[name] = await db.user.create({
         data: {
+          sessions: { create: { id: sessionIds[name] } },
           username: `${prefix}-${name}`,
           email: `${prefix}-${name}@test.invalid`,
           password: 'test-only',

@@ -49,13 +49,14 @@ describe('Ticket stream scale (isolated PostgreSQL)', () => {
   let ticketId: number, categoryId: number;
   let cycles: { id: number; sequenceNumber: number }[] = [];
   const prefix = `streams-${randomUUID()}`;
+  const sessionIds: Record<string, string> = {};
   const jwt = new JwtService({ secret: jwtConstants.secret });
   const get = (path: string, who = 'manager') =>
     request(app.getHttpServer())
       .get(path)
       .set(
         'Authorization',
-        `Bearer ${jwt.sign({ sub: users[who].id, role: users[who].role })}`,
+        `Bearer ${jwt.sign({ sub: users[who].id, sid: sessionIds[who], sessionVersion: users[who].sessionVersion })}`,
       );
   beforeAll(async () => {
     app = (
@@ -75,8 +76,10 @@ describe('Ticket stream scale (isolated PostgreSQL)', () => {
       collaborator: 'AGENT',
       admin: 'ADMIN',
     })) {
+      sessionIds[name] = randomUUID();
       users[name] = await db.user.create({
         data: {
+          sessions: { create: { id: sessionIds[name] } },
           username: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',
@@ -244,7 +247,7 @@ describe('Ticket stream scale (isolated PostgreSQL)', () => {
   it('keeps an older cursor stable when a new requester message arrives; replay and edits retain lifecycle behavior', async () => {
     const path = `/tickets/${ticketId}/messages`;
     const first = (await get(path, 'employee').expect(200)).body as Stream;
-    const auth = `Bearer ${jwt.sign({ sub: users.employee.id, role: 'EMPLOYEE' })}`;
+    const auth = `Bearer ${jwt.sign({ sub: users.employee.id, sid: sessionIds.employee, sessionVersion: users.employee.sessionVersion })}`;
     await db.ticket.update({
       where: { id: ticketId },
       data: { status: 'WAITING_FOR_EMPLOYEE' },

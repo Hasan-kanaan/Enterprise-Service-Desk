@@ -13,6 +13,7 @@ import { jwtConstants } from './auth.constants';
 export type AuthenticatedRequest = Request & {
   user?: {
     sub: number;
+    sid: string;
     username: string;
     email: string;
     role: import('../../generated/prisma/client').UserRole;
@@ -46,12 +47,22 @@ export class AuthGuard implements CanActivate {
     try {
       const payload = await this.jwtService.verifyAsync<{
         sub: number;
+        sid?: string;
         sessionVersion?: number;
       }>(token, {
         secret: jwtConstants.secret,
       });
 
-      if (!Number.isInteger(payload.sub)) throw new UnauthorizedException();
+      if (
+        !Number.isInteger(payload.sub) ||
+        payload.sub < 1 ||
+        typeof payload.sid !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          payload.sid,
+        ) ||
+        !Number.isInteger(payload.sessionVersion)
+      )
+        throw new UnauthorizedException();
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
         select: {
@@ -72,7 +83,12 @@ export class AuthGuard implements CanActivate {
         user.sessionVersion !== (payload.sessionVersion ?? 0)
       )
         throw new UnauthorizedException();
+      const session = await this.prisma.userSession.findFirst({
+        where: { id: payload.sid, userId: user.id, revokedAt: null },
+      });
+      if (!session) throw new UnauthorizedException();
       request.user = {
+        sid: session.id,
         sub: user.id,
         username: user.username,
         email: user.email,

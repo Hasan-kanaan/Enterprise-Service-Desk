@@ -1957,6 +1957,7 @@ responses and logs. No cloud secret manager is implemented.
 | REQUEST_BODY_LIMIT_BYTES | 102400 (100 KiB), positive integer, for JSON and URL-encoded bodies. URL-encoded bodies also cap at 100 parameters. Compressed bodies are rejected (415). |
 | RATE_LIMIT_API_MAX / RATE_LIMIT_API_WINDOW_MS | 600 requests / 60000 ms, per socket-derived client IP, across API routes. |
 | RATE_LIMIT_LOGIN_MAX / RATE_LIMIT_LOGIN_WINDOW_MS | 20 attempts / 600000 ms, POST /auth/login, successes and failures counted. |
+| RATE_LIMIT_LOGIN_ACCOUNT_MAX / RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_MS | 10 attempts / 600000 ms per SHA-256 normalized email identity, including nonexistent accounts. Successful login resets this account budget only. |
 | RATE_LIMIT_REFRESH_MAX / RATE_LIMIT_REFRESH_WINDOW_MS | 60 requests / 60000 ms, POST /auth/refresh. |
 | RATE_LIMIT_SETUP_MAX / RATE_LIMIT_SETUP_WINDOW_MS | 5 requests / 600000 ms, POST /auth/setup, including requests after setup is complete. |
 | RATE_LIMIT_MAX_KEYS | 10000 active IP/policy keys per process; positive integer. |
@@ -2066,3 +2067,14 @@ and merges successful communication mutations into loaded records. Refresh start
 a new recent page. Older pages may show only part of a cycle. New inserts do not
 invalidate an existing older-page boundary. See [the scale audit](docs/list-scale-audit.md)
 for the focused index migration, isolated fixture and measured query plans.
+
+
+### Account sessions
+
+Access JWTs contain only `sub`, `sid`, `sessionVersion` and standard `iat`/`exp` timestamps. Every protected request checks the active, activated PostgreSQL user, account version, and owned non-revoked session; database profile/role values remain authoritative. Stable `UserSession` IDs survive atomic refresh rotation. Only coarse browser/platform hints are stored; no raw user-agent, location, or IP history. Last active records login/refresh with at most one update per minute.
+
+Profile > Your sessions lists current/relevant sessions. `GET /auth/sessions` exposes only ID, created/last-used dates, optional device label and current flag. `DELETE /auth/sessions/:sessionId` revokes an owned session and its refresh tokens; `POST /auth/sessions/logout-others` preserves the caller's session without changing sessionVersion. Ordinary logout revokes the supplied cookie's stable session, immediately rejecting its access tokens too. Current-device UI logout retains shared-tab locking and sign-out propagation.
+
+Completed recovery/password change and deactivation revoke all sessions and retain account-wide version invalidation. Admin reset only sends email; activation/recovery never auto-login. Migration `20260927180000_user_sessions` retains legacy refresh records with nullable session references and revokes outstanding legacy refresh tokens. Pre-migration access JWTs without `sid` are rejected: all existing devices must sign in once after upgrade. No device facts or last-use history are backfilled.
+
+Per-account login limiting supplements the unchanged per-IP budget, returns generic failures/429 with Retry-After, and stores hashed normalized identities only. Both limiters are bounded and in-process: budgets reset on restart and do not coordinate instances. Distributed limiting remains deferred; an attacker can temporarily exhaust a known account's budget.

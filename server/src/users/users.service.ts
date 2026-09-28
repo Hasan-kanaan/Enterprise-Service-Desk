@@ -82,6 +82,10 @@ export class UsersService {
           sessionVersion: { increment: 1 },
         },
       });
+      await db.userSession.updateMany({
+        where: { userId: targetId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
       await db.refreshToken.updateMany({
         where: { userId: targetId, revokedAt: null },
         data: { revokedAt: new Date() },
@@ -183,6 +187,10 @@ export class UsersService {
           data: { teamLeadId: null },
         });
         await db.teamManager.deleteMany({ where: { managerId: targetId } });
+        await db.userSession.updateMany({
+          where: { userId: targetId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
         await db.refreshToken.updateMany({
           where: { userId: targetId, revokedAt: null },
           data: { revokedAt: new Date() },
@@ -208,6 +216,7 @@ export class UsersService {
     tokenHash: string,
     expiresAt: Date,
     consumedHash?: string,
+    deviceLabel?: string,
   ) {
     return serializable(this.prisma, async (db) => {
       const user = await lockUser(db, userId);
@@ -221,7 +230,23 @@ export class UsersService {
         throw new UnauthorizedException(
           'Account or session is no longer active',
         );
+      let sid: string;
       if (consumedHash) {
+        const previous = await db.refreshToken.findUnique({
+          where: { tokenHash: consumedHash },
+          include: { session: true },
+        });
+        if (
+          !previous?.session ||
+          previous.session.userId !== userId ||
+          previous.session.revokedAt
+        )
+          throw new UnauthorizedException('Invalid or expired refresh token');
+        sid = previous.session.id;
+        await db.userSession.updateMany({
+          where: { id: sid, lastUsedAt: { lt: new Date(Date.now() - 60000) } },
+          data: { lastUsedAt: new Date() },
+        });
         const consumed = await db.refreshToken.updateMany({
           where: {
             tokenHash: consumedHash,
@@ -233,9 +258,14 @@ export class UsersService {
         });
         if (consumed.count !== 1)
           throw new UnauthorizedException('Invalid or expired refresh token');
+      } else {
+        sid = (await db.userSession.create({ data: { userId, deviceLabel } }))
+          .id;
       }
-      await db.refreshToken.create({ data: { userId, tokenHash, expiresAt } });
-      return user;
+      await db.refreshToken.create({
+        data: { userId, tokenHash, expiresAt, sessionId: sid },
+      });
+      return { ...user, sid };
     });
   }
 
@@ -455,11 +485,64 @@ export class UsersService {
   }
 
   async revokeRefreshToken(tokenHash: string): Promise<boolean> {
-    const result = await this.prisma.refreshToken.updateMany({
-      where: { tokenHash, revokedAt: null },
-      data: { revokedAt: new Date() },
+    const token = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
     });
+    if (!token?.sessionId) return false;
+    await this.revokeSessions(token.userId, token.sessionId);
+    return true;
+  }
 
-    return result.count > 0;
+  async listSessions(userId: number, sid: string) {
+    const sessions = await this.prisma.userSession.findMany({
+      where: {
+        userId,
+        revokedAt: null,
+        refreshTokens: {
+          some: { revokedAt: null, expiresAt: { gt: new Date() } },
+        },
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        lastUsedAt: true,
+        deviceLabel: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return sessions.map((session) => ({
+      ...session,
+      current: session.id === sid,
+    }));
+  }
+
+  async revokeSessions(
+    userId: number,
+    sid: string,
+    others = false,
+    currentSid?: string,
+  ) {
+    return serializable(this.prisma, async (db) => {
+      await lockUser(db, userId);
+      if (
+        currentSid &&
+        !(await db.userSession.findFirst({
+          where: { id: currentSid, userId, revokedAt: null },
+        }))
+      )
+        throw new UnauthorizedException();
+      const where = { userId, id: others ? { not: sid } : sid };
+      if (!others && !(await db.userSession.findFirst({ where })))
+        throw new NotFoundException('Session not found');
+      await db.userSession.updateMany({
+        where: { ...where, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await db.refreshToken.updateMany({
+        where: { userId, session: where, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return { message: 'Sessions revoked' };
+    });
   }
 }

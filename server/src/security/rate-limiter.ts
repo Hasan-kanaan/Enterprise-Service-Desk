@@ -12,6 +12,10 @@ export class RateLimiter {
     private readonly now = Date.now,
   ) {}
 
+  reset(key: string) {
+    this.entries.delete(key);
+  }
+
   consume(key: string, policy: RatePolicy): number {
     const now = this.now();
     if (now >= this.nextCleanup) {

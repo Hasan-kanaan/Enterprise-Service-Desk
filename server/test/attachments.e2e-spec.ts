@@ -27,9 +27,14 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
   let users: Record<string, User>;
   let ticketId: number, subtaskId: number, teamId: number, otherTeamId: number;
   let cycleId: number, oldCycleId: number, categoryId: number;
+  const sessionIds: Record<string, string> = {};
   const jwt = new JwtService({ secret: jwtConstants.secret });
   const token = (name: string) =>
-    jwt.sign({ sub: users[name].id, role: users[name].role });
+    jwt.sign({
+      sub: users[name].id,
+      sid: sessionIds[name],
+      sessionVersion: users[name].sessionVersion,
+    });
   const get = <P extends string>(path: P, who: string) =>
     request(app.getHttpServer())
       .get(path)
@@ -95,8 +100,10 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       admin: 'ADMIN',
       superAdmin: 'SUPER_ADMIN',
     })) {
+      sessionIds[name] = randomUUID();
       users[name] = await db.user.create({
         data: {
+          sessions: { create: { id: sessionIds[name] } },
           username: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',

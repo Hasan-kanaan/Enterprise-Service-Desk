@@ -20,11 +20,12 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
     taskId: number,
     teamId: number,
     categoryId: number;
+  const sessionIds: Record<string, string> = {};
   const jwt = new JwtService({ secret: jwtConstants.secret });
   const token = (name: string) =>
     jwt.sign({
       sub: users[name].id,
-      role: users[name].role,
+      sid: sessionIds[name],
       sessionVersion: users[name].sessionVersion,
     });
   const get = <P extends string>(path: P, who = 'agent') =>
@@ -67,8 +68,10 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
       admin: 'ADMIN',
       superAdmin: 'SUPER_ADMIN',
     })) {
+      sessionIds[name] = randomUUID();
       users[name] = await db.user.create({
         data: {
+          sessions: { create: { id: sessionIds[name] } },
           username: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',
@@ -428,6 +431,10 @@ describe('My Work History (PostgreSQL and HTTP)', () => {
       users[who] = await db.user.findUniqueOrThrow({
         where: { id: users[who].id },
       });
+      // Model a fresh authenticated session after reactivation.
+      sessionIds[who] = (
+        await db.userSession.create({ data: { userId: users[who].id } })
+      ).id;
       const after = (await history(who).expect(200)).body.items;
       expect(
         after.map(({ canOpenTicket, ...row }) => {

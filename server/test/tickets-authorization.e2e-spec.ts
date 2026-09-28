@@ -29,9 +29,14 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
   let owned: Ticket, intake: Ticket;
   let subtask: Subtask;
   let categoryId: number, regionId: number, departmentId: number;
+  const sessionIds: Record<string, string> = {};
   const jwt = new JwtService({ secret: jwtConstants.secret });
   const token = (name: string) =>
-    jwt.sign({ sub: users[name].id, role: users[name].role });
+    jwt.sign({
+      sub: users[name].id,
+      sid: sessionIds[name],
+      sessionVersion: users[name].sessionVersion,
+    });
   const get = <P extends string>(path: P, name: string) =>
     request(app.getHttpServer())
       .get(path)
@@ -92,8 +97,10 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       admin: UserRole.ADMIN,
       superAdmin: UserRole.SUPER_ADMIN,
     })) {
+      sessionIds[name] = randomUUID();
       users[name] = await db.user.create({
         data: {
+          sessions: { create: { id: sessionIds[name] } },
           username: `${name}-${prefix}`,
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused-test-hash',

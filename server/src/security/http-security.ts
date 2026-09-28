@@ -37,6 +37,13 @@ export class SafeHttpErrors implements ExceptionFilter {
       response.status(404).json({ statusCode: 404, message: 'Not found' });
     } else {
       const body = (error as HttpException).getResponse();
+      if (
+        status === 429 &&
+        typeof body === 'object' &&
+        'retryAfter' in body &&
+        Number.isSafeInteger(body.retryAfter)
+      )
+        response.setHeader('Retry-After', String(body.retryAfter));
       response
         .status(status)
         .json(
