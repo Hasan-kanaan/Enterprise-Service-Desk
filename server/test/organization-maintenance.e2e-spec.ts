@@ -222,6 +222,90 @@ describe('Organization maintenance (focused PostgreSQL and HTTP)', () => {
   const reactivate = (catalog: string, id: number) =>
     post(`/organization/${catalog}/${id}/reactivate`, 'superAdmin', {});
 
+  it('Team-name uniqueness: GLOBAL create and rename conflicts return 409, including archived names', async () => {
+    const otherName = `global-${randomUUID()}`;
+    const other = await db.team.create({
+      data: { name: otherName, scope: 'GLOBAL' },
+    });
+    try {
+      await post('/organization/teams', 'admin', {
+        name: teamB.name,
+        scope: 'GLOBAL',
+      }).expect(409);
+      await patch(`/organization/teams/${other.id}`, 'admin', {
+        name: teamB.name,
+      }).expect(409);
+      expect(
+        (await db.team.findUniqueOrThrow({ where: { id: other.id } })).name,
+      ).toBe(otherName);
+      await archive('teams', teamB.id).expect(201);
+      await post('/organization/teams', 'admin', {
+        name: teamB.name,
+        scope: 'GLOBAL',
+      }).expect(409);
+      await patch(`/organization/teams/${other.id}`, 'admin', {
+        name: teamB.name,
+      }).expect(409);
+      // Direct writes also fail: the database, not an API pre-check, is authoritative.
+      await expect(
+        db.team.create({ data: { name: teamB.name, scope: 'GLOBAL' } }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+    } finally {
+      await db.team.delete({ where: { id: other.id } });
+    }
+  });
+
+  it('Team-name uniqueness: concurrent GLOBAL creations cannot share a name', async () => {
+    const name = `global-race-${randomUUID()}`;
+    try {
+      const results = await Promise.all([
+        post('/organization/teams', 'admin', { name, scope: 'GLOBAL' }),
+        post('/organization/teams', 'superAdmin', { name, scope: 'GLOBAL' }),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+      expect(await db.team.count({ where: { name, regionId: null } })).toBe(1);
+    } finally {
+      await db.team.deleteMany({ where: { name, regionId: null } });
+    }
+  });
+
+  it('Team-name uniqueness: regional names remain unique only within each Region', async () => {
+    const secondRegion = await db.region.create({
+      data: { name: `region-${randomUUID()}` },
+    });
+    try {
+      await post('/organization/teams', 'admin', {
+        name: teamA.name,
+        scope: 'REGION',
+        regionId: secondRegion.id,
+      }).expect(201);
+      await post('/organization/teams', 'admin', {
+        name: teamA.name,
+        scope: 'REGION',
+        regionId,
+      }).expect(409);
+      await patch(`/organization/teams/${teamC.id}`, 'admin', {
+        name: teamA.name,
+      }).expect(409);
+      // GLOBAL and regional namespaces are independent.
+      await post('/organization/teams', 'admin', {
+        name: teamA.name,
+        scope: 'GLOBAL',
+      }).expect(201);
+      expect(await db.team.count({ where: { name: teamA.name } })).toBe(3);
+    } finally {
+      await db.team.deleteMany({
+        where: {
+          OR: [
+            { regionId: secondRegion.id },
+            { name: teamA.name, regionId: null },
+          ],
+        },
+      });
+      await db.region.delete({ where: { id: secondRegion.id } });
+    }
+  });
+
   it('renames all four stable IDs, including archived records; validates and reports conflicts', async () => {
     const specialty = await db.specialty.create({
       data: { name: `specialty-${randomUUID()}` },
