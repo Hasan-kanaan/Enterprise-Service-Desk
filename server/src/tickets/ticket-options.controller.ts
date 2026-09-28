@@ -19,8 +19,16 @@ export class TicketOptionsController {
     const [categories, tags, regions, departments] = await Promise.all([
       this.prisma.ticketCategory.findMany({ select, orderBy }),
       this.prisma.ticketTag.findMany({ select, orderBy }),
-      this.prisma.region.findMany({ select, orderBy }),
-      this.prisma.department.findMany({ select, orderBy }),
+      this.prisma.region.findMany({
+        where: { archivedAt: null },
+        select,
+        orderBy,
+      }),
+      this.prisma.department.findMany({
+        where: { archivedAt: null },
+        select,
+        orderBy,
+      }),
     ]);
     return { categories, tags, regions, departments };
   }

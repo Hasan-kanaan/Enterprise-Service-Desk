@@ -4,6 +4,7 @@ import { AdminDialog } from './AdminDialog'
 import type { Catalog, Reference, Team } from '@/types/administration'
 import {
   createReference,
+  maintainOrganization,
   createTeam,
   addMember,
   removeMember,
@@ -75,11 +76,13 @@ export function OrganizationCreateForm({
                 onChange={(e) => setRegion(Number(e.target.value) || null)}
               >
                 <option value="">Choose region</option>
-                {regions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
+                {regions
+                  .filter((item) => !item.archivedAt)
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
               </select>
             </label>
           )}
@@ -180,6 +183,60 @@ export function TeamActionForm({
         <p className="muted">
           Membership removal does not transfer existing work assignments. The
           Team Lead responsibility must be removed first for a lead member.
+        </p>
+      )}
+    </AdminDialog>
+  )
+}
+
+export type MaintenanceAction = {
+  catalog: Catalog | 'teams'
+  record: Reference
+  kind: 'rename' | 'archive' | 'reactivate'
+}
+export function OrganizationMaintenanceForm({
+  action,
+  ...callbacks
+}: { action: MaintenanceAction } & Callbacks) {
+  const [name, setName] = useState(action.record.name)
+  const label = action.kind[0].toUpperCase() + action.kind.slice(1)
+  return (
+    <AdminDialog
+      title={`${label} ${action.record.name}`}
+      {...callbacks}
+      valid={action.kind !== 'rename' || !!name.trim()}
+      submit={() =>
+        maintainOrganization(
+          action.catalog,
+          action.record.id,
+          action.kind,
+          name.trim(),
+        )
+      }
+    >
+      {action.kind === 'rename' ? (
+        <label className="field">
+          Name
+          <input
+            aria-label="Organization name"
+            required
+            maxLength={action.catalog === 'teams' ? 150 : 100}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+      ) : action.kind === 'archive' ? (
+        <p className="notice">
+          Confirm archival. This record will be unavailable for new selections.
+          Historical records and references remain intact.
+          {action.catalog === 'teams' &&
+            ' Current Team/Agent operational assignments may be cleared. Team Lead and TeamManager responsibility will be removed. No replacement is selected.'}
+        </p>
+      ) : (
+        <p className="notice">
+          Restore eligibility for future selections. Previously cleared
+          assignments, Team Lead and TeamManager responsibilities will not be
+          restored.
         </p>
       )}
     </AdminDialog>

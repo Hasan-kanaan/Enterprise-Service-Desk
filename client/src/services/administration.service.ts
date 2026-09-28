@@ -52,3 +52,13 @@ export const setTeamManager = async (team: number, user: number) =>
   api.post(`/organization/teams/${team}/manager/${user}`)
 export const removeTeamManager = async (team: number) =>
   api.delete(`/organization/teams/${team}/manager`)
+
+export const maintainOrganization = (
+  catalog: Catalog | 'teams',
+  id: number,
+  action: 'rename' | 'archive' | 'reactivate',
+  name?: string,
+) =>
+  action === 'rename'
+    ? api.patch(`/organization/${catalog}/${id}`, { name })
+    : api.post(`/organization/${catalog}/${id}/${action}`)

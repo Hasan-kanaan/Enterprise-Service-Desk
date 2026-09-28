@@ -278,6 +278,20 @@ function response(request) {
     }
     return [200, { id: account.id, status: account.status }]
   }
+  const maintenance = path.match(/^\/organization\/(regions|departments|specialties|teams)\/(\d+)(?:\/(archive|reactivate))?$/)
+  if (maintenance) {
+    const [ , catalog, id, operation ] = maintenance
+    const item = (catalog === 'teams' ? teams : catalogs[catalog]).find(r => r.id === Number(id))
+    if (!item) return [404, { message: 'Record unavailable' }]
+    if (operation === 'archive' && catalog === 'regions' && teams.some(t => t.regionId === item.id && !t.archivedAt))
+      return [409, { message: "Archive the region's active teams first." }]
+    if (!operation) { assert.equal(request.method, 'PATCH'); item.name = body.name.trim() }
+    else {
+      item.archivedAt = operation === 'archive' ? new Date().toISOString() : null
+      if (catalog === 'teams' && operation === 'archive') { item.teamLeadId = null; item.managerId = null }
+    }
+    return [operation ? 201 : 200, { id: item.id, name: item.name, archivedAt: item.archivedAt ?? null }]
+  }
   const lookup = path.match(/^\/organization\/teams\/(\d+)\/(people|members)$/)
   if (lookup && request.method === 'GET') {
     const team = teams.find(t => t.id === Number(lookup[1]))
@@ -543,6 +557,66 @@ try {
     await confirm()
     await waitText(`${prefix}-${role.toLowerCase()}`)
   }
+  if (process.argv.includes('--organization-maintenance')) {
+    teams.push({ id: 1, name: 'Regional support', scope: 'REGION', regionId: 1, teamLeadId: 4, managerId: 5, memberIds: [4] })
+    await navigate('/admin/organization')
+    await waitText('Regional support')
+    await click('Regions')
+    await action('Archive')
+    await click('Confirm')
+    await waitText("Archive the region's active teams first.")
+    assert(await evaluate(`[...document.querySelectorAll('button')].find(el => el.textContent === 'Confirm').disabled`))
+    await click('Reload administration')
+    await click('Teams')
+    await action('Archive')
+    await waitText('Current Team/Agent operational assignments may be cleared')
+    await click('Cancel')
+    assert.equal(teams[0].archivedAt, undefined)
+    for (const tab of ['Teams', 'Regions', 'Departments', 'Specialties']) {
+      await click(tab)
+      await action('Rename')
+      await fill('[aria-label="Organization name"]', '   ')
+      assert(await evaluate(`[...document.querySelectorAll('button')].find(el => el.textContent === 'Confirm').disabled`))
+      await fill('[aria-label="Organization name"]', `  Updated ${tab}  `)
+      await confirm()
+      await waitText(`Updated ${tab}`)
+      await action('Archive')
+      const before = mutations.length
+      await evaluate(`(() => { const form = document.querySelector('dialog form'); form.requestSubmit(); form.requestSubmit(); })()`)
+      await until(() => evaluate('!document.querySelector("dialog")'), 'archived')
+      assert.equal(mutations.length, before + 1)
+      await waitText('ARCHIVED')
+      await action('Rename')
+      await fill('[aria-label="Organization name"]', `Archived ${tab}`)
+      await confirm()
+      await waitText(`Archived ${tab}`)
+    }
+    assert.equal(teams[0].teamLeadId, null)
+    assert.equal(teams[0].managerId, null)
+    assert.deepEqual(teams[0].memberIds, [4])
+    await click('Teams')
+    await action('Create team')
+    await fill('[aria-label="Team coverage"]', 'REGION')
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Team region"]').options.length`), 1)
+    await click('Cancel')
+    await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+    for (const tab of ['Regions', 'Departments', 'Specialties', 'Teams']) {
+      await click(tab)
+      await action('Reactivate')
+      await waitText('Previously cleared assignments')
+      assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+      await confirm()
+      await waitText('ACTIVE')
+    }
+    await click('Archived Teams')
+    await waitText('Team members')
+    await waitText('Unassigned')
+    assert.equal(teams[0].teamLeadId, null)
+    assert.equal(teams[0].managerId, null)
+    assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+    assert.deepEqual(browserErrors, [])
+    console.log('PASS: focused organization rename/archive/reactivate, archived rename/labels, Region 409, confirmation/cancel, duplicate submission, active-only Region selector, retained membership, cleared responsibility, mobile and admin ticket isolation')
+  } else {
   await navigate('/admin')
   await waitText('Administration workspace')
   await click('Manage accounts')
@@ -946,6 +1020,7 @@ try {
   await click('Send instructions')
   await waitText('If an eligible account exists')
   console.log('PASS: activation mail, memory-only fragment, no auto-login, user-owned passwords, admin resend/reset links, forgot/reset, old password rejection, replay, rate limits and mobile security pages')
+  }
   assert.deepEqual(browserErrors, [])
   console.log(
     'PASS: protected administration routes, no administrative ticket requests, no runtime/console errors',

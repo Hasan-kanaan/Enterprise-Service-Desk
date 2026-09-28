@@ -6,6 +6,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Patch,
   UseGuards,
   Req,
   Query,
@@ -17,7 +18,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { UserRole as PrismaUserRole } from '../../generated/prisma/client';
 import { UserRole } from '../users/user-role.enum';
-import { CreateNameDto } from './dto/create-name.dto';
+import { CreateNameDto, RenameTeamDto } from './dto/create-name.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { OrganizationService } from './organization.service';
 
@@ -36,6 +37,199 @@ type ActorRequest = {
 export class OrganizationController {
   constructor(private readonly organizationService: OrganizationService) {}
 
+  @Patch('regions/:id')
+  renameRegion(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateNameDto,
+  ) {
+    return this.organizationService.maintain(
+      'region',
+      id,
+      { name: dto.name },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Post('regions/:id/archive')
+  archiveRegion(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.organizationService.maintain(
+      'region',
+      id,
+      { archived: true },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Post('regions/:id/reactivate')
+  reactivateRegion(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.organizationService.maintain(
+      'region',
+      id,
+      { archived: false },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Patch('departments/:id')
+  renameDepartment(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateNameDto,
+  ) {
+    return this.organizationService.maintain(
+      'department',
+      id,
+      { name: dto.name },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Post('departments/:id/archive')
+  archiveDepartment(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.organizationService.maintain(
+      'department',
+      id,
+      { archived: true },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Post('departments/:id/reactivate')
+  reactivateDepartment(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.organizationService.maintain(
+      'department',
+      id,
+      { archived: false },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Patch('specialties/:id')
+  renameSpecialty(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateNameDto,
+  ) {
+    return this.organizationService.maintain(
+      'specialty',
+      id,
+      { name: dto.name },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Post('specialties/:id/archive')
+  archiveSpecialty(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.organizationService.maintain(
+      'specialty',
+      id,
+      { archived: true },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Post('specialties/:id/reactivate')
+  reactivateSpecialty(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.organizationService.maintain(
+      'specialty',
+      id,
+      { archived: false },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Patch('teams/:id')
+  renameTeam(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RenameTeamDto,
+  ) {
+    return this.organizationService.maintain(
+      'team',
+      id,
+      { name: dto.name },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Post('teams/:id/archive')
+  archiveTeam(@Req() req: ActorRequest, @Param('id', ParseIntPipe) id: number) {
+    return this.organizationService.maintain(
+      'team',
+      id,
+      { archived: true },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Post('teams/:id/reactivate')
+  reactivateTeam(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.organizationService.maintain(
+      'team',
+      id,
+      { archived: false },
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
   @Get('regions') listRegions() {
     return this.organizationService.listRegions();
   }

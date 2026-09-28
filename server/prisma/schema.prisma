@@ -187,6 +187,7 @@ model RefreshToken {
 }
 
 model Region {
+  archivedAt    DateTime?
   id            Int            @id @default(autoincrement())
   name          String         @unique @db.VarChar(100)
   createdAt     DateTime       @default(now())
@@ -199,6 +200,7 @@ model Region {
 }
 
 model Department {
+  archivedAt        DateTime?
   id                Int                @id @default(autoincrement())
   name              String             @unique @db.VarChar(100)
   createdAt         DateTime           @default(now())
@@ -210,6 +212,7 @@ model Department {
 }
 
 model Specialty {
+  archivedAt DateTime?
   id        Int             @id @default(autoincrement())
   name      String          @unique @db.VarChar(100)
   createdAt DateTime        @default(now())
@@ -219,6 +222,7 @@ model Specialty {
 }
 
 model Team {
+  archivedAt       DateTime?
   id               Int             @id @default(autoincrement())
   name             String          @db.VarChar(150)
   scope            TeamScope

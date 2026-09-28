@@ -1,5 +1,13 @@
 # Project Status
 
+## Organization maintenance (2026-09-28)
+
+Implemented stable-ID rename and non-destructive archive/reactivate for Region, Department, Specialty and Team. Additive migration `20260928120000_organization_archival` adds nullable archivedAt only; existing rows remain active. Admin-only PATCH rename and POST archive/reactivate return organization fields only. Administration displays ACTIVE/ARCHIVED labels, rename and confirmed lifecycle actions, safe conflict recovery, pending guards and mobile layouts. No physical deletion or historical name snapshots.
+
+Regions cannot archive until all active regional Teams are archived; creation/reactivation of a regional Team requires an active Region. Team archive atomically clears current operational Team/Agent assignments and Team Lead/TeamManager, preserving valid responsible Managers/statuses and returning exceptional invalid ownership to NEW intake. Only actionable current-cycle subtasks are cleared. Memberships, specialty links, user/scope references, terminal tickets and ended-cycle/history evidence remain. Reactivation restores eligibility without restoring cleared responsibility or cascading to Teams. Backend catalogs, routing/assignment and bounded lookup checks exclude archived entities from new use; existing scope references remain retainable. ADMIN/SUPER_ADMIN gain no ticket authority or content visibility.
+
+Targeted verification: Prisma validate/generate pass; development and isolated test databases have 21 applied migrations and zero drift. Three affected unit suites (35 tests) and the focused organization PostgreSQL/HTTP suite (10 tests) pass, including role/session rejection, rollback and Region-create/Team-assignment races. Focused organization Chromium checks pass for all four lifecycles, archived rename/labels, confirmation/cancel, duplicate submission, 409 recovery, active Region selection, retained relationships, mobile and admin ticket isolation. Browser startup stalled under sandbox; the same focused run passed outside it with isolated fixtures. Backend/frontend typechecks, affected lint, builds and `git diff --check` pass. The injected rollback case intentionally logs one HTTP 500; its rollback assertions pass. Full regression suites were not run. Coverage edits, specialty-link editing and ordinary membership-removal reconciliation remain deferred. No AI/cloud/deployment, unrelated security work, commit or push.
+
 ## Account sessions and login throttling (2026-09-27)
 
 Stable `UserSession` rows represent logins across atomic refresh rotation. New access JWTs carry only `sub`, `sid`, `sessionVersion` plus standard timestamps. AuthGuard validates the current database user and owned non-revoked session; profile and role claims are never trusted. Last-used dates update on refresh at most once per minute; coarse browser/platform labels are hints, with no raw user-agent, fingerprint, location or IP history.
@@ -25,6 +33,8 @@ Frontend and backend verification updated on 2026-09-27. [README.md](README.md) 
 The [future public demo deployment plan](docs/demo-deployment-plan.md) records late-phase constraints only; demo infrastructure remains deferred while normal product development continues.
 
 ## Current Phase
+
+Organization maintenance is implemented; see the latest verification above. The full regression checkpoint remains deferred.
 
 Email-based account activation and self-service password recovery are implemented on the verified pre-AI hardening, multi-tab, pagination/search and business-authorization baseline. Multiple devices/browsers remain supported; logout now revokes the current stable device session and its access/refresh credentials. AI and public-demo/deployment work remain deferred. No commit or push performed.
 
@@ -298,7 +308,7 @@ Email is out of scope for ordinary ticket notifications. Email is used only for 
 - Deactivation confirmation explains existing offboarding without operational previews or replacement choices. Reactivation does not restore sessions/responsibilities. Successful mutations reload account status. Protected account creation participates in shared 401 recovery.
 - List/create regions, departments and specialties; list/create REGION/GLOBAL teams; view team details; add/remove AGENT membership; assign/replace/remove Team Lead; assign/remove organizational TeamManager. Existing specialty links are displayed only. Active eligibility, one-led-team restriction, member/lead removal ordering, and nullable assignments are respected.
 - Minimal backend read additions: GET /users includes region/department id/name; GET /organization/teams includes member userId and user id/username/role/status. Existing administrative guards retained. No new endpoints, schema, migrations, dependencies, or organization mutation rules.
-- Loading/empty/validation/error states, native confirmations, pending controls, explicit 403/404/409 reload, and responsive layouts. Missing rename/delete, coverage updates, specialty-link mutations, and account profile/role/home-organization editing remain deferred because the backend does not provide them.
+- Loading/empty/validation/error states, native confirmations, pending controls, explicit 403/404/409 reload, and responsive layouts. Rename/archive/reactivate is now implemented in the organization maintenance phase above; physical deletion is unsupported. Coverage updates, specialty-link mutations and account profile/role/home-organization editing remain deferred.
 
 ## Implemented
 
@@ -397,7 +407,7 @@ Attachments, author-controlled communication soft deletion, My Work History and 
 
 - Browser notifications, polling/realtime transport, generic audit infrastructure, SSO/SCIM and other optional enterprise features remain deferred. Notification history pagination, preferences, deletion and retention jobs are not implemented.
 - Communication uses explicit REST refresh with no pagination, read receipts or revision history. Edits retain original authorship/time and only the latest editedAt/content. Names are current display labels for stable author IDs. Drafts are in-memory and are not promised across navigation, sign-out or a full browser reload.
-- Organization master/team rename/delete, existing team coverage updates, specialty-link changes, account identity/role/home-organization editing, and broader organization/membership lifecycle reconciliation remain deferred due to missing mutation APIs/business rules. Existing member removal does not transfer retained work; no new reconciliation behavior was introduced.
+- Organization rename/archive/reactivate is implemented above; physical deletion is unsupported. Existing team coverage updates, specialty-link changes, account identity/role/home-organization editing and ordinary membership-removal reconciliation remain deferred. Existing member removal does not transfer retained work.
 - Pagination outside My Work History remains deferred. Employee catalogs and operational assignment choices retain their scoped read-only endpoints.
 - Work-cycle snapshots capture ending responsibility, not every within-cycle assignment. Legacy unknown facts remain NULL; names are current display labels for stable user IDs.
 - Subtask statuses retain their existing within-cycle transition behavior; earlier-cycle work is permanently frozen.

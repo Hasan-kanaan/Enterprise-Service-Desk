@@ -86,7 +86,7 @@ export class TicketWorkspaceController {
       ledTeams:
         request.user.role === UserRole.AGENT
           ? await this.prisma.team.findMany({
-              where: { teamLeadId: request.user.sub },
+              where: { teamLeadId: request.user.sub, archivedAt: null },
               select: { id: true, name: true },
               orderBy: { name: 'asc' },
             })
@@ -102,7 +102,9 @@ export class TicketWorkspaceController {
   ) {
     if (!all && teamId === null) return [];
     const teams = await db.team.findMany({
-      where: all ? eligibility : { id: teamId! },
+      where: {
+        AND: [{ archivedAt: null }, all ? eligibility : { id: teamId! }],
+      },
       orderBy: { name: 'asc' },
       select: {
         id: true,
@@ -144,7 +146,7 @@ export class TicketWorkspaceController {
           const team = await db.team.findFirst({
             where: {
               AND: [
-                { id: query.teamId },
+                { id: query.teamId, archivedAt: null },
                 this.policy.isResponsibleManager(user, ticket)
                   ? this.policy.responsibleManagerTeamWhere(user.id)
                   : {},
@@ -160,7 +162,9 @@ export class TicketWorkspaceController {
           db,
           {
             role: UserRole.AGENT,
-            teamMemberships: { some: { teamId: query.teamId } },
+            teamMemberships: {
+              some: { teamId: query.teamId, team: { archivedAt: null } },
+            },
           },
           search,
         );
@@ -198,7 +202,9 @@ export class TicketWorkspaceController {
           db,
           {
             role: UserRole.AGENT,
-            teamMemberships: { some: { teamId: query.teamId } },
+            teamMemberships: {
+              some: { teamId: query.teamId, team: { archivedAt: null } },
+            },
           },
           search,
         );

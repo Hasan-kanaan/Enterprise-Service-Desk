@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Modal } from './Modal'
 import { getApiErrorMessage, getApiStatus } from '@/services/api'
 export function AdminDialog({
@@ -18,6 +18,7 @@ export function AdminDialog({
   onDone: () => void
   onReload: () => void
 }) {
+  const submitting = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
   const stale = [403, 404, 409].includes(getApiStatus(error) ?? 0)
@@ -26,7 +27,8 @@ export function AdminDialog({
       <form
         onSubmit={async (event) => {
           event.preventDefault()
-          if (busy || !valid || stale) return
+          if (submitting.current || busy || !valid || stale) return
+          submitting.current = true
           setBusy(true)
           setError(undefined)
           try {
@@ -35,6 +37,7 @@ export function AdminDialog({
           } catch (failure) {
             setError(failure)
           } finally {
+            submitting.current = false
             setBusy(false)
           }
         }}

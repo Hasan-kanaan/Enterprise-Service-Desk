@@ -1,0 +1,4 @@
+ALTER TABLE "Region" ADD COLUMN "archivedAt" TIMESTAMP(3);
+ALTER TABLE "Department" ADD COLUMN "archivedAt" TIMESTAMP(3);
+ALTER TABLE "Specialty" ADD COLUMN "archivedAt" TIMESTAMP(3);
+ALTER TABLE "Team" ADD COLUMN "archivedAt" TIMESTAMP(3);

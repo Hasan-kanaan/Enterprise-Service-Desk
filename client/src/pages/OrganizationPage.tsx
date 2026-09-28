@@ -9,6 +9,8 @@ import type { Account } from '@/types/administration'
 import { ErrorState, LoadingState, EmptyState } from '@/components/TicketUI'
 import {
   OrganizationCreateForm,
+  OrganizationMaintenanceForm,
+  type MaintenanceAction,
   TeamActionForm,
   type TeamAction,
 } from '@/components/OrganizationForms'
@@ -19,6 +21,7 @@ export function OrganizationPage() {
   const [tab, setTab] = useState<Catalog | 'teams'>('teams'),
     [creating, setCreating] = useState(false),
     [action, setAction] = useState<TeamAction | null>(null)
+  const [maintenance, setMaintenance] = useState<MaintenanceAction | null>(null)
   const [memberSearch, setMemberSearch] = useState('')
   const search = useDebouncedValue(memberSearch)
   const members = usePagedList<Account>(
@@ -27,6 +30,7 @@ export function OrganizationPage() {
   )
   const reload = () => {
     members.reload()
+    setMaintenance(null)
     setCreating(false)
     setAction(null)
     resource.reload()
@@ -78,6 +82,7 @@ export function OrganizationPage() {
           <Link className="back-link" to="/admin/organization">
             Back to organization
           </Link>
+          <p className="notice">{team.archivedAt ? 'ARCHIVED' : 'ACTIVE'}</p>
           <section className="panel detail-body">
             <dl className="metadata-grid">
               <div>
@@ -103,6 +108,7 @@ export function OrganizationPage() {
               <h2>Team members</h2>
               <button
                 className="button secondary"
+                disabled={!!team.archivedAt}
                 onClick={() => setAction({ kind: 'member' })}
               >
                 Add member
@@ -161,6 +167,7 @@ export function OrganizationPage() {
               <div className="button-row">
                 <button
                   className="button secondary"
+                  disabled={!!team.archivedAt}
                   onClick={() => setAction({ kind: 'lead' })}
                 >
                   Assign Team Lead
@@ -193,6 +200,7 @@ export function OrganizationPage() {
               ) : (
                 <button
                   className="button secondary"
+                  disabled={!!team.archivedAt}
                   onClick={() => setAction({ kind: 'manager' })}
                 >
                   Assign TeamManager
@@ -201,8 +209,7 @@ export function OrganizationPage() {
             </section>
           </div>
           <p className="quiet-note">
-            Team coverage, names and specialty links cannot be edited here
-            because the current API does not support those changes.
+            Team coverage and specialty-link editing remain unavailable.
           </p>
           {action && (
             <TeamActionForm
@@ -259,6 +266,33 @@ export function OrganizationPage() {
                   ) : (
                     <span>{item.name}</span>
                   )}
+                  <span>{item.archivedAt ? 'ARCHIVED' : 'ACTIVE'}</span>
+                  <div className="button-row">
+                    <button
+                      className="button secondary"
+                      onClick={() =>
+                        setMaintenance({
+                          catalog: tab,
+                          record: item,
+                          kind: 'rename',
+                        })
+                      }
+                    >
+                      Rename
+                    </button>
+                    <button
+                      className="button secondary"
+                      onClick={() =>
+                        setMaintenance({
+                          catalog: tab,
+                          record: item,
+                          kind: item.archivedAt ? 'reactivate' : 'archive',
+                        })
+                      }
+                    >
+                      {item.archivedAt ? 'Reactivate' : 'Archive'}
+                    </button>
+                  </div>
                 </div>
               ))
             ) : (
@@ -269,8 +303,8 @@ export function OrganizationPage() {
           </section>
           <p className="quiet-note">
             Regions and departments are independent. Departments are not tied to
-            a region. Rename/delete and specialty-link editing are not supported
-            by the current API.
+            a region. Archival preserves IDs and historical references. Physical
+            deletion and specialty-link editing are unavailable.
           </p>
           {creating && (
             <OrganizationCreateForm
@@ -282,6 +316,15 @@ export function OrganizationPage() {
             />
           )}
         </>
+      )}
+      {maintenance && (
+        <OrganizationMaintenanceForm
+          key={`${maintenance.catalog}-${maintenance.record.id}-${maintenance.kind}`}
+          action={maintenance}
+          onClose={() => setMaintenance(null)}
+          onReload={reload}
+          onDone={done}
+        />
       )}
     </div>
   )

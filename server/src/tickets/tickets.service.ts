@@ -67,8 +67,6 @@ export class TicketsService {
       'departments',
     );
     await this.requireCategory(dto.categoryId);
-    await this.requireRegions(dto.affectedRegionIds);
-    await this.requireDepartments(dto.affectedDepartmentIds);
     await this.requireTags(dto.tagIds ?? []);
 
     const creationHash = createHash('sha256')
@@ -115,6 +113,8 @@ export class TicketsService {
         await requireActiveActor(db, user);
         const existing = await replay(db);
         if (existing) return existing;
+        await this.requireRegions(dto.affectedRegionIds, db);
+        await this.requireDepartments(dto.affectedDepartmentIds, db);
         const now = new Date();
         const ticket = await db.ticket.create({
           data: {
@@ -205,9 +205,20 @@ export class TicketsService {
       if (dto.categoryId !== undefined)
         await this.requireCategory(dto.categoryId, db);
       if (dto.affectedRegionIds !== undefined)
-        await this.requireRegions(regionIds, db);
+        await this.requireRegions(
+          regionIds.filter(
+            (id) => !ticket.affectedRegions.some((r) => r.regionId === id),
+          ),
+          db,
+        );
       if (dto.affectedDepartmentIds !== undefined)
-        await this.requireDepartments(departmentIds, db);
+        await this.requireDepartments(
+          departmentIds.filter(
+            (id) =>
+              !ticket.affectedDepartments.some((d) => d.departmentId === id),
+          ),
+          db,
+        );
       if (dto.tagIds !== undefined) await this.requireTags(dto.tagIds, db);
       if (dto.allRegions !== undefined || dto.affectedRegionIds !== undefined) {
         await db.ticketRegion.deleteMany({ where: { ticketId } });
@@ -464,6 +475,12 @@ export class TicketsService {
         );
         await this.validateAssignment(db, assignedTeamId, assignedAgentId);
       }
+      // Reopening completed work is new operational use, even without an assignment edit.
+      if (
+        (dto.status === 'TODO' || dto.status === 'IN_PROGRESS') &&
+        assignedTeamId !== null
+      )
+        await this.requireActiveTeam(db, assignedTeamId);
       const result = await db.subtask.update({
         where: { id: subtaskId },
         data: {
@@ -514,11 +531,7 @@ export class TicketsService {
         );
       return;
     }
-    const team = await db.team.findUnique({
-      where: { id: teamId },
-      select: { id: true },
-    });
-    if (!team) throw new NotFoundException('Team not found');
+    await this.requireActiveTeam(db, teamId);
     if (agentId !== null) {
       const agent = await lockUser(db, agentId);
       if (!agent || agent.status !== 'ACTIVE' || !agent.activatedAt)
@@ -533,6 +546,16 @@ export class TicketsService {
         );
       }
     }
+  }
+
+  private async requireActiveTeam(db: Database, teamId: number) {
+    await db.$queryRaw`SELECT id FROM "Team" WHERE id = ${teamId} FOR SHARE`;
+    const team = await db.team.findUnique({
+      where: { id: teamId },
+      select: { id: true, archivedAt: true },
+    });
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.archivedAt) throw new ConflictException('Team is archived');
   }
 
   private async withTicket<T>(
@@ -622,7 +645,7 @@ export class TicketsService {
             : await db.team.findUnique({
                 where: { id: ticket.assignedTeamId },
               });
-        if (!team) {
+        if (!team || team.archivedAt) {
           if (!dto.returnToIntake)
             throw new ConflictException(
               'Invalid legacy team; explicitly request returnToIntake',
@@ -695,8 +718,12 @@ export class TicketsService {
   }
 
   private async requireRegions(ids: number[], db: Database = this.prisma) {
+    if (ids.length)
+      await db.$queryRaw(
+        Prisma.sql`SELECT id FROM "Region" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR SHARE`,
+      );
     const regions = await db.region.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, archivedAt: null },
       select: { id: true },
     });
     if (regions.length !== new Set(ids).size)
@@ -704,8 +731,12 @@ export class TicketsService {
   }
 
   private async requireDepartments(ids: number[], db: Database = this.prisma) {
+    if (ids.length)
+      await db.$queryRaw(
+        Prisma.sql`SELECT id FROM "Department" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR SHARE`,
+      );
     const departments = await db.department.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, archivedAt: null },
       select: { id: true },
     });
     if (departments.length !== new Set(ids).size)

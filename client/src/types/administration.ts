@@ -1,6 +1,10 @@
 import type { AuthUser, UserRole } from './auth'
 export type AccountStatus = 'ACTIVE' | 'INACTIVE'
-export type Reference = { id: number; name: string }
+export type Reference = {
+  id: number
+  name: string
+  archivedAt?: string | null
+}
 export type Account = AuthUser & {
   activatedAt: string | null
   phoneNumber?: string | null

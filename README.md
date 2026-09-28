@@ -1343,12 +1343,12 @@ The account directory displays username, email, role, ACTIVE/INACTIVE status, an
 
 Activation/deactivation uses the existing lifecycle API and authority matrix. Confirmation explains administrative offboarding of current responsibilities, preservation of historical attribution, and that no replacements are selected. Reactivation explicitly requires fresh sign-in and does not restore previous sessions or responsibilities. The resulting account status is refreshed from the directory. There is no delete-user control, operational preview, or replacement-person picker. Account creation also participates in existing access-token renewal; only session/bootstrap endpoints bypass the ordinary 401 retry mechanism.
 
-Organization controls use existing mutations only:
+Organization controls:
 
 | Concept | Available UI |
 | --- | --- |
-| Regions / departments / specialties | List and create |
-| Teams | List, create with explicit REGION/GLOBAL coverage, view details |
+| Regions / departments / specialties | List, create, rename, archive/reactivate |
+| Teams | List, create with explicit REGION/GLOBAL coverage, rename, archive/reactivate, view details |
 | Membership | Add active AGENT members; remove members after clearing any Team Lead responsibility |
 | Team Lead | Assign/replace an active member who leads no other team; explicitly remove |
 | TeamManager | Assign an active MANAGER when vacant; explicitly remove before replacement |
@@ -1358,7 +1358,11 @@ GLOBAL creation omits regionId; REGION creation requires one actual region. No o
 
 GET /users retains nullable region/department ID/name labels in its paginated directory projection. GET /organization/teams returns configuration without member expansion; GET /organization/teams/:teamId/members paginates user ID/username/role/status for membership display. Purpose-specific bounded people lookups serve organization selectors. Existing administrative guards remain and no operational data is exposed.
 
-The current backend has no rename/delete APIs for regions, departments, specialties or teams; no team coverage update; no specialty-link mutations; and no account identity/role/home-organization editing API. Those controls are deliberately absent. Broader membership/organization lifecycle rules, including reconciliation of retained work after membership removal, remain separate design work. This phase adds no organization mutation or migration.
+Organization maintenance uses nullable `archivedAt` (NULL = active), with no physical deletion. PATCH `/organization/{regions|departments|specialties|teams}/:id` renames via `{ name }`; POST `/:id/archive` and `/:id/reactivate` change eligibility. Names retain their existing length limits and stable IDs; archived records can be renamed. Administration lists include ACTIVE/ARCHIVED records, while new operational/configuration selections require active entities. Existing references and current display names remain readable.
+
+Archive a Region's active regional Teams first. Creating/reactivating a regional Team requires an active Region; Region reactivation never cascades. Team archival atomically clears Team Lead/TeamManager and current operational Team/Agent assignments, retaining valid responsible Managers and lifecycle state, or safely returning invalid ownership to NEW intake. Only actionable current-cycle subtasks are offboarded. Memberships, specialty links, terminal tickets, ended-cycle snapshots and historical subtasks remain intact. Reactivation restores future eligibility only, never cleared responsibilities. Administrators receive no ticket details, previews or affected counts. Other master archival preserves user/ticket/specialty relationships. See [organization decisions](docs/decision.md#organization-maintenance-2026-09-28).
+
+Existing Team coverage, specialty-link changes, account identity/role/home-organization editing and reconciliation after ordinary membership removal remain deferred. Focused maintenance checks: from `server`, run the `test/organization-maintenance.e2e-spec.ts` Jest path against the isolated test database; from `client`, build then run `node test/administration-flow.mjs --organization-maintenance`. This browser mode skips unrelated account and operational suites.
 
 Administration uses shared loading/error states and native confirmation dialogs, explicit 403/404/409 reload, disabled pending controls, validation, empty states, and responsive layouts. `pnpm test:browser` now runs Employee, operational, and administration suites sequentially. Administration acceptance covers both creation/lifecycle matrices, every organization operation exposed above, relationship restrictions, route isolation, token renewal, error recovery, and mobile layout. Browser fixtures remain isolated from actual application data; PostgreSQL tests separately verify real backend contracts and authorization.
 

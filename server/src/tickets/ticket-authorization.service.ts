@@ -26,6 +26,7 @@ export type SubtaskAuthorizationSubject = {
 export class TicketAuthorizationService {
   responsibleManagerTeamWhere(managerId: number): Prisma.TeamWhereInput {
     return {
+      archivedAt: null,
       OR: [{ managers: { some: { managerId } } }, { scope: 'GLOBAL' }],
     };
   }
