@@ -11,6 +11,13 @@ export function AdministrationPage() {
       </header>
       <div className="form-columns">
         <section className="panel detail-body">
+          <h2>Ticket configuration</h2>
+          <p className="muted">Manage categories and tags.</p>
+          <Link className="button primary" to="/admin/ticket-configuration">
+            Manage ticket configuration
+          </Link>
+        </section>
+        <section className="panel detail-body">
           <h2>Accounts</h2>
           <p className="muted">
             Create permitted accounts and manage ACTIVE / INACTIVE access.

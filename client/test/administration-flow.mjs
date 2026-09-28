@@ -141,6 +141,8 @@ const catalogs = {
   departments: [{ id: 1, name: 'Operations' }],
   specialties: [{ id: 1, name: 'Networking' }],
 }
+const configuration = { categories: [], tags: [] }
+const specialtyLinks = new Map()
 const teams = []
 const member = (id) => {
   const {
@@ -163,7 +165,7 @@ const viewTeam = (t) => ({
         },
       ]
     : [],
-  specialties: [],
+  specialties: (specialtyLinks.get(`teams/${t.id}`) ?? []).map(id => ({ specialty: catalogs.specialties.find(item => item.id === id) })),
 })
 let securitySession = true
 let securitySequence = 0
@@ -246,6 +248,25 @@ function response(request) {
         },
       ]
     }
+  }
+  const config = path.match(/^\/ticket-configuration\/(categories|tags)(?:\/(\d+)(?:\/(archive|reactivate))?)?$/)
+  if (config) {
+    const [, kind, id, operation] = config
+    const rows = configuration[kind]
+    if (request.method === 'GET') return [200, rows]
+    if (!id) { const record = { id: rows.length + 1, name: body.name, archivedAt: null }; rows.push(record); return [201, record] }
+    const record = rows.find(item => item.id === Number(id))
+    if (operation) record.archivedAt = operation === 'archive' ? new Date().toISOString() : null
+    else record.name = body.name
+    return [operation ? 201 : 200, record]
+  }
+  const specialty = path.match(/^\/organization\/(agents|teams)\/(\d+)\/specialties(?:\/(\d+))?$/)
+  if (specialty) {
+    const key = `${specialty[1]}/${specialty[2]}`
+    const links = specialtyLinks.get(key) ?? []
+    if (request.method === 'GET') return [200, links.map(id => catalogs.specialties.find(item => item.id === id))]
+    specialtyLinks.set(key, request.method === 'DELETE' ? links.filter(id => id !== Number(specialty[3])) : [...links, Number(specialty[3])])
+    return [request.method === 'DELETE' ? 200 : 201, { message: 'Updated' }]
   }
   if (path === '/users') return [200, pageFixture(accounts, url, false)]
   if (path === '/auth/accounts') {
@@ -557,7 +578,57 @@ try {
     await confirm()
     await waitText(`${prefix}-${role.toLowerCase()}`)
   }
-  if (process.argv.includes('--organization-maintenance')) {
+  if (process.argv.includes('--ticket-configuration')) {
+    await navigate('/admin/ticket-configuration')
+    await waitText('No records yet')
+    for (const kind of ['category', 'tag']) {
+      await action(`Create ${kind}`)
+      await fill('[aria-label="Configuration name"]', `  Test ${kind}  `)
+      const before = mutations.length
+      await evaluate(`(() => { const form = document.querySelector('dialog form'); form.requestSubmit(); form.requestSubmit(); })()`)
+      await until(() => evaluate('!document.querySelector("dialog")'), 'saved')
+      assert.equal(mutations.length, before + 1)
+      await waitText(`Test ${kind}`)
+      const rowAction = async (name, button) => {
+        await evaluate(`(() => {const row=[...document.querySelectorAll('.admin-row')].find(el => el.textContent.includes(${JSON.stringify(name)})); [...row.querySelectorAll('button')].find(el => el.textContent === ${JSON.stringify(button)}).click()})()`)
+        await until(() => evaluate('!!document.querySelector("dialog")'), 'dialog')
+      }
+      await rowAction(`Test ${kind}`, 'Archive')
+      await click('Cancel')
+      assert.equal(configuration[kind === 'category' ? 'categories' : 'tags'][0].archivedAt, null)
+      await rowAction(`Test ${kind}`, 'Archive'); await confirm(); await waitText('ARCHIVED')
+      await rowAction(`Test ${kind}`, 'Rename'); await fill('[aria-label="Configuration name"]', `Renamed ${kind}`); await confirm(); await waitText(`Renamed ${kind}`)
+      await rowAction(`Renamed ${kind}`, 'Reactivate'); await confirm(); await waitText('ACTIVE')
+    }
+    rejectMutation = true; failureCode = 409
+    await action('Create category'); await fill('[aria-label="Configuration name"]', 'Duplicate'); await click('Confirm'); await waitText('Concurrent change')
+    await click('Reload administration'); await waitText('Renamed category')
+    failure = true; await click('Refresh configuration'); await waitText('temporarily unavailable'); failure = false; await click('Try again'); await waitText('Renamed category')
+    teams.push({ id: 1, name: 'Specialty team', scope: 'GLOBAL', regionId: null, teamLeadId: null, managerId: null, memberIds: [4] })
+    catalogs.specialties.push({ id: 2, name: 'Archived specialty', archivedAt: new Date().toISOString() })
+    await navigate('/admin/organization/teams/1'); await waitText('Specialty team')
+    await action('Add specialty')
+    assert(!(await evaluate(`document.querySelector('[aria-label="Specialty"]').textContent.includes('Archived specialty')`)))
+    await fill('[aria-label="Specialty"]', '1'); await confirm(); await waitText('Remove specialty')
+    await action('Remove specialty'); await confirm(); await waitText('No specialties linked')
+    await action('Remove member'); await waitText('clears the Agent'); rejectMutation = true; await click('Confirm'); await waitText('Concurrent change'); await click('Reload administration'); await waitText('Agent Ali')
+    await action('Remove member'); await confirm(); await waitText('No members assigned')
+    teams[0].archivedAt = new Date().toISOString(); specialtyLinks.set('teams/1', [2])
+    await click('Refresh organization'); await waitText('Archived specialty (ARCHIVED)')
+    assert(await evaluate(`[...document.querySelectorAll('button')].find(el=>el.textContent==='Add specialty').disabled`))
+    await action('Remove specialty'); await confirm()
+    accounts.find(a => a.id === 4).activatedAt = new Date().toISOString()
+    await navigate('/admin/accounts'); await waitText('Agent Ali')
+    await evaluate(`document.querySelector('[data-account-id="4"] button').click()`)
+    await waitText('Add specialty'); await action('Add specialty'); await fill('[aria-label="Specialty"]', '1'); await confirm(); await waitText('Remove specialty')
+    await action('Remove specialty'); await confirm(); await waitText('No specialties linked')
+    await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+    for (const path of ['/admin/accounts', '/admin/ticket-configuration', '/admin/organization/teams/1']) {
+      await navigate(path); await delay(250)
+      assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), path)
+    }
+    console.log('PASS: configuration lifecycles, empty/error/conflict/pending, specialty links, member confirmation/errors, mobile and admin ticket isolation')
+  } else if (process.argv.includes('--organization-maintenance')) {
     teams.push({ id: 1, name: 'Regional support', scope: 'REGION', regionId: 1, teamLeadId: 4, managerId: 5, memberIds: [4] })
     await navigate('/admin/organization')
     await waitText('Regional support')

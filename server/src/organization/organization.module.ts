@@ -6,9 +6,17 @@ import { jwtConstants } from '../auth/auth.constants';
 import { OrganizationController } from './organization.controller';
 import { OrganizationService } from './organization.service';
 
+import { TicketConfigurationController } from './ticket-configuration.controller';
+import { TicketConfigurationService } from './ticket-configuration.service';
+
 @Module({
   imports: [JwtModule.register({ secret: jwtConstants.secret })],
-  controllers: [OrganizationController],
-  providers: [OrganizationService, AuthGuard, RolesGuard],
+  controllers: [OrganizationController, TicketConfigurationController],
+  providers: [
+    TicketConfigurationService,
+    OrganizationService,
+    AuthGuard,
+    RolesGuard,
+  ],
 })
 export class OrganizationModule {}

@@ -66,8 +66,7 @@ export class TicketsService {
       dto.affectedDepartmentIds,
       'departments',
     );
-    await this.requireCategory(dto.categoryId);
-    await this.requireTags(dto.tagIds ?? []);
+    this.rejectDuplicateTags(dto.tagIds ?? []);
 
     const creationHash = createHash('sha256')
       .update(
@@ -113,6 +112,8 @@ export class TicketsService {
         await requireActiveActor(db, user);
         const existing = await replay(db);
         if (existing) return existing;
+        await this.requireCategory(dto.categoryId, db);
+        await this.requireTags(dto.tagIds ?? [], db);
         await this.requireRegions(dto.affectedRegionIds, db);
         await this.requireDepartments(dto.affectedDepartmentIds, db);
         const now = new Date();
@@ -202,7 +203,7 @@ export class TicketsService {
           : ticket.affectedDepartments.map(({ departmentId }) => departmentId));
       this.validateScope(allRegions, regionIds, 'regions');
       this.validateScope(allDepartments, departmentIds, 'departments');
-      if (dto.categoryId !== undefined)
+      if (dto.categoryId !== undefined && dto.categoryId !== ticket.categoryId)
         await this.requireCategory(dto.categoryId, db);
       if (dto.affectedRegionIds !== undefined)
         await this.requireRegions(
@@ -219,7 +220,17 @@ export class TicketsService {
           ),
           db,
         );
-      if (dto.tagIds !== undefined) await this.requireTags(dto.tagIds, db);
+      if (dto.tagIds !== undefined) {
+        this.rejectDuplicateTags(dto.tagIds);
+        const retained = await db.ticketTagOnTicket.findMany({
+          where: { ticketId },
+          select: { tagId: true },
+        });
+        await this.requireTags(
+          dto.tagIds.filter((id) => !retained.some((tag) => tag.tagId === id)),
+          db,
+        );
+      }
       if (dto.allRegions !== undefined || dto.affectedRegionIds !== undefined) {
         await db.ticketRegion.deleteMany({ where: { ticketId } });
         await db.ticketRegion.createMany({
@@ -476,11 +487,8 @@ export class TicketsService {
         await this.validateAssignment(db, assignedTeamId, assignedAgentId);
       }
       // Reopening completed work is new operational use, even without an assignment edit.
-      if (
-        (dto.status === 'TODO' || dto.status === 'IN_PROGRESS') &&
-        assignedTeamId !== null
-      )
-        await this.requireActiveTeam(db, assignedTeamId);
+      if (dto.status === 'TODO' || dto.status === 'IN_PROGRESS')
+        await this.validateAssignment(db, assignedTeamId, assignedAgentId);
       const result = await db.subtask.update({
         where: { id: subtaskId },
         data: {
@@ -710,11 +718,11 @@ export class TicketsService {
   }
 
   private async requireCategory(id: number, db: Database = this.prisma) {
-    const category = await db.ticketCategory.findUnique({
-      where: { id },
-      select: { id: true },
-    });
+    await db.$queryRaw`SELECT id FROM "TicketCategory" WHERE id = ${id} FOR SHARE`;
+    const category = await db.ticketCategory.findUnique({ where: { id } });
     if (!category) throw new NotFoundException('Ticket category not found');
+    if (category.archivedAt)
+      throw new ConflictException('Ticket category is archived');
   }
 
   private async requireRegions(ids: number[], db: Database = this.prisma) {
@@ -744,12 +752,22 @@ export class TicketsService {
   }
 
   private async requireTags(ids: number[], db: Database = this.prisma) {
+    this.rejectDuplicateTags(ids);
+    if (ids.length)
+      await db.$queryRaw(
+        Prisma.sql`SELECT id FROM "TicketTag" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR SHARE`,
+      );
     const tags = await db.ticketTag.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, archivedAt: null },
       select: { id: true },
     });
     if (tags.length !== new Set(ids).size)
       throw new NotFoundException('One or more ticket tags not found');
+  }
+
+  private rejectDuplicateTags(ids: number[]) {
+    if (new Set(ids).size !== ids.length)
+      throw new BadRequestException('Duplicate tag IDs are not allowed');
   }
 
   private validateScope(all: boolean, ids: number[], label: string) {

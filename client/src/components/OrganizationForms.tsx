@@ -181,8 +181,10 @@ export function TeamActionForm({
       )}
       {action.kind === 'remove-member' && (
         <p className="muted">
-          Membership removal does not transfer existing work assignments. The
-          Team Lead responsibility must be removed first for a lead member.
+          Membership removal clears the Agent from current operational
+          assignments in this Team. Team, Manager, status and historical
+          evidence remain; no replacement is selected. The Team Lead
+          responsibility must be removed first for a lead member.
         </p>
       )}
     </AdminDialog>

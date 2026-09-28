@@ -380,6 +380,29 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   })
+  if (process.argv.includes('--ticket-configuration')) {
+    cycles = [original(142)]
+    tickets.push({ id: 142, title: 'Retained configuration', description: 'Details', requesterId: 10, status: 'NEW', priority: 'MEDIUM', categoryId: 4, category: { id: 4, name: 'Archived category' }, tagIds: [7], tags: [{ id: 7, name: 'Archived tag' }], allRegions: true, allDepartments: true, affectedRegionIds: [], affectedDepartmentIds: [], assignedManagerId: null, assignedTeamId: null, assignedAgentId: null, ownership: { manager: null, team: null, agent: null }, createdAt: now, updatedAt: now, resolvedAt: null, closedAt: null, currentCycle: cycles[0] })
+    options.categories = [{ id: 8, name: 'Active category' }]
+    options.tags = [{ id: 9, name: 'Active tag' }]
+    await navigate('/tickets/new'); await waitText('Active category')
+    assert.deepEqual(await evaluate(`[...document.querySelector('#ticket-category').options].map(o => o.value)`), ['0', '8'])
+    assert(!await evaluate(`document.body.textContent.includes('Archived tag')`))
+    await navigate('/tickets/142'); await waitText('Archived category'); await waitText('Archived tag')
+    await click('Edit details'); await waitText('Archived category (ARCHIVED)'); await waitText('Archived tag (ARCHIVED)')
+    assert.equal(await evaluate(`document.querySelector('#ticket-category').value`), '4')
+    await fill('#ticket-title', 'Unrelated edit'); await click('Save changes'); await waitText('Unrelated edit')
+    await until(() => evaluate(`!document.querySelector('#ticket-title')`), 'saved')
+    assert.deepEqual(mutations.at(-1).body.tagIds, [7]); assert.equal(mutations.at(-1).body.categoryId, 4)
+    await click('Edit details'); await checkLabel('Archived tag (ARCHIVED)'); await click('Save changes')
+    await until(() => evaluate(`!document.querySelector('#ticket-title')`), 'saved removal')
+    assert.deepEqual(mutations.at(-1).body.tagIds, [])
+    emptyCategories = true
+    await navigate('/tickets/new'); await waitText('Ticket categories have not been configured yet')
+    assert(await evaluate(`[...document.querySelectorAll('button')].find(el => el.textContent === 'Submit ticket').disabled`))
+    assert.deepEqual(browserErrors, [])
+    console.log('PASS: active-only new choices, readable archived references, retained category/tag edits, explicit tag removal and empty category protection')
+  } else {
   await navigate('/tickets')
   await waitText('Your next request starts here')
   assert.equal(refreshCount, 1)
@@ -786,6 +809,7 @@ try {
     'Browser acceptance checks passed. Screenshots: ' +
       join(tmpdir(), 'eds-employee-{desktop,mobile}.png'),
   )
+  }
 } catch (error) {
   console.error(
     'Browser failure details:',

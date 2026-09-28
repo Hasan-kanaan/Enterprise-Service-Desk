@@ -1,3 +1,4 @@
+import { AgentSpecialties } from '@/components/SpecialtyLinks'
 import api, { getApiErrorMessage } from '@/services/api'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -22,6 +23,7 @@ export function UsersPage() {
     status: status || undefined,
     role: accountRole || undefined,
   })
+  const [specialties, setSpecialties] = useState<number | null>(null)
   const [sending, setSending] = useState<number | null>(null)
   const [creating, setCreating] = useState(false),
     [target, setTarget] = useState<Account | null>(null)
@@ -111,6 +113,18 @@ export function UsersPage() {
               </div>
               <div className="button-row">
                 <span className="status-badge">{account.role}</span>
+                {account.role === 'AGENT' && (
+                  <button
+                    className="button secondary"
+                    onClick={() =>
+                      setSpecialties(
+                        specialties === account.id ? null : account.id,
+                      )
+                    }
+                  >
+                    Manage specialties
+                  </button>
+                )}
                 <span className="status-badge">{account.status}</span>
                 <span className="status-badge">{account.activatedAt ? 'Activated' : 'Pending activation'}</span>
                 {manageableRoles(role).includes(account.role) && account.status === 'ACTIVE' && <button className="button secondary" disabled={sending !== null} onClick={async () => {
@@ -132,6 +146,12 @@ export function UsersPage() {
                   </button>
                 )}
               </div>
+              {specialties === account.id && (
+                <AgentSpecialties
+                  id={account.id}
+                  canAdd={account.status === 'ACTIVE' && !!account.activatedAt}
+                />
+              )}
             </article>
           ))
         ) : (

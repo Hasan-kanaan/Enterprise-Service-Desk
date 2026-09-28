@@ -752,27 +752,11 @@ Work-cycle history, requester-visible conversations, separate internal notes and
 
 ## Ticket Categories
 
-The application initially focuses on internal IT support.
+ADMIN/SUPER_ADMIN configure real categories and tags at `/admin/ticket-configuration`; fresh installations contain no default or fabricated choices. A configured active category is required before employees can create tickets.
 
-Potential categories include:
+Both catalogs support list/create/rename/archive/reactivate under `/ticket-configuration/{categories|tags}`. Nullable `archivedAt` preserves stable IDs and all existing ticket/suggestion references. Archived names remain reserved by the existing unique constraints; names are trimmed, nonblank and at most 100 characters. Archived records may be renamed. There is no physical-delete operation.
 
-```text
-Hardware
-Software
-Network
-Account
-Email
-VPN
-Printer
-Access Request
-Other
-```
-
-Categories may be expanded later.
-
-The category may be suggested by AI.
-
-Managers and authorized users should be able to override incorrect AI suggestions.
+`GET /ticket-options` offers active categories, tags, regions and departments only. Creation and new selections reject archived records. Existing tickets may retain an unchanged archived category and already-attached archived tags, or explicitly remove those tags. Detail views retain readable names. Duplicate tag IDs return 400. Reactivation restores future eligibility only. Configuration responses contain no ticket content or affected counts, and administration grants no ticket access.
 
 ---
 
@@ -1279,7 +1263,7 @@ The responsive employee workspace includes a dashboard with real request counts,
 
 Employees can cancel their own NEW/ASSIGNED requests, close RESOLVED requests, and reopen RESOLVED/CLOSED requests with a reason. Confirmation dialogs explain each operation. Terminal tickets hide metadata editing; CANCELLED cannot reopen. History retains the server's historical ownership and timestamps and never requests or displays support subtasks. The server remains authoritative for every operation. A 409 requires explicit reload; mutations are not automatically retried on conflicts. Invalid legacy reopen routing offers the backend's explicit return-to-intake choice.
 
-Creation/edit forms load actual category, tag, region, and department choices from `GET /ticket-options`. No organization IDs or owners are invented. Missing categories block submission with an explanatory state. This endpoint is read-only and restricted to EMPLOYEE/AGENT/MANAGER; organization catalog administration remains separate work.
+Creation/edit forms load actual category, tag, region, and department choices from `GET /ticket-options`. No organization IDs or owners are invented. Missing categories block submission with an explanatory state. This endpoint is read-only and restricted to EMPLOYEE/AGENT/MANAGER; configuration is available to administrators in the separate Ticket configuration screen.
 
 Access tokens remain in memory. Startup restores the session through the HttpOnly refresh cookie before protected routes render. Concurrent 401 responses share one refresh; refreshed identity updates Redux, and rejected sessions return to sign-in with the requested path preserved. Network failures show a retry state. Pages handle loading, empty lists, validation errors, unavailable tickets, and conflicts. Larger route modules load on demand.
 
@@ -1337,7 +1321,7 @@ ADMIN/SUPER_ADMIN account and supported organization management are implemented 
 
 ### Administration Workspace
 
-ADMIN and SUPER_ADMIN use a dedicated administration navigation with `/admin`, `/admin/accounts`, `/admin/organization`, and `/admin/organization/teams/:teamId`. Their dashboard opens `/admin`; the old `/users` URL redirects to the protected accounts route. EMPLOYEE/AGENT/MANAGER cannot enter these routes. Administration never loads ticket queues, details, history, or support subtasks.
+ADMIN and SUPER_ADMIN use a dedicated administration navigation with `/admin`, `/admin/accounts`, `/admin/organization`, `/admin/organization/teams/:teamId`, and `/admin/ticket-configuration`. Their dashboard opens `/admin`; the old `/users` URL redirects to the protected accounts route. EMPLOYEE/AGENT/MANAGER cannot enter these routes. Administration never loads ticket queues, details, history, or support subtasks.
 
 The account directory displays username, email, role, ACTIVE/INACTIVE status, and existing nullable region/department labels. Search and status filtering operate on the authorized directory. Creation requires a username, email and an explicitly chosen permitted role, with an optional international phone number. It provisions a pending account and sends activation email; users choose their passwords. Status and activation are shown separately. SUPER_ADMIN can create ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN can create MANAGER/AGENT/EMPLOYEE. No normal workflow creates SUPER_ADMIN or offers public registration. The backend SUPER_ADMIN creation matrix was explicitly expanded to these four roles in this phase and is covered by unit/HTTP tests.
 
@@ -1352,9 +1336,9 @@ Organization controls:
 | Membership | Add active AGENT members; remove members after clearing any Team Lead responsibility |
 | Team Lead | Assign/replace an active member who leads no other team; explicitly remove |
 | TeamManager | Assign an active MANAGER when vacant; explicitly remove before replacement |
-| Team specialties | Display existing links only |
+| Team / Agent specialties | View, attach active specialties, explicitly remove links; Agent controls are in Accounts |
 
-GLOBAL creation omits regionId; REGION creation requires one actual region. No organization records or relationships are invented. Agents can join multiple teams and managers can manage multiple teams. TeamManager remains organizational only, with no ticket authority. Team member removal consumes the current backend behavior; it is not an offboarding/assignment-transfer workflow.
+GLOBAL creation omits regionId; REGION creation requires one actual region. No organization records or relationships are invented. Agents can join multiple teams and managers can manage multiple teams. TeamManager remains organizational only, with no ticket authority. Ordinary member removal atomically clears only that Agent from current operational primary assignments and actionable subtasks in the latest unfinished cycle for that Team. Team/Manager/status remain; no replacement is chosen. Terminal tickets, ended cycles, completed/cancelled subtasks and completion attribution are preserved. Making completed/cancelled work actionable revalidates retained Agent membership and eligibility. Team Lead responsibility must be removed first.
 
 GET /users retains nullable region/department ID/name labels in its paginated directory projection. GET /organization/teams returns configuration without member expansion; GET /organization/teams/:teamId/members paginates user ID/username/role/status for membership display. Purpose-specific bounded people lookups serve organization selectors. Existing administrative guards remain and no operational data is exposed.
 
@@ -1362,7 +1346,7 @@ Organization maintenance uses nullable `archivedAt` (NULL = active), with no phy
 
 Archive a Region's active regional Teams first. Creating/reactivating a regional Team requires an active Region; Region reactivation never cascades. Team archival atomically clears Team Lead/TeamManager and current operational Team/Agent assignments, retaining valid responsible Managers and lifecycle state, or safely returning invalid ownership to NEW intake. Only actionable current-cycle subtasks are offboarded. Memberships, specialty links, terminal tickets, ended-cycle snapshots and historical subtasks remain intact. Reactivation restores future eligibility only, never cleared responsibilities. Administrators receive no ticket details, previews or affected counts. Other master archival preserves user/ticket/specialty relationships. See [organization decisions](docs/decision.md#organization-maintenance-2026-09-28).
 
-Existing Team coverage, specialty-link changes, account identity/role/home-organization editing and reconciliation after ordinary membership removal remain deferred. Focused maintenance checks: from `server`, run the `test/organization-maintenance.e2e-spec.ts` Jest path against the isolated test database; from `client`, build then run `node test/administration-flow.mjs --organization-maintenance`. This browser mode skips unrelated account and operational suites.
+POST/DELETE `/organization/{agents|teams}/:id/specialties/:specialtyId` manage existing many-to-many specialty relations. New links require active entities and an activated AGENT; duplicate links return 409 and missing removal returns 404. Links survive deactivation/archival, remain explicitly removable, and grant no ticket/routing authority. Existing Team coverage and account identity/role/home-organization editing remain deferred. Focused maintenance checks: from `server`, run the `test/organization-maintenance.e2e-spec.ts` Jest path against the isolated test database; from `client`, build then run `node test/administration-flow.mjs --organization-maintenance`. For service-desk configuration use `test/ticket-configuration.e2e-spec.ts` and `node test/administration-flow.mjs --ticket-configuration`; `node test/employee-flow.mjs --ticket-configuration` runs only active-choice and archived-reference form checks. These focused modes skip unrelated suites.
 
 Administration uses shared loading/error states and native confirmation dialogs, explicit 403/404/409 reload, disabled pending controls, validation, empty states, and responsive layouts. `pnpm test:browser` now runs Employee, operational, and administration suites sequentially. Administration acceptance covers both creation/lifecycle matrices, every organization operation exposed above, relationship restrictions, route isolation, token renewal, error recovery, and mobile layout. Browser fixtures remain isolated from actual application data; PostgreSQL tests separately verify real backend contracts and authorization.
 

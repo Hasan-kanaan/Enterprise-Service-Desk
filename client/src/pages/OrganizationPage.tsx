@@ -1,3 +1,4 @@
+import { SpecialtyLinks } from '@/components/SpecialtyLinks'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -103,6 +104,14 @@ export function OrganizationPage() {
               </div>
             </dl>
           </section>
+          <SpecialtyLinks
+            kind="teams"
+            id={team.id}
+            canAdd={!team.archivedAt}
+            existing={team.specialties.map((link) => link.specialty)}
+            choices={data.specialties}
+            onReload={reload}
+          />
           <section className="panel">
             <div className="list-heading">
               <h2>Team members</h2>
@@ -209,7 +218,7 @@ export function OrganizationPage() {
             </section>
           </div>
           <p className="quiet-note">
-            Team coverage and specialty-link editing remain unavailable.
+            Team coverage editing remains unavailable.
           </p>
           {action && (
             <TeamActionForm
@@ -304,7 +313,7 @@ export function OrganizationPage() {
           <p className="quiet-note">
             Regions and departments are independent. Departments are not tied to
             a region. Archival preserves IDs and historical references. Physical
-            deletion and specialty-link editing are unavailable.
+            deletion is unavailable.
           </p>
           {creating && (
             <OrganizationCreateForm

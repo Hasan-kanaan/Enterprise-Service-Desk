@@ -155,24 +155,174 @@ export class OrganizationService {
       await requireActiveActor(db, actor);
       await this.requireActiveUser(db, userId, UserRole.AGENT);
       await this.requireActiveTeam(db, teamId);
-      return db.teamMember.create({ data: { teamId, userId } });
+      try {
+        return await db.teamMember.create({ data: { teamId, userId } });
+      } catch (error) {
+        this.throwConflict(error, 'Agent is already a team member');
+        throw error;
+      }
     });
   }
 
-  async removeMember(teamId: number, userId: number) {
-    const team = await this.requireTeam(teamId);
-
-    if (team.teamLeadId === userId) {
-      throw new BadRequestException(
-        'Remove the Team Lead assignment before removing this member',
-      );
-    }
-
-    await this.prisma.teamMember.delete({
-      where: { teamId_userId: { teamId, userId } },
+  async removeMember(
+    teamId: number,
+    userId: number,
+    actor: { id: number; role: UserRole; sessionVersion?: number },
+  ) {
+    return serializable(this.prisma, async (db) => {
+      await requireActiveActor(db, actor);
+      await lockUser(db, userId);
+      await db.$queryRaw`SELECT id FROM "Team" WHERE id = ${teamId} FOR UPDATE`;
+      await db.$queryRaw`SELECT "teamId" FROM "TeamMember" WHERE "teamId" = ${teamId} AND "userId" = ${userId} FOR UPDATE`;
+      const team = await db.team.findUnique({ where: { id: teamId } });
+      if (!team) throw new NotFoundException('Team not found');
+      if (team.teamLeadId === userId)
+        throw new BadRequestException(
+          'Remove the Team Lead assignment before removing this member',
+        );
+      const member = await db.teamMember.findUnique({
+        where: { teamId_userId: { teamId, userId } },
+      });
+      if (!member) throw new NotFoundException('Team member not found');
+      await this.reconcileMember(db, teamId, userId);
+      await db.teamMember.delete({
+        where: { teamId_userId: { teamId, userId } },
+      });
+      return { message: 'Team member removed' };
     });
+  }
 
-    return { message: 'Team member removed' };
+  private async reconcileMember(
+    db: Prisma.TransactionClient,
+    teamId: number,
+    userId: number,
+  ) {
+    const tickets = await db.ticket.findMany({
+      where: {
+        status: { in: [...operationalStatuses] },
+        OR: [
+          { assignedTeamId: teamId, assignedAgentId: userId },
+          {
+            subtasks: {
+              some: {
+                assignedTeamId: teamId,
+                assignedAgentId: userId,
+                status: { in: ['TODO', 'IN_PROGRESS'] },
+                createdInCycle: { outcome: null },
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    });
+    for (const { id } of tickets) {
+      await db.$queryRaw`SELECT id FROM "Ticket" WHERE id = ${id} FOR UPDATE`;
+      const ticket = await db.ticket.findUniqueOrThrow({
+        where: { id },
+        include: {
+          workCycles: { orderBy: { sequenceNumber: 'desc' }, take: 1 },
+        },
+      });
+      if (!(operationalStatuses as readonly string[]).includes(ticket.status))
+        continue;
+      if (ticket.assignedTeamId === teamId && ticket.assignedAgentId === userId)
+        await db.ticket.update({
+          where: { id },
+          data: { assignedAgentId: null },
+        });
+      const cycle = ticket.workCycles[0];
+      if (cycle && cycle.outcome === null)
+        await db.subtask.updateMany({
+          where: {
+            ticketId: id,
+            createdInCycleId: cycle.id,
+            assignedTeamId: teamId,
+            assignedAgentId: userId,
+            status: { in: ['TODO', 'IN_PROGRESS'] },
+          },
+          data: { assignedAgentId: null },
+        });
+    }
+  }
+
+  async agentSpecialties(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role !== 'AGENT')
+      throw new BadRequestException('User must be an AGENT');
+    const links = await this.prisma.userSpecialty.findMany({
+      where: { userId },
+      select: {
+        specialty: { select: { id: true, name: true, archivedAt: true } },
+      },
+      orderBy: { specialtyId: 'asc' },
+    });
+    return links.map((link) => link.specialty);
+  }
+
+  async specialtyLink(
+    kind: 'agents' | 'teams',
+    id: number,
+    specialtyId: number,
+    add: boolean,
+    actor: { id: number; role: UserRole; sessionVersion?: number },
+  ) {
+    try {
+      return await serializable(this.prisma, async (db) => {
+        await requireActiveActor(db, actor);
+        if (kind === 'agents') {
+          const user = await lockUser(db, id);
+          if (!user) throw new NotFoundException('User not found');
+          if (user.role !== 'AGENT')
+            throw new BadRequestException('User must be an AGENT');
+          if (add && (user.status !== 'ACTIVE' || !user.activatedAt))
+            throw new ConflictException('Agent must be active and activated');
+        } else {
+          await db.$queryRaw`SELECT id FROM "Team" WHERE id = ${id} FOR UPDATE`;
+          const team = await db.team.findUnique({ where: { id } });
+          if (!team) throw new NotFoundException('Team not found');
+          if (add && team.archivedAt)
+            throw new ConflictException('Team is archived');
+        }
+        await db.$queryRaw`SELECT id FROM "Specialty" WHERE id = ${specialtyId} FOR SHARE`;
+        const specialty = await db.specialty.findUnique({
+          where: { id: specialtyId },
+        });
+        if (!specialty) throw new NotFoundException('Specialty not found');
+        if (add && specialty.archivedAt)
+          throw new ConflictException('Specialty is archived');
+        if (add) {
+          if (kind === 'agents')
+            await db.userSpecialty.create({
+              data: { userId: id, specialtyId },
+            });
+          else
+            await db.teamSpecialty.create({
+              data: { teamId: id, specialtyId },
+            });
+        } else {
+          const result =
+            kind === 'agents'
+              ? await db.userSpecialty.deleteMany({
+                  where: { userId: id, specialtyId },
+                })
+              : await db.teamSpecialty.deleteMany({
+                  where: { teamId: id, specialtyId },
+                });
+          if (!result.count)
+            throw new NotFoundException('Specialty relationship not found');
+        }
+        return { message: add ? 'Specialty linked' : 'Specialty link removed' };
+      });
+    } catch (error) {
+      this.throwConflict(error, 'Specialty is already linked');
+      throw error;
+    }
   }
 
   async assignManager(

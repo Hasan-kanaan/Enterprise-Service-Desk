@@ -292,6 +292,7 @@ model TeamSpecialty {
 }
 
 model TicketCategory {
+  archivedAt DateTime?
   id               Int      @id @default(autoincrement())
   name             String   @unique @db.VarChar(100)
   createdAt        DateTime @default(now())
@@ -301,6 +302,7 @@ model TicketCategory {
 }
 
 model TicketTag {
+  archivedAt DateTime?
   id            Int                @id @default(autoincrement())
   name          String             @unique @db.VarChar(100)
   createdAt     DateTime           @default(now())

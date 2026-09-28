@@ -1,5 +1,6 @@
 import {
   IsArray,
+  ArrayUnique,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -55,5 +56,6 @@ export class UpdateTicketDto {
   @IsArray()
   @IsInt({ each: true })
   @Min(1, { each: true })
+  @ArrayUnique()
   tagIds?: number[];
 }

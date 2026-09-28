@@ -240,6 +240,7 @@ function TicketContent({ id }: { id: number }) {
             )}
             {editing && options.data ? (
               <TicketForm
+                existingReferences={ticket}
                 key={ticket.updatedAt}
                 initial={initial}
                 options={options.data}
@@ -258,9 +259,11 @@ function TicketContent({ id }: { id: number }) {
                   <div>
                     <dt>Category</dt>
                     <dd>
-                      {options.data?.categories.find(
-                        (item) => item.id === ticket.categoryId,
-                      )?.name ?? 'Name unavailable'}
+                      {ticket.category?.name ??
+                        options.data?.categories.find(
+                          (item) => item.id === ticket.categoryId,
+                        )?.name ??
+                        'Name unavailable'}
                     </dd>
                   </div>
                   <div>
@@ -294,7 +297,12 @@ function TicketContent({ id }: { id: number }) {
                   {ticket.tagIds.length > 0 && (
                     <div>
                       <dt>Tags</dt>
-                      <dd>{names(ticket.tagIds, options.data?.tags)}</dd>
+                      <dd>
+                        {names(
+                          ticket.tagIds,
+                          ticket.tags ?? options.data?.tags,
+                        )}
+                      </dd>
                     </div>
                   )}
                 </dl>

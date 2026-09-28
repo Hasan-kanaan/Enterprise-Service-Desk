@@ -281,10 +281,15 @@ export class OrganizationController {
     });
   }
   @Delete('teams/:teamId/members/:userId') removeMember(
+    @Req() req: ActorRequest,
     @Param('teamId', ParseIntPipe) teamId: number,
     @Param('userId', ParseIntPipe) userId: number,
   ) {
-    return this.organizationService.removeMember(teamId, userId);
+    return this.organizationService.removeMember(teamId, userId, {
+      id: req.user.sub,
+      role: req.user.role,
+      sessionVersion: req.user.sessionVersion,
+    });
   }
   @Post('teams/:teamId/manager/:userId') assignManager(
     @Req() req: ActorRequest,
@@ -317,5 +322,78 @@ export class OrganizationController {
     @Param('teamId', ParseIntPipe) teamId: number,
   ) {
     return this.organizationService.removeTeamLead(teamId);
+  }
+  @Get('agents/:id/specialties') agentSpecialties(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.organizationService.agentSpecialties(id);
+  }
+  @Post('agents/:id/specialties/:specialtyId') addagentsSpecialty(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('specialtyId', ParseIntPipe) specialtyId: number,
+  ) {
+    return this.organizationService.specialtyLink(
+      'agents',
+      id,
+      specialtyId,
+      true,
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Delete('agents/:id/specialties/:specialtyId') removeagentsSpecialty(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('specialtyId', ParseIntPipe) specialtyId: number,
+  ) {
+    return this.organizationService.specialtyLink(
+      'agents',
+      id,
+      specialtyId,
+      false,
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Post('teams/:id/specialties/:specialtyId') addteamsSpecialty(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('specialtyId', ParseIntPipe) specialtyId: number,
+  ) {
+    return this.organizationService.specialtyLink(
+      'teams',
+      id,
+      specialtyId,
+      true,
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
+  }
+  @Delete('teams/:id/specialties/:specialtyId') removeteamsSpecialty(
+    @Req() req: ActorRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('specialtyId', ParseIntPipe) specialtyId: number,
+  ) {
+    return this.organizationService.specialtyLink(
+      'teams',
+      id,
+      specialtyId,
+      false,
+      {
+        id: req.user.sub,
+        role: req.user.role,
+        sessionVersion: req.user.sessionVersion,
+      },
+    );
   }
 }

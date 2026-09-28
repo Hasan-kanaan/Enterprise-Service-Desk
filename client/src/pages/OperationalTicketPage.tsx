@@ -142,6 +142,7 @@ function OperationalTicket({ id }: { id: number }) {
             )}
             {editing ? (
               <TicketForm
+                existingReferences={ticket}
                 initial={{
                   title: ticket.title,
                   description: ticket.description,
@@ -178,9 +179,11 @@ function OperationalTicket({ id }: { id: number }) {
                   <div>
                     <dt>Category</dt>
                     <dd>
-                      {options.categories.find(
-                        (item) => item.id === ticket.categoryId,
-                      )?.name ?? 'Name unavailable'}
+                      {ticket.category?.name ??
+                        options.categories.find(
+                          (item) => item.id === ticket.categoryId,
+                        )?.name ??
+                        'Name unavailable'}
                     </dd>
                   </div>
                   <div>
@@ -208,7 +211,7 @@ function OperationalTicket({ id }: { id: number }) {
                   </div>
                   <div>
                     <dt>Tags</dt>
-                    <dd>{names(ticket.tagIds, options.tags)}</dd>
+                    <dd>{names(ticket.tagIds, ticket.tags ?? options.tags)}</dd>
                   </div>
                 </dl>
               </div>

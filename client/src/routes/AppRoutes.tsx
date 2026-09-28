@@ -1,3 +1,4 @@
+import { TicketConfigurationPage } from '@/pages/TicketConfigurationPage'
 import { AccountSecurityPage } from '@/pages/AccountSecurityPage'
 import { WorkHistoryPage } from '@/pages/WorkHistoryPage'
 import { OperationalWorkspacePage } from '@/pages/OperationalWorkspacePage'
@@ -75,6 +76,10 @@ export function AppRoutes() {
                 element={<Navigate to="/admin/accounts" replace />}
               />
               <Route path="/admin" element={<AdministrationPage />} />
+              <Route
+                path="/admin/ticket-configuration"
+                element={<TicketConfigurationPage />}
+              />
               <Route path="/admin/accounts" element={<UsersPage />} />
               <Route
                 path="/admin/organization"

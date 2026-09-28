@@ -25,11 +25,21 @@ const navigation = {
     { label: 'Administration', to: '/admin', icon: LayoutDashboard },
     { label: 'Accounts', to: '/admin/accounts', icon: Users },
     { label: 'Organization', to: '/admin/organization', icon: Settings2 },
+    {
+      label: 'Ticket configuration',
+      to: '/admin/ticket-configuration',
+      icon: Settings2,
+    },
   ],
   ADMIN: [
     { label: 'Administration', to: '/admin', icon: LayoutDashboard },
     { label: 'Accounts', to: '/admin/accounts', icon: Users },
     { label: 'Organization', to: '/admin/organization', icon: Settings2 },
+    {
+      label: 'Ticket configuration',
+      to: '/admin/ticket-configuration',
+      icon: Settings2,
+    },
   ],
   MANAGER: [
     { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },

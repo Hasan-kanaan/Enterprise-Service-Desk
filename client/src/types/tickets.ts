@@ -65,6 +65,8 @@ export type WorkCycle = {
   }
 }
 export type TicketDetail = TicketSummary & {
+  category?: NamedOption
+  tags?: NamedOption[]
   tagIds: number[]
   affectedRegionIds: number[]
   affectedDepartmentIds: number[]
