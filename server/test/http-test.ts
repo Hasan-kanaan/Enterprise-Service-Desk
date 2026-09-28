@@ -80,19 +80,22 @@ type GetBody<P extends string> = P extends
                                           TicketVisibilityService['findVisibleById']
                                         >
                                       : unknown;
-type WriteBody<P extends string> = P extends '/auth/accounts'
-  ? Result<AuthService['createAccount']>
-  : P extends '/auth/login' | '/auth/refresh'
-    ? Omit<Result<AuthService['login']>, 'refreshToken'>
-    : P extends
-          | `/tickets/${string}/messages${string}`
-          | `/tickets/${string}/internal-notes${string}`
-      ? Message
-      : P extends `/tickets/${string}/subtasks` | `/tickets/subtasks/${string}`
-        ? Json<Subtask>
-        : P extends `/tickets${string}`
-          ? Json<Ticket>
-          : unknown;
+type WriteBody<P extends string> = P extends `/users/${number}`
+  ? Result<import('../src/users/users.service').UsersService['updateMetadata']>
+  : P extends '/auth/accounts'
+    ? Result<AuthService['createAccount']>
+    : P extends '/auth/login' | '/auth/refresh'
+      ? Omit<Result<AuthService['login']>, 'refreshToken'>
+      : P extends
+            | `/tickets/${string}/messages${string}`
+            | `/tickets/${string}/internal-notes${string}`
+        ? Message
+        : P extends
+              `/tickets/${string}/subtasks` | `/tickets/subtasks/${string}`
+          ? Json<Subtask>
+          : P extends `/tickets${string}`
+            ? Json<Ticket>
+            : unknown;
 type Response<T> = Omit<supertest.Response, 'body'> & { body: T };
 type Fluent<T> = {
   [K in keyof supertest.Test]: supertest.Test[K] extends (

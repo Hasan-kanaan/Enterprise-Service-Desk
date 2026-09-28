@@ -71,6 +71,7 @@ let refreshCount = 0,
   failure = false,
   failureCode = 409,
   rejectMutation = false
+let catalogDelay = 0
 const accounts = [
   {
     id: 1,
@@ -286,6 +287,19 @@ function response(request) {
     return [201, { user: created, delivery: 'SENT' }]
   }
   const lifecycle = path.match(/^\/users\/(\d+)\/status$/)
+  const metadata = path.match(/^\/users\/(\d+)$/)
+  if (metadata) {
+    assert.equal(request.method, 'PATCH')
+    assert(Object.keys(body).every(key => ['username', 'phoneNumber', 'regionId', 'departmentId'].includes(key)))
+    const account = accounts.find(a => a.id === Number(metadata[1]))
+    if (body.username && accounts.some(a => a.id !== account.id && a.username === body.username)) return [409, { message: 'Username already exists' }]
+    if (body.username !== undefined) account.username = body.username
+    if (body.phoneNumber !== undefined) account.phoneNumber = body.phoneNumber
+    for (const [field, catalog] of [['region', 'regions'], ['department', 'departments']]) {
+      if (body[`${field}Id`] !== undefined) account[field] = body[`${field}Id`] === null ? null : catalogs[catalog].find(r => r.id === body[`${field}Id`])
+    }
+    return [200, account]
+  }
   if (lifecycle) {
     const account = accounts.find((a) => a.id === Number(lifecycle[1]))
     assert(account.role !== 'SUPER_ADMIN')
@@ -495,6 +509,7 @@ try {
     if (data.method === 'Fetch.requestPaused') {
       const { requestId, request } = data.params
       try {
+        if (catalogDelay && /\/organization\/(regions|departments)$/.test(new URL(request.url).pathname)) await delay(catalogDelay)
         const [status, body] =
           request.method === 'OPTIONS' ? [200, {}] : response(request)
         await send('Fetch.fulfillRequest', {
@@ -587,7 +602,73 @@ try {
     await confirm()
     await waitText(`${prefix}-${role.toLowerCase()}`)
   }
-  if (process.argv.includes('--team-coverage')) {
+  if (process.argv.includes('--account-metadata')) {
+    for (const catalog of ['regions', 'departments']) {
+      catalogs[catalog][0].archivedAt = new Date().toISOString()
+      catalogs[catalog].push({ id: 2, name: `Active ${catalog}` }, { id: 3, name: `Other archived ${catalog}`, archivedAt: new Date().toISOString() })
+    }
+    accounts[2].region = catalogs.regions[0]; accounts[2].department = catalogs.departments[0]
+    await navigate('/admin/accounts')
+    await waitText('Beirut (ARCHIVED)')
+    for (const id of [1, 2]) assert.equal(await evaluate(`[...document.querySelector('[data-account-id="${id}"]').querySelectorAll('button')].some(b=>b.textContent==='Edit account')`), false)
+    for (const id of [3,4,5,6,7]) assert.equal(await evaluate(`[...document.querySelector('[data-account-id="${id}"]').querySelectorAll('button')].some(b=>b.textContent==='Edit account')`), true)
+    catalogDelay = 600
+    await rowClick(3, 'Edit account')
+    await waitText('Loading home organization choices...')
+    assert(await evaluate(`document.querySelector('dialog button[type=submit]').disabled`))
+    catalogDelay = 0
+    await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded')
+    assert.equal(await evaluate(`!!document.querySelector('dialog input[type=email], dialog [aria-label="Account email"], dialog [aria-label="Account role"]')`), false)
+    for (const field of ['Home Region', 'Home Department']) {
+      assert.equal(await evaluate(`document.querySelector('[aria-label="${field}"]').value`), '1')
+      assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="${field}"]').options].map(o=>o.value)`), ['', '1', '2'])
+    }
+    await fill('[aria-label="Account username"]', '  renamed.employee  ')
+    await fill('[aria-label="Account phone"]', '+96170123456')
+    const before = mutations.length
+    await evaluate(`(() => {const f=document.querySelector('dialog form'); f.requestSubmit(); f.requestSubmit()})()`)
+    await until(() => evaluate('!document.querySelector("dialog")'), 'saved')
+    assert.equal(mutations.length, before + 1)
+    assert.deepEqual(mutations.at(-1).body, {username: 'renamed.employee', phoneNumber: '+96170123456'})
+    await waitText('renamed.employee'); await waitText('Beirut (ARCHIVED)')
+    await rowClick(3, 'Edit account'); await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded')
+    await fill('[aria-label="Home Region"]', '2'); await fill('[aria-label="Home Department"]', '2'); await confirm()
+    await waitText('Active regions')
+    await rowClick(3, 'Edit account'); await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded')
+    for (const field of ['Home Region', 'Home Department']) assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="${field}"]').options].map(o=>o.value)`), ['', '2'])
+    await fill('[aria-label="Account phone"]', '')
+    await fill('[aria-label="Home Region"]', ''); await fill('[aria-label="Home Department"]', ''); await confirm()
+    assert.deepEqual(mutations.at(-1).body, {phoneNumber: null, regionId: null, departmentId: null})
+    await rowClick(3, 'Edit account'); await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded')
+    await fill('[aria-label="Account username"]', accounts[3].username)
+    // API normalizes usernames; use a lower-case duplicate fixture.
+    accounts[3].username = accounts[3].username.toLowerCase()
+    await click('Confirm'); await waitText('Username already exists')
+    assert(await evaluate(`document.querySelector('dialog button[type=submit]').disabled`))
+    await click('Reload administration'); await waitText('renamed.employee')
+    for (const code of [400,404]) {
+      await rowClick(3, 'Edit account'); await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded')
+      await fill('[aria-label="Account phone"]', '+96170123457')
+      failureCode = code; rejectMutation = true
+      await click('Confirm'); await until(() => evaluate('!!document.querySelector("[role=alert]")'), 'metadata error')
+      await click(code === 400 ? 'Cancel' : 'Reload administration')
+    }
+    await send('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:true})
+    failure = true
+    await rowClick(7, 'Edit account')
+    await waitText('Administration temporarily unavailable')
+    assert(await evaluate(`document.querySelector('dialog button[type=submit]').disabled`))
+    failure = false
+    await click('Try again')
+    await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded')
+    assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+    await fill('[aria-label="Account phone"]', '+96170123458'); await confirm()
+    user = {...user, role:'SUPER_ADMIN'}
+    await navigate('/admin/accounts'); await waitText('Admin user')
+    await rowClick(1, 'Edit account'); await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded'); await click('Cancel')
+    assert.deepEqual(browserErrors, [])
+    console.log('PASS: focused account metadata authority, fields/clearing, archived retention, active choices, immutable email/role, duplicate submission, 400/404/409 and mobile')
+  } else if (process.argv.includes('--team-coverage')) {
     catalogs.regions.push({id: 2, name: 'Tripoli'}, {id: 3, name: 'Archived region', archivedAt: new Date().toISOString()})
     teams.push({id: 1, name: 'Network', scope: 'REGION', regionId: 1, teamLeadId: 4, managerId: 5, memberIds: [4]})
     await navigate('/admin/organization/teams/1')

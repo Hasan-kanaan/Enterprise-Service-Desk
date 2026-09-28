@@ -10,6 +10,7 @@ import { updateAccountStatus } from '@/services/administration.service'
 import { manageableRoles, type Account } from '@/types/administration'
 import { AdminDialog } from '@/components/AdminDialog'
 import { AccountForm } from '@/components/AccountForm'
+import { EditAccountForm } from '@/components/EditAccountForm'
 import { ErrorState, LoadingState, EmptyState } from '@/components/TicketUI'
 export function UsersPage() {
   const role = useAppSelector((state) => state.auth.user)!.role
@@ -24,11 +25,13 @@ export function UsersPage() {
     role: accountRole || undefined,
   })
   const [specialties, setSpecialties] = useState<number | null>(null)
+  const [editing, setEditing] = useState<Account | null>(null)
   const [sending, setSending] = useState<number | null>(null)
   const [creating, setCreating] = useState(false),
     [target, setTarget] = useState<Account | null>(null)
   const reload = () => {
     setCreating(false)
+    setEditing(null)
     setTarget(null)
     resource.reload()
   }
@@ -107,12 +110,15 @@ export function UsersPage() {
                 <p className="muted">{account.email}</p>
                 {account.phoneNumber && <p>Phone: {account.phoneNumber} (unverified)</p>}
                 <p className="quiet-note">
-                  Region: {account.region?.name ?? 'Unassigned'} / Department:{' '}
-                  {account.department?.name ?? 'Unassigned'}
+                  Region: {account.region?.name ?? 'Unassigned'}{account.region?.archivedAt ? ' (ARCHIVED)' : ''} / Department:{' '}
+                  {account.department?.name ?? 'Unassigned'}{account.department?.archivedAt ? ' (ARCHIVED)' : ''}
                 </p>
               </div>
               <div className="button-row">
                 <span className="status-badge">{account.role}</span>
+                {manageableRoles(role).includes(account.role) && (
+                  <button className="button secondary" onClick={() => setEditing(account)}>Edit account</button>
+                )}
                 {account.role === 'AGENT' && (
                   <button
                     className="button secondary"
@@ -161,6 +167,7 @@ export function UsersPage() {
         )}
         <ListContinuation resource={resource} />
       </section>
+      {editing && <EditAccountForm account={editing} onClose={() => setEditing(null)} onReload={reload} onDone={() => { toast.success('Account updated'); reload() }} />}
       {creating && (
         <AccountForm
           caller={role}

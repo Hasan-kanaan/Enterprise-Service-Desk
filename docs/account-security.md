@@ -4,6 +4,12 @@ Implemented 2026-09-27. Administrators manage accounts; users own their password
 
 Email is out of scope for ordinary ticket notifications. Email is used only for account activation, password recovery, and security notices. Ticket, assignment, message, subtask and resolution notifications remain in-app only.
 
+## Account metadata editing scope
+
+Role changes are outside the metadata-editing phase. The metadata-editing endpoint must not accept `role` and must preserve the user's current role unchanged. Its dialog may display the current role as read-only because this particular dialog does not edit it. This is an endpoint-specific restriction, not permanent role immutability.
+
+A future dedicated role-transition phase will allow an existing account to change role while preserving the same account identity and email. Changing job function must not require a new account or email. That phase must explicitly define reconciliation for AGENT Team memberships, Agent specialties, Team Lead responsibility, MANAGER TeamManager responsibility, current ticket ownership, current subtask assignments, sessions/authorization after role changes, and historical attribution. Those reconciliation rules are neither designed nor implemented in the metadata-editing phase.
+
 ## State and migration
 
 `User.status` remains administrative `ACTIVE` / `INACTIVE`. `activatedAt` is independent: a newly provisioned ACTIVE account has null activation and null credentials. The existing `password` column stores only a bcrypt hash; it is now nullable (the column was retained rather than renamed to avoid needless migration churn). `emailVerifiedAt`, `phoneNumber` and `phoneVerifiedAt` are nullable.

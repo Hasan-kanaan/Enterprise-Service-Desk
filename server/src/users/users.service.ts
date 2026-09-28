@@ -15,6 +15,7 @@ import { UserRole } from './user-role.enum';
 import { UserStatus } from '../../generated/prisma/client';
 import { after, listPage, listWindow } from '../common/list-query';
 import { ListUsersDto } from './dto/list-users.dto';
+import { UpdateUserMetadataDto } from './dto/update-user-metadata.dto';
 import * as bcrypt from 'bcryptjs';
 import { assertPassword } from '../auth/password';
 import {
@@ -46,6 +47,128 @@ export type UserRecord = {
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async updateMetadata(
+    actor: {
+      id: number;
+      role: PrismaUserRole;
+      sessionVersion: number;
+      sid: string;
+    },
+    targetId: number,
+    change: UpdateUserMetadataDto,
+  ) {
+    if (
+      !['username', 'phoneNumber', 'regionId', 'departmentId'].some(
+        (key) => change[key as keyof UpdateUserMetadataDto] !== undefined,
+      )
+    )
+      throw new BadRequestException(
+        'Provide at least one account metadata field',
+      );
+    try {
+      return await serializable(this.prisma, async (db) => {
+        for (const id of [...new Set([actor.id, targetId])].sort(
+          (a, b) => a - b,
+        ))
+          await lockUser(db, id);
+        await requireActiveActor(db, actor);
+        await db.$queryRaw`SELECT id FROM "UserSession" WHERE id = ${actor.sid} FOR SHARE`;
+        if (
+          !(await db.userSession.findFirst({
+            where: { id: actor.sid, userId: actor.id, revokedAt: null },
+            select: { id: true },
+          }))
+        )
+          throw new UnauthorizedException(
+            'Account or session is no longer active',
+          );
+        const target = await db.user.findUnique({ where: { id: targetId } });
+        if (!target) throw new NotFoundException('User not found');
+        const allowed =
+          actor.role === 'SUPER_ADMIN'
+            ? ['ADMIN', 'MANAGER', 'AGENT', 'EMPLOYEE']
+            : actor.role === 'ADMIN'
+              ? ['MANAGER', 'AGENT', 'EMPLOYEE']
+              : [];
+        if (!allowed.includes(target.role))
+          throw new ForbiddenException(
+            'No metadata authority for this account',
+          );
+        // Only changed destinations require active eligibility. Retained archived
+        // home references remain descriptive metadata, with no work reconciliation.
+        if (change.regionId != null && change.regionId !== target.regionId) {
+          await db.$queryRaw`SELECT id FROM "Region" WHERE id = ${change.regionId} FOR UPDATE`;
+          const region = await db.region.findUnique({
+            where: { id: change.regionId },
+          });
+          if (!region) throw new NotFoundException('Region not found');
+          if (region.archivedAt)
+            throw new ConflictException('Region is archived');
+        }
+        if (
+          change.departmentId != null &&
+          change.departmentId !== target.departmentId
+        ) {
+          await db.$queryRaw`SELECT id FROM "Department" WHERE id = ${change.departmentId} FOR UPDATE`;
+          const department = await db.department.findUnique({
+            where: { id: change.departmentId },
+          });
+          if (!department) throw new NotFoundException('Department not found');
+          if (department.archivedAt)
+            throw new ConflictException('Department is archived');
+        }
+        const data: Prisma.UserUncheckedUpdateInput = {};
+        if (
+          change.username !== undefined &&
+          change.username !== target.username
+        )
+          data.username = change.username;
+        if (
+          change.phoneNumber !== undefined &&
+          change.phoneNumber !== target.phoneNumber
+        ) {
+          data.phoneNumber = change.phoneNumber;
+          data.phoneVerifiedAt = null;
+        } else if (
+          change.phoneNumber === null &&
+          target.phoneVerifiedAt !== null
+        )
+          data.phoneVerifiedAt = null;
+        if (
+          change.regionId !== undefined &&
+          change.regionId !== target.regionId
+        )
+          data.regionId = change.regionId;
+        if (
+          change.departmentId !== undefined &&
+          change.departmentId !== target.departmentId
+        )
+          data.departmentId = change.departmentId;
+        const select = {
+          id: true,
+          username: true,
+          email: true,
+          role: true,
+          status: true,
+          activatedAt: true,
+          phoneNumber: true,
+          region: { select: { id: true, name: true, archivedAt: true } },
+          department: { select: { id: true, name: true, archivedAt: true } },
+        } satisfies Prisma.UserSelect;
+        return Object.keys(data).length
+          ? db.user.update({ where: { id: targetId }, data, select })
+          : db.user.findUniqueOrThrow({ where: { id: targetId }, select });
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      )
+        throw new ConflictException('Username already exists');
+      throw error;
+    }
+  }
 
   async changePassword(
     actor: { id: number; role: PrismaUserRole; sessionVersion: number },
@@ -365,8 +488,8 @@ export class UsersService {
         sessionVersion: true,
         activatedAt: true,
         phoneNumber: true,
-        region: { select: { id: true, name: true } },
-        department: { select: { id: true, name: true } },
+        region: { select: { id: true, name: true, archivedAt: true } },
+        department: { select: { id: true, name: true, archivedAt: true } },
       },
     });
 
