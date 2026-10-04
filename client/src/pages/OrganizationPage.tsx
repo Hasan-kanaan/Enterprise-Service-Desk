@@ -1,3 +1,4 @@
+import { ActionMenu } from '@/components/ActionMenu'
 import { SpecialtyLinks } from '@/components/SpecialtyLinks'
 import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
@@ -54,7 +55,17 @@ export function OrganizationPage() {
         onRetry={reload}
       />
     )
-  const data = { ...resource.data, teams: needsManager ? resource.data.teams.filter(team => team.scope === 'REGION' && !team.archivedAt && team.managers.length === 0) : resource.data.teams }
+  const data = {
+    ...resource.data,
+    teams: needsManager
+      ? resource.data.teams.filter(
+          (team) =>
+            team.scope === 'REGION' &&
+            !team.archivedAt &&
+            team.managers.length === 0,
+        )
+      : resource.data.teams,
+  }
   const team = teamId
     ? data.teams.find((item) => item.id === Number(teamId))
     : null
@@ -83,14 +94,24 @@ export function OrganizationPage() {
           Refresh organization
         </button>
       </header>
-      {needsManager && <p className="notice">Active regional Teams requiring a Manager. <button className="text-button" onClick={() => setParams({})}>Show all Teams</button></p>}
+      {needsManager && (
+        <p className="notice warning">
+          Active regional Teams requiring a Manager.{' '}
+          <button className="text-button" onClick={() => setParams({})}>
+            Show all Teams
+          </button>
+        </p>
+      )}
       {team ? (
         <>
           <Link className="back-link" to="/admin/organization">
             Back to organization
           </Link>
-          <p className="notice">{team.archivedAt ? 'ARCHIVED' : 'ACTIVE'}</p>
+          <p className="quiet-note">
+            {team.archivedAt ? 'Archived Team' : 'Active Team'}
+          </p>
           <section className="panel detail-body">
+            <h2>Identity and coverage</h2>
             <dl className="metadata-grid">
               <div>
                 <dt>Coverage</dt>
@@ -124,6 +145,54 @@ export function OrganizationPage() {
             choices={data.specialties}
             onReload={reload}
           />
+          <div className="form-columns">
+            <section className="panel detail-body">
+              <h2>Team Lead</h2>
+              <p className="muted">{team.teamLead?.username ?? 'Unassigned'}</p>
+              <div className="button-row">
+                <button
+                  className="button secondary"
+                  disabled={!!team.archivedAt}
+                  onClick={() => setAction({ kind: 'lead' })}
+                >
+                  Assign Team Lead
+                </button>
+                {team.teamLead && (
+                  <button
+                    className="button secondary"
+                    onClick={() => setAction({ kind: 'remove-lead' })}
+                  >
+                    Remove Team Lead
+                  </button>
+                )}
+              </div>
+            </section>
+            <section className="panel detail-body">
+              <h2>Manager</h2>
+              <p className="muted">
+                {team.managers[0]?.manager.username ?? 'Unassigned'}
+              </p>
+              <p className="quiet-note">
+                Organizational responsibility only; no ticket authority.
+              </p>
+              {team.managers.length ? (
+                <button
+                  className="button secondary"
+                  onClick={() => setAction({ kind: 'remove-manager' })}
+                >
+                  Remove TeamManager
+                </button>
+              ) : (
+                <button
+                  className="button secondary"
+                  disabled={!!team.archivedAt}
+                  onClick={() => setAction({ kind: 'manager' })}
+                >
+                  Assign TeamManager
+                </button>
+              )}
+            </section>
+          </div>
           <section className="panel">
             <div className="list-heading">
               <h2>Team members</h2>
@@ -151,7 +220,7 @@ export function OrganizationPage() {
               members.items.map((member) => (
                 <article className="admin-row" key={member.id}>
                   <div>
-                    <h3>{member.username}</h3>
+                    <h3>{member.displayName ?? member.username}</h3>
                     <p className="muted">
                       {member.role} / {member.status}
                     </p>
@@ -181,54 +250,6 @@ export function OrganizationPage() {
             )}
             <ListContinuation resource={members} />
           </section>
-          <div className="form-columns">
-            <section className="panel detail-body">
-              <h2>Team Lead</h2>
-              <p className="muted">{team.teamLead?.username ?? 'Unassigned'}</p>
-              <div className="button-row">
-                <button
-                  className="button secondary"
-                  disabled={!!team.archivedAt}
-                  onClick={() => setAction({ kind: 'lead' })}
-                >
-                  Assign Team Lead
-                </button>
-                {team.teamLead && (
-                  <button
-                    className="button secondary"
-                    onClick={() => setAction({ kind: 'remove-lead' })}
-                  >
-                    Remove Team Lead
-                  </button>
-                )}
-              </div>
-            </section>
-            <section className="panel detail-body">
-              <h2>TeamManager</h2>
-              <p className="muted">
-                {team.managers[0]?.manager.username ?? 'Unassigned'}
-              </p>
-              <p className="quiet-note">
-                Organizational responsibility only; no ticket authority.
-              </p>
-              {team.managers.length ? (
-                <button
-                  className="button secondary"
-                  onClick={() => setAction({ kind: 'remove-manager' })}
-                >
-                  Remove TeamManager
-                </button>
-              ) : (
-                <button
-                  className="button secondary"
-                  disabled={!!team.archivedAt}
-                  onClick={() => setAction({ kind: 'manager' })}
-                >
-                  Assign TeamManager
-                </button>
-              )}
-            </section>
-          </div>
           {coverage && (
             <TeamCoverageForm
               key={team.id}
@@ -252,12 +273,12 @@ export function OrganizationPage() {
         </>
       ) : (
         <>
-          <nav className="button-row" aria-label="Organization catalogs">
+          <nav className="queue-tabs" aria-label="Organization catalogs">
             {(['teams', 'regions', 'departments', 'specialties'] as const).map(
               (value) => (
                 <button
                   key={value}
-                  className={`button ${tab === value ? 'primary' : 'secondary'}`}
+                  className={tab === value ? 'selected' : ''}
                   aria-pressed={tab === value}
                   onClick={() => setTab(value)}
                 >
@@ -283,19 +304,52 @@ export function OrganizationPage() {
             </div>
             {data[tab].length ? (
               data[tab].map((item) => (
-                <div className="admin-row" key={item.id}>
+                <div
+                  className={`admin-row ${'scope' in item ? 'team-row' : 'catalog-row'} ${'managers' in item && !item.archivedAt && item.scope === 'REGION' && !item.managers.length ? 'needs-manager' : ''}`}
+                  key={item.id}
+                >
                   {tab === 'teams' ? (
-                    <Link
-                      className="text-button"
-                      to={`/admin/organization/teams/${item.id}`}
-                    >
-                      {item.name}
-                    </Link>
+                    <div>
+                      <Link
+                        className="text-button"
+                        to={`/admin/organization/teams/${item.id}`}
+                      >
+                        {item.name}
+                      </Link>
+                      {'scope' in item && (
+                        <p className="quiet-note">
+                          {item.scope === 'GLOBAL'
+                            ? 'All regions'
+                            : (item.region?.name ?? 'Region unavailable')}
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <span>{item.name}</span>
                   )}
-                  <span>{item.archivedAt ? 'ARCHIVED' : 'ACTIVE'}</span>
-                  <div className="button-row">
+                  {'managers' in item && (
+                    <div className="team-ownership">
+                      <span>
+                        Manager:{' '}
+                        <strong>
+                          {item.managers[0]?.manager.username ??
+                            (item.scope === 'REGION' && !item.archivedAt
+                              ? 'Needs Manager'
+                              : 'Unassigned')}
+                        </strong>
+                      </span>
+                      <span>
+                        Team Lead:{' '}
+                        <strong>
+                          {item.teamLead?.username ?? 'Unassigned'}
+                        </strong>
+                      </span>
+                    </div>
+                  )}
+                  <span className="small muted">
+                    {item.archivedAt ? 'Archived' : 'Active'}
+                  </span>
+                  <ActionMenu label={`Actions for ${item.name}`}>
                     <button
                       className="button secondary"
                       onClick={() =>
@@ -320,20 +374,16 @@ export function OrganizationPage() {
                     >
                       {item.archivedAt ? 'Reactivate' : 'Archive'}
                     </button>
-                  </div>
+                  </ActionMenu>
                 </div>
               ))
             ) : (
               <EmptyState title="No records yet">
-                <p>Create a real organization record to get started.</p>
+                <p>Add a record using the create action above.</p>
               </EmptyState>
             )}
           </section>
-          <p className="quiet-note">
-            Regions and departments are independent. Departments are not tied to
-            a region. Archival preserves IDs and historical references. Physical
-            deletion is unavailable.
-          </p>
+
           {creating && (
             <OrganizationCreateForm
               kind={tab}

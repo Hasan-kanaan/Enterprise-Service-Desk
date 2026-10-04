@@ -1,21 +1,30 @@
 @import 'tailwindcss';
 @import './tickets.css';
+@import './workspace.css';
 
 :root {
-  --background: #f5f7fa;
+  --background: #f6f7f9;
   --foreground: #17212b;
   --card: #ffffff;
   --card-foreground: #17212b;
   --primary: #155e75;
   --primary-foreground: #f0fdfa;
   --muted: #e8eef2;
-  --muted-foreground: #60707d;
+  --muted-foreground: #566575;
   --border: #d7e0e6;
   --ring: #38a3b8;
   --success: #15803d;
   --warning: #b45309;
   --danger: #b42318;
-  --radius: 0.6rem;
+  --radius: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  color-scheme: light;
+  font-size: 14px;
   font-family: 'Avenir Next', 'Segoe UI', sans-serif;
   color: var(--foreground);
   background: var(--background);
@@ -26,6 +35,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --background: #10171d;
     --foreground: #e8f0f3;
     --card: #17232b;

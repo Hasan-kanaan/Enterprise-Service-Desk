@@ -38,14 +38,14 @@ export function EmployeeTicketPage() {
       <div className="panel empty-state">
         <h1>Ticket not found</h1>
         <Link className="button secondary" to="/tickets">
-          My tickets
+          My Requests
         </Link>
       </div>
     )
   return <TicketContent key={id} id={id} />
 }
 function TicketContent({ id }: { id: number }) {
-  const user = useAppSelector(state => state.auth.user)
+  const user = useAppSelector((state) => state.auth.user)
   const ticketResource = useResource(
     useCallback((signal: AbortSignal) => getTicket(id, signal), [id]),
   )
@@ -118,7 +118,7 @@ function TicketContent({ id }: { id: number }) {
       <div className="ticket-workspace">
         <Link className="back-link" to="/tickets">
           <ArrowLeft size={16} />
-          My tickets
+          My Requests
         </Link>
         <div className="panel">
           <ErrorState
@@ -135,7 +135,8 @@ function TicketContent({ id }: { id: number }) {
           items?.find((item) => item.id === value)?.name ?? 'Name unavailable',
       )
       .join(', ') || 'None selected'
-  if (ticket.requesterId !== user?.id) return <Navigate to={`/work/tickets/${id}`} replace />
+  if (ticket.requesterId !== user?.id)
+    return <Navigate to={`/work/tickets/${id}`} replace />
   const initial: TicketInput = {
     title: ticket.title,
     description: ticket.description,
@@ -160,7 +161,7 @@ function TicketContent({ id }: { id: number }) {
     <div className="ticket-workspace">
       <Link className="back-link" to="/tickets">
         <ArrowLeft size={16} />
-        My tickets
+        My Requests
       </Link>
       <header className="page-heading ticket-detail-heading">
         <div>
@@ -193,8 +194,9 @@ function TicketContent({ id }: { id: number }) {
             </p>
             {ticket.autoCloseAt && (
               <p>
-                Eligible for automatic closure on {formatDate(ticket.autoCloseAt, true)}.
-                Closes on the next scheduled check unless reopened or closed earlier.
+                Eligible for automatic closure on{' '}
+                {formatDate(ticket.autoCloseAt, true)}. Closes on the next
+                scheduled check unless reopened or closed earlier.
               </p>
             )}
           </div>
@@ -213,11 +215,15 @@ function TicketContent({ id }: { id: number }) {
         </div>
       )}
       {ticket.status === 'WAITING_FOR_EMPLOYEE' && (
-        <div className="notice">
-          Support is waiting for your input. Send a new message in the conversation
-          below to resume work.
+        <div className="notice warning" role="status">
+          Support is waiting for your input. Send a new message in the
+          conversation below to resume work.
         </div>
       )}
+      <nav className="detail-jumps" aria-label="Request sections">
+        <a href="#ticket-conversation">Conversation</a>
+        <a href="#ticket-information">Details &amp; actions</a>
+      </nav>
       <div className="ticket-detail-grid">
         <div className="detail-main">
           <section className="panel">
@@ -258,57 +264,7 @@ function TicketContent({ id }: { id: number }) {
             ) : (
               <div className="detail-body">
                 <p className="description">{ticket.description}</p>
-                <dl className="metadata-grid">
-                  <div>
-                    <dt>Category</dt>
-                    <dd>
-                      {ticket.category?.name ??
-                        options.data?.categories.find(
-                          (item) => item.id === ticket.categoryId,
-                        )?.name ??
-                        'Name unavailable'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Priority</dt>
-                    <dd className="capitalize">
-                      {ticket.priority.toLowerCase()}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Affected regions</dt>
-                    <dd>
-                      {ticket.allRegions
-                        ? 'All regions'
-                        : names(
-                            ticket.affectedRegionIds,
-                            ticket.affectedRegions ?? options.data?.regions,
-                          )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Affected departments</dt>
-                    <dd>
-                      {ticket.allDepartments
-                        ? 'All departments'
-                        : names(
-                            ticket.affectedDepartmentIds,
-                            ticket.affectedDepartments ?? options.data?.departments,
-                          )}
-                    </dd>
-                  </div>
-                  {ticket.tagIds.length > 0 && (
-                    <div>
-                      <dt>Tags</dt>
-                      <dd>
-                        {names(
-                          ticket.tagIds,
-                          ticket.tags ?? options.data?.tags,
-                        )}
-                      </dd>
-                    </div>
-                  )}
-                </dl>
+
                 {!!options.error && (
                   <ErrorState
                     error={options.error}
@@ -319,32 +275,87 @@ function TicketContent({ id }: { id: number }) {
               </div>
             )}
           </section>
+          {history.data && (
+            <TicketCommunication
+              ticketId={id}
+              requesterId={ticket.requesterId}
+              cycles={history.data.cycles}
+              onChanged={() => void ticketResource.refresh()}
+            />
+          )}
+          <TicketAttachments ticketId={id} />
           <section className="panel">
             <div className="list-heading">
-              <div>
-                <h2>Work history</h2>
-                <p className="muted small">
-                  Every attempt stays connected to your request.
-                </p>
-              </div>
+              <h2>Work history</h2>
             </div>
             {history.loading ? (
               <LoadingState label="Loading history..." />
             ) : history.error ? (
               <ErrorState error={history.error} onRetry={history.reload} />
             ) : (
-              history.data && <><TicketAttachments ticketId={id} /><TicketCommunication ticketId={id} cycles={history.data.cycles} onChanged={() => void ticketResource.refresh()} /><TicketHistory history={history.data} /></>
+              history.data && <TicketHistory history={history.data} />
             )}
           </section>
         </div>
-        <aside className="detail-aside">
+        <aside id="ticket-information" className="detail-aside">
+          <section className="panel detail-body">
+            <h2>Request information</h2>
+            <dl className="metadata-grid">
+              <div>
+                <dt>Category</dt>
+                <dd>
+                  {ticket.category?.name ??
+                    options.data?.categories.find(
+                      (item) => item.id === ticket.categoryId,
+                    )?.name ??
+                    'Name unavailable'}
+                </dd>
+              </div>
+              <div>
+                <dt>Priority</dt>
+                <dd className="capitalize">{ticket.priority.toLowerCase()}</dd>
+              </div>
+              <div>
+                <dt>Affected regions</dt>
+                <dd>
+                  {ticket.allRegions
+                    ? 'All regions'
+                    : names(
+                        ticket.affectedRegionIds,
+                        ticket.affectedRegions ?? options.data?.regions,
+                      )}
+                </dd>
+              </div>
+              <div>
+                <dt>Affected departments</dt>
+                <dd>
+                  {ticket.allDepartments
+                    ? 'All departments'
+                    : names(
+                        ticket.affectedDepartmentIds,
+                        ticket.affectedDepartments ?? options.data?.departments,
+                      )}
+                </dd>
+              </div>
+              {ticket.tagIds.length > 0 && (
+                <div>
+                  <dt>Tags</dt>
+                  <dd>
+                    {names(ticket.tagIds, ticket.tags ?? options.data?.tags)}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </section>
           <section className="panel detail-body">
             <p className="eyebrow">Your support team</p>
             <dl className="owner-list">
               <div>
                 <dt>Responsible manager</dt>
                 <dd>
-                  {ticket.ownership.manager?.displayName ?? ticket.ownership.manager?.username ?? 'Awaiting assignment'}
+                  {ticket.ownership.manager?.displayName ??
+                    ticket.ownership.manager?.username ??
+                    'Awaiting assignment'}
                 </dd>
               </div>
               <div>
@@ -353,7 +364,11 @@ function TicketContent({ id }: { id: number }) {
               </div>
               <div>
                 <dt>Primary agent</dt>
-                <dd>{ticket.ownership.agent?.displayName ?? ticket.ownership.agent?.username ?? 'Not assigned'}</dd>
+                <dd>
+                  {ticket.ownership.agent?.displayName ??
+                    ticket.ownership.agent?.username ??
+                    'Not assigned'}
+                </dd>
               </div>
             </dl>
             <p className="quiet-note">

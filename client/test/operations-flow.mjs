@@ -1,3 +1,4 @@
+import { operationsPolish } from './ui-polish.mjs'
 import { pageFixture, historyFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
@@ -489,7 +490,7 @@ async function navigate(path) {
 async function click(text) {
   await until(() => evaluate(`[...document.querySelectorAll('button,a')].some(el => el.textContent.trim() === ${JSON.stringify(text)} && !el.disabled)`), `ready: ${text}`)
   await evaluate(
-    `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); el.click(); })()`,
+    `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); const popover=el.closest('[popover]'); if(popover && !popover.matches(':popover-open')) popover.previousElementSibling.click(); el.click(); })()`,
   )
   await delay(70)
 }
@@ -608,6 +609,9 @@ try {
     await click(text)
     await waitText('Confirm')
   }
+  if (process.argv.includes('--ui-polish')) {
+    await operationsPolish({ send, evaluate, navigate, waitText, click, fill, requests, browserErrors })
+  } else {
   const originalUser = user
   const originalLength = tickets.length
   for (const [route, role, id, manager, team, agent] of [
@@ -821,7 +825,7 @@ try {
   await waitText('Frozen history')
   await waitText('Delegated firewall check')
   await navigate('/work/subtasks/603')
-  await waitText('permanently frozen')
+  await waitText('Historical work. This subtask is read-only.')
   assert(!(await button('Update subtask')))
   await navigate('/work/tickets/142')
   await waitText('VPN now owned')
@@ -829,7 +833,7 @@ try {
   await fill('[aria-label="Next ticket status"]', 'RESOLVED')
   await fill('[aria-label="Resolution summary"]', 'Updated network client')
   await click('Confirm')
-  await waitText('This ticket is frozen.')
+  await waitText('This ticket is read-only.')
   assert(!(await button('Edit details')))
   assert(!(await button('Change assignment')))
   assert(!(await button('Create subtask')))
@@ -859,7 +863,7 @@ try {
   await action('Transfer responsibility')
   await fill('[aria-label="Responsible manager"]', '21')
   await click('Confirm')
-  await waitText('My tickets')
+  await waitText('My Work')
   await absent('VPN now owned')
   await navigate('/work/tickets/142')
   await waitText('could not be found')
@@ -870,7 +874,7 @@ try {
   notifications.add(31, 'SUBTASK_ASSIGNED', 144, 604)
   notifications.add(31, 'PRIMARY_AGENT_ASSIGNED', 145)
   await navigate('/work/tickets')
-  await waitText('My assigned and collaborating tickets')
+  await waitText('Assigned and collaborating tickets')
   await waitText('Owned network issue')
   await waitText('Private infrastructure issue')
   await absent('Former Ali assignment')
@@ -921,7 +925,7 @@ try {
   await waitText('COMPLETED')
   assert.equal(subtasks.find((s) => s.id === 604).completedById, 31)
   await navigate('/work/subtasks/603')
-  await waitText('permanently frozen')
+  await waitText('Historical work. This subtask is read-only.')
   assert(!(await button('Update subtask')))
   await navigate('/work/tickets/144')
   await waitText('Private infrastructure issue')
@@ -1004,7 +1008,7 @@ try {
   await until(
     () =>
       evaluate(
-        'document.querySelector("aside").getBoundingClientRect().right <= 1',
+        '!document.querySelector(".navigation-drawer[open]")',
       ),
     'mobile sidebar closed',
   )
@@ -1059,6 +1063,7 @@ try {
     'PASS: mobile layout, network retry, 401 recovery/session rejection, admin exclusion, no runtime errors',
   )
   console.log('Operational browser acceptance checks passed.')
+  }
 } catch (error) {
   console.error(
     'Browser failure details:',

@@ -12,7 +12,7 @@ export function SubtaskRows({
     <div className="ticket-rows">
       {subtasks.map((task) => (
         <Link
-          className="ticket-row"
+          className={`ticket-row ${frozen || ['COMPLETED', 'CANCELLED'].includes(task.status) ? 'row-history' : ''}`}
           key={task.id}
           to={`/work/subtasks/${task.id}`}
         >

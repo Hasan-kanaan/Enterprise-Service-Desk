@@ -60,15 +60,18 @@ function SubtaskContent({ id }: { id: number }) {
         </button>
       </header>
       {resource.data.parentVisible && (
-        <Link className="button secondary" to={`/work/tickets/${task.ticketId}`}>
+        <Link
+          className="button secondary"
+          to={`/work/tickets/${task.ticketId}`}
+        >
           Open parent ticket
         </Link>
       )}
       {frozen && (
         <p className="notice">
           {historical
-            ? 'Historical cycle: this subtask is permanently frozen.'
-            : 'This ticket is terminal. Subtask changes are unavailable.'}
+            ? 'Historical work. This subtask is read-only.'
+            : 'The ticket is no longer active. This subtask is read-only.'}
         </p>
       )}
       <section className="panel detail-body">
@@ -97,10 +100,7 @@ function SubtaskContent({ id }: { id: number }) {
           Update subtask
         </button>
       )}
-      <p className="quiet-note">
-        This view contains only the authorized subtask. Parent-ticket content
-        and history are not loaded.
-      </p>
+
       {editing && (
         <SubtaskForm
           ticketId={task.ticketId}

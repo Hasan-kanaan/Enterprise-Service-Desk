@@ -1,3 +1,4 @@
+import { ActionMenu } from '@/components/ActionMenu'
 import { TicketAttachments } from '@/components/Attachments'
 import { useCallback, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -92,7 +93,11 @@ function OperationalTicket({ id }: { id: number }) {
         <div>
           <p className="eyebrow">Ticket #{id}</p>
           <h1>{ticket.title}</h1>
-          {ticket.requesterStatus === 'INACTIVE' && <p className="notice" role="alert">Requester account is inactive.</p>}
+          {ticket.requesterStatus === 'INACTIVE' && (
+            <p className="notice" role="alert">
+              Requester account is inactive.
+            </p>
+          )}
           <div className="button-row">
             <StatusBadge status={ticket.status} />
             <span className="muted">
@@ -115,12 +120,16 @@ function OperationalTicket({ id }: { id: number }) {
       )}
       {isTerminal(ticket.status) && (
         <p className="notice">
-          This ticket is frozen.{' '}
+          This ticket is read-only.{' '}
           {p.reopen
-            ? 'Use explicit reopening to start another work cycle.'
+            ? 'Reopen it to start another work cycle.'
             : 'Operational changes are unavailable.'}
         </p>
       )}
+      <nav className="detail-jumps" aria-label="Request sections">
+        <a href="#ticket-conversation">Conversation</a>
+        <a href="#ticket-information">Details &amp; actions</a>
+      </nav>
       <div className="ticket-detail-grid">
         <div className="detail-main">
           <section className="panel">
@@ -176,48 +185,6 @@ function OperationalTicket({ id }: { id: number }) {
             ) : (
               <div className="detail-body">
                 <p className="description">{ticket.description}</p>
-                <dl className="metadata-grid">
-                  <div>
-                    <dt>Category</dt>
-                    <dd>
-                      {ticket.category?.name ??
-                        options.categories.find(
-                          (item) => item.id === ticket.categoryId,
-                        )?.name ??
-                        'Name unavailable'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Priority</dt>
-                    <dd>{ticket.priority}</dd>
-                  </div>
-                  <div>
-                    <dt>Affected regions</dt>
-                    <dd>
-                      {ticket.allRegions
-                        ? 'All regions'
-                        : names(
-                            ticket.affectedRegionIds,
-                            ticket.affectedRegions ?? options.regions,
-                          )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Affected departments</dt>
-                    <dd>
-                      {ticket.allDepartments
-                        ? 'All departments'
-                        : names(
-                            ticket.affectedDepartmentIds,
-                            ticket.affectedDepartments ?? options.departments,
-                          )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Tags</dt>
-                    <dd>{names(ticket.tagIds, ticket.tags ?? options.tags)}</dd>
-                  </div>
-                </dl>
               </div>
             )}
           </section>
@@ -239,7 +206,8 @@ function OperationalTicket({ id }: { id: number }) {
                 Subtasks are not available with your current relationship to
                 this ticket.
               </p>
-            ) : current && (current.subtasks?.length || current.subtasksHasMore) ? (
+            ) : current &&
+              (current.subtasks?.length || current.subtasksHasMore) ? (
               <CycleSubtasks ticketId={id} cycle={current} />
             ) : (
               <p className="detail-body muted">
@@ -253,24 +221,81 @@ function OperationalTicket({ id }: { id: number }) {
               </p>
             )}
           </section>
+          <TicketCommunication
+            ticketId={id}
+            requesterId={ticket.requesterId}
+            cycles={history.cycles}
+            onChanged={reload}
+          />
+          <TicketAttachments ticketId={id} />
           <section className="panel">
             <div className="list-heading">
               <h2>Work history</h2>
             </div>
-            <TicketAttachments ticketId={id} /><TicketCommunication ticketId={id} cycles={history.cycles} onChanged={reload} />
             <TicketHistory
               history={history}
-              renderWork={(cycle) => <CycleSubtasks ticketId={id} cycle={cycle as SupportCycle} />}
+              renderWork={(cycle) => (
+                <CycleSubtasks ticketId={id} cycle={cycle as SupportCycle} />
+              )}
             />
           </section>
         </div>
-        <aside className="detail-aside">
+        <aside id="ticket-information" className="detail-aside">
+          <section className="panel detail-body">
+            <h2>Request information</h2>
+            <dl className="metadata-grid">
+              <div>
+                <dt>Category</dt>
+                <dd>
+                  {ticket.category?.name ??
+                    options.categories.find(
+                      (item) => item.id === ticket.categoryId,
+                    )?.name ??
+                    'Name unavailable'}
+                </dd>
+              </div>
+              <div>
+                <dt>Priority</dt>
+                <dd>{ticket.priority}</dd>
+              </div>
+              <div>
+                <dt>Affected regions</dt>
+                <dd>
+                  {ticket.allRegions
+                    ? 'All regions'
+                    : names(
+                        ticket.affectedRegionIds,
+                        ticket.affectedRegions ?? options.regions,
+                      )}
+                </dd>
+              </div>
+              <div>
+                <dt>Affected departments</dt>
+                <dd>
+                  {ticket.allDepartments
+                    ? 'All departments'
+                    : names(
+                        ticket.affectedDepartmentIds,
+                        ticket.affectedDepartments ?? options.departments,
+                      )}
+                </dd>
+              </div>
+              <div>
+                <dt>Tags</dt>
+                <dd>{names(ticket.tagIds, ticket.tags ?? options.tags)}</dd>
+              </div>
+            </dl>
+          </section>
           <section className="panel detail-body">
             <h2>Current responsibility</h2>
             <dl className="owner-list">
               <div>
                 <dt>Responsible manager</dt>
-                <dd>{ticket.ownership.manager?.displayName ?? ticket.ownership.manager?.username ?? 'Unassigned'}</dd>
+                <dd>
+                  {ticket.ownership.manager?.displayName ??
+                    ticket.ownership.manager?.username ??
+                    'Unassigned'}
+                </dd>
               </div>
               <div>
                 <dt>Primary team</dt>
@@ -278,12 +303,41 @@ function OperationalTicket({ id }: { id: number }) {
               </div>
               <div>
                 <dt>Primary agent</dt>
-                <dd>{ticket.ownership.agent?.displayName ?? ticket.ownership.agent?.username ?? 'Unassigned'}</dd>
+                <dd>
+                  {ticket.ownership.agent?.displayName ??
+                    ticket.ownership.agent?.username ??
+                    'Unassigned'}
+                </dd>
               </div>
             </dl>
+            {(p.assignAgent || p.transfer) && (
+              <div className="ticket-actions">
+                <ActionMenu label="Manage responsibility">
+                  {' '}
+                  {p.assignAgent && (
+                    <button
+                      className="button secondary"
+                      disabled={busy}
+                      onClick={() => setAction('assignment')}
+                    >
+                      Change assignment
+                    </button>
+                  )}
+                  {p.transfer && (
+                    <button
+                      className="button secondary"
+                      disabled={busy}
+                      onClick={() => setAction('transfer')}
+                    >
+                      Transfer responsibility
+                    </button>
+                  )}
+                </ActionMenu>
+              </div>
+            )}
           </section>
           <section className="panel detail-body">
-            <h2>Available actions</h2>
+            <h2>Ticket actions</h2>
             <div className="ticket-actions">
               {p.take && (
                 <button
@@ -292,24 +346,6 @@ function OperationalTicket({ id }: { id: number }) {
                   onClick={() => setAction('take')}
                 >
                   Take responsibility
-                </button>
-              )}
-              {p.assignAgent && (
-                <button
-                  className="button secondary"
-                  disabled={busy}
-                  onClick={() => setAction('assignment')}
-                >
-                  Change assignment
-                </button>
-              )}
-              {p.transfer && (
-                <button
-                  className="button secondary"
-                  disabled={busy}
-                  onClick={() => setAction('transfer')}
-                >
-                  Transfer responsibility
                 </button>
               )}
               {p.statuses.length > 0 && (

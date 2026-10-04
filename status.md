@@ -1,5 +1,17 @@
 # Project Status
 
+## Frontend UI/UX polish (2026-10-04)
+
+Unified authenticated navigation, shared controls, requester/support detail,
+account directory actions, Team catalogs, configuration and Profile/security.
+Preserved backend APIs, business/authorization rules, pagination, identity and
+session behavior. No dependencies, AI or cloud work; no commit or push.
+
+Frontend typecheck/build, lint, four focused Chromium UI modes, existing focused
+identity/lifecycle and account metadata modes, and diff whitespace checks pass.
+Browser verification uses isolated fixtures, not a real database. See
+[design, exact checks and remaining boundaries](docs/frontend-polish.md).
+
 ## Focused specialty authority and self-notification correction (2026-10-04)
 
 User-specialty GET/POST/DELETE now share the account-management target hierarchy:

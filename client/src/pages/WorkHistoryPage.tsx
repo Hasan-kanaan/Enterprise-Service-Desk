@@ -56,23 +56,22 @@ export function WorkHistoryPage() {
     ),
   )
   return (
-    <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">My Work History</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          Your recorded completed work. Historical records do not grant ticket
-          access.
-        </p>
-        <p className="mt-1 text-sm text-slate-500">
-          Only retained evidence is shown. Intermediate assignments are not
-          recorded. Reopened cycles appear once ended.
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-4 rounded-xl border border-[var(--border)] p-4">
+    <section className="ticket-workspace">
+      <header className="page-heading">
+        <div>
+          <p className="eyebrow">Support workspace</p>
+          <h1>My Work History</h1>
+          <p className="mt-2 text-sm text-slate-500">
+            Your recorded completed work. Historical records do not grant ticket
+            access.
+          </p>
+        </div>
+      </header>
+      <div className="panel list-filters">
         <label className="flex min-w-0 flex-col gap-1 text-sm">
           Contribution
           <select
-            className="max-w-full rounded border p-2"
+            className="max-w-full rounded border border-[var(--border)] bg-[var(--card)] p-2"
             value={contribution}
             onChange={(e) => {
               setContribution(e.target.value)
@@ -90,7 +89,7 @@ export function WorkHistoryPage() {
         <label className="flex min-w-0 flex-col gap-1 text-sm">
           From (UTC)
           <input
-            className="max-w-full rounded border p-2"
+            className="max-w-full rounded border border-[var(--border)] bg-[var(--card)] p-2"
             type="date"
             value={from}
             onChange={(e) => {
@@ -102,7 +101,7 @@ export function WorkHistoryPage() {
         <label className="flex min-w-0 flex-col gap-1 text-sm">
           Through (UTC)
           <input
-            className="max-w-full rounded border p-2"
+            className="max-w-full rounded border border-[var(--border)] bg-[var(--card)] p-2"
             type="date"
             value={to}
             onChange={(e) => {
@@ -130,12 +129,9 @@ export function WorkHistoryPage() {
               </p>
             </EmptyState>
           ) : (
-            <ul className="space-y-3" aria-label="Historical work">
+            <ul className="history-list" aria-label="Historical work">
               {history.data.items.map((row) => (
-                <li
-                  key={`${row.kind}-${row.id}`}
-                  className="flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 sm:flex-row sm:items-center sm:justify-between"
-                >
+                <li key={`${row.kind}-${row.id}`} className="admin-row">
                   <div className="min-w-0 break-words">
                     <h2 className="font-semibold">
                       Ticket #{row.ticketId} · Cycle {row.sequenceNumber} (
@@ -177,7 +173,7 @@ export function WorkHistoryPage() {
             aria-label="History pagination"
           >
             <button
-              className="rounded border px-3 py-2 disabled:opacity-40"
+              className="button secondary"
               disabled={page === 1}
               onClick={() => setPage((p) => p - 1)}
             >
@@ -185,7 +181,7 @@ export function WorkHistoryPage() {
             </button>
             <span aria-live="polite">Page {page}</span>
             <button
-              className="rounded border px-3 py-2 disabled:opacity-40"
+              className="button secondary"
               disabled={!history.data?.hasMore}
               onClick={() => setPage((p) => p + 1)}
             >

@@ -5,7 +5,10 @@ import { useResource } from '@/hooks/useResource'
 import { usePagedList, useDebouncedValue } from '@/hooks/usePagedList'
 import { useListFilters } from '@/hooks/useListFilters'
 import { ListContinuation } from '@/components/ListContinuation'
-import { getRequesterSummary } from '@/services/tickets.service'
+import {
+  getRequesterSummary,
+  getTicketOptions,
+} from '@/services/tickets.service'
 import {
   ticketStatuses,
   type TicketSummary,
@@ -43,6 +46,7 @@ export function EmployeeTicketsPage({
     limit: overview ? 5 : 25,
   })
   const summary = useResource(getRequesterSummary)
+  const options = useResource(getTicketOptions)
   const { items: tickets, error, loading } = resource
   const reload = () => {
     resource.reload()
@@ -57,17 +61,19 @@ export function EmployeeTicketsPage({
         <div>
           <p className="eyebrow">Requester workspace</p>
           <h1>
-            {overview ? `Hello, ${user?.displayName ?? user?.username ?? 'there'}.` : 'My Requests'}
+            {overview
+              ? `Hello, ${user?.displayName ?? user?.username ?? 'there'}.`
+              : 'My Requests'}
           </h1>
           <p className="muted">
             {overview
-              ? 'A clear view of your support requests, from the first report to the final fix.'
-              : 'Track your requests and pick up where you left off.'}
+              ? 'Your recent requests and updates.'
+              : 'Track your requests and reply to support.'}
           </p>
         </div>
         <Link className="button primary" to="/tickets/new">
           <Plus size={18} />
-          New ticket
+          New request
         </Link>
       </header>
       <section className="ticket-stats" aria-label="Ticket summary">
@@ -76,15 +82,6 @@ export function EmployeeTicketsPage({
             <div className="stat-card" key={label}>
               <span>{label}</span>
               <strong>{counts ? counts[index] : '-'}</strong>
-              <p>
-                {
-                  [
-                    'Your team is working on these',
-                    'Support is waiting for your input',
-                    'Review the result and confirm',
-                  ][index]
-                }
-              </p>
             </div>
           ),
         )}
@@ -152,23 +149,19 @@ export function EmployeeTicketsPage({
         ) : error && !tickets.length ? (
           <ErrorState error={error} onRetry={reload} />
         ) : visible.length ? (
-          <TicketRows tickets={visible} />
+          <TicketRows tickets={visible} categories={options.data?.categories} />
         ) : (
           <EmptyState
-            title={
-              searching
-                ? 'No matching requests'
-                : 'Your next request starts here'
-            }
+            title={searching ? 'No matching requests' : 'No requests yet'}
           >
             <p className="muted">
               {searching
                 ? 'Try a different search or filter.'
-                : 'Tell us what is getting in your way. You can follow every update here.'}
+                : 'Create a request when you need help from support.'}
             </p>
             {!searching && (
               <Link className="button secondary" to="/tickets/new">
-                Create your first ticket
+                New request
               </Link>
             )}
           </EmptyState>

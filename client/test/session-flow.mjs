@@ -2,7 +2,7 @@
 // Vite dev exposes source imports to the test only; no production test hooks.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -329,6 +329,18 @@ try {
   await until(() => a.evaluate("document.body.innerText.includes('Your sessions')"), 'profile restored after current-device login')
   console.log('PASS: current-device session UI signs out both tabs and permits fresh login')
 
+  if (process.argv.includes('--ui-polish')) {
+    await a.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false })
+    const shot = await a.send('Page.captureScreenshot', { format: 'png' })
+    writeFileSync(join(tmpdir(), 'eds-polish-profile-desktop.png'), Buffer.from(shot.data, 'base64'))
+    await a.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+    assert(await a.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+    const mobileShot = await a.send('Page.captureScreenshot', { format: 'png' })
+    writeFileSync(join(tmpdir(), 'eds-polish-profile-mobile.png'), Buffer.from(mobileShot.data, 'base64'))
+    assert(await a.evaluate(`document.querySelector('input[autocomplete="current-password"]').closest('label').textContent.includes('Current password')`))
+    assert.deepEqual(errors, [])
+    console.log('PASS: Profile/security layout, labeled password fields and 390px viewport')
+  } else {
   assert.equal(peak, 1)
   let before = count
   assert.deepEqual(await Promise.all([refresh(a), refresh(b)]), [true, true])
@@ -506,6 +518,7 @@ try {
   console.log(
     'PASS: tokens absent from persistent JS storage; no browser runtime errors',
   )
+}
 } finally {
   for (const client of clients) client.ws.close()
   browser.kill()

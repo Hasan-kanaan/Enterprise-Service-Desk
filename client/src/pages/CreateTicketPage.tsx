@@ -27,15 +27,13 @@ export function CreateTicketPage() {
     <div className="ticket-workspace form-page">
       <Link className="back-link" to="/tickets">
         <ArrowLeft size={16} />
-        My tickets
+        My Requests
       </Link>
       <header className="page-heading">
         <div>
-          <p className="eyebrow">A little context goes a long way</p>
-          <h1>New support request</h1>
-          <p className="muted">
-            Tell us what is happening. Your request will go to the support team.
-          </p>
+          <p className="eyebrow">My Requests</p>
+          <h1>New request</h1>
+          <p className="muted">Describe the issue and who is affected.</p>
         </div>
       </header>
       <div className="panel">

@@ -2,7 +2,7 @@ import { AlertCircle, ArrowUpRight, Inbox, LoaderCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { getApiStatus, getApiErrorMessage } from '@/services/api'
-import type { TicketStatus, TicketSummary } from '@/types/tickets'
+import type { TicketStatus, TicketSummary, NamedOption } from '@/types/tickets'
 import { formatDate, statusLabels } from '@/types/ticketPresentation'
 
 export function StatusBadge({ status }: { status: TicketStatus }) {
@@ -43,7 +43,7 @@ export function ErrorState({
       : status === 403
         ? 'You do not have access to this information.'
         : status === 409
-          ? 'The ticket changed. Reload the latest information before trying again.'
+          ? `This ${resourceName} changed. Reload the latest information before trying again.`
           : getApiErrorMessage(error, message)
   return (
     <div className="error-state" role="alert">
@@ -52,7 +52,7 @@ export function ErrorState({
         <p>{text}</p>
         {onRetry && (
           <button className="text-button" onClick={onRetry}>
-            {status === 409 ? 'Reload ticket' : 'Try again'}
+            {status === 409 ? `Reload ${resourceName}` : 'Try again'}
           </button>
         )}
       </div>
@@ -77,9 +77,11 @@ export function EmptyState({
 export function TicketRows({
   tickets,
   basePath = '/tickets',
+  categories,
 }: {
   tickets: TicketSummary[]
   basePath?: string
+  categories?: NamedOption[]
 }) {
   return (
     <div className="ticket-rows">
@@ -94,9 +96,25 @@ export function TicketRows({
             <div>
               <h2>{ticket.title}</h2>
               <p>
-                Opened {formatDate(ticket.createdAt)}{' '}
+                {categories?.find((item) => item.id === ticket.categoryId)
+                  ?.name ?? `Category #${ticket.categoryId}`}{' '}
+                <span aria-hidden="true">&#183;</span> Updated{' '}
+                {formatDate(ticket.updatedAt)}{' '}
                 <span aria-hidden="true">&#183;</span>{' '}
                 {ticket.priority.toLowerCase()} priority
+                {basePath === '/work/tickets' && (
+                  <>
+                    {' '}
+                    &#183;{' '}
+                    {ticket.isCurrentCollaborator
+                      ? 'Collaborating'
+                      : ticket.assignedAgentId
+                        ? `Agent #${ticket.assignedAgentId}`
+                        : ticket.assignedManagerId
+                          ? `Manager #${ticket.assignedManagerId}`
+                          : 'Unclaimed'}
+                  </>
+                )}
               </p>
             </div>
           </div>

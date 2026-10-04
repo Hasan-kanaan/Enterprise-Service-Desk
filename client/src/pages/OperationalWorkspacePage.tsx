@@ -1,9 +1,9 @@
 import { useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { useResource } from '@/hooks/useResource'
 import { getWorkspace } from '@/services/operations.service'
-import { getTicketSummary } from '@/services/tickets.service'
+import { getTicketSummary, getTicketOptions } from '@/services/tickets.service'
 import { usePagedList, useDebouncedValue } from '@/hooks/usePagedList'
 import { useListFilters } from '@/hooks/useListFilters'
 import { ListContinuation } from '@/components/ListContinuation'
@@ -30,6 +30,13 @@ export function OperationalWorkspacePage({
   const query = filters.get('search')
   const search = useDebouncedValue(query)
   const workspace = useResource(getWorkspace)
+  const options = useResource(
+    useCallback(
+      (signal: AbortSignal) =>
+        view === 'subtasks' ? Promise.resolve(null) : getTicketOptions(signal),
+      [view],
+    ),
+  )
   const summary = useResource(
     useCallback(
       (signal: AbortSignal) =>
@@ -67,10 +74,10 @@ export function OperationalWorkspacePage({
       : view === 'team'
         ? 'Led-team tickets'
         : view === 'subtasks'
-          ? 'Subtask workspace'
+          ? 'Subtasks'
           : manager
-            ? 'My tickets'
-            : 'My assigned and collaborating tickets'
+            ? 'My Work'
+            : 'Work'
   const resource = view === 'subtasks' ? tasks : tickets
   const loading = resource.loading || workspace.loading
   const error = resource.error || workspace.error
@@ -96,8 +103,8 @@ export function OperationalWorkspacePage({
             {view === 'intake'
               ? 'Take responsibility before routing or working a request.'
               : view === 'subtasks'
-                ? 'Current-cycle assignees can open the parent ticket while its cycle remains unfinished. Historical subtask access remains limited.'
-                : 'Current responsibility determines the work shown here.'}
+                ? 'Assigned and team work items.'
+                : 'Tickets assigned to you and work you collaborate on.'}
           </p>
         </div>
         <button
@@ -108,23 +115,13 @@ export function OperationalWorkspacePage({
           Refresh workspace
         </button>
       </header>
-      <nav className="button-row" aria-label="Work queues">
-        {manager && (
-          <Link className="button secondary" to="/work/intake">
-            New ticket intake
-          </Link>
-        )}
-        <Link className="button secondary" to="/work/tickets">
-          {manager ? 'My tickets' : 'Assigned and collaborating tickets'}
-        </Link>
-        {led.length > 0 && (
-          <Link className="button secondary" to="/work/team">
-            Led-team tickets
-          </Link>
-        )}
-        <Link className="button secondary" to="/work/subtasks">
-          Subtasks
-        </Link>
+      <nav className="queue-tabs" aria-label="Work queues">
+        {manager && <NavLink to="/work/intake">New ticket intake</NavLink>}
+        <NavLink to="/work/tickets">
+          {manager ? 'My Work' : 'Assigned and collaborating tickets'}
+        </NavLink>
+        {led.length > 0 && <NavLink to="/work/team">Led-team tickets</NavLink>}
+        <NavLink to="/work/subtasks">Subtasks</NavLink>
       </nav>
       {overview && (
         <section className="ticket-stats" aria-label="Operational counts">
@@ -165,7 +162,7 @@ export function OperationalWorkspacePage({
               />
               {view === 'subtasks'
                 ? 'Include completed and historical work'
-                : 'Include terminal tickets'}
+                : 'Include resolved, closed and cancelled'}
             </label>
           )}
         </div>
@@ -201,12 +198,16 @@ export function OperationalWorkspacePage({
           tasks.items.length ? (
             <SubtaskRows subtasks={tasks.items} />
           ) : (
-            <EmptyState title="No authorized subtask work">
+            <EmptyState title="No subtasks in this queue">
               <p>There is no work in this view.</p>
             </EmptyState>
           )
         ) : visible.length ? (
-          <TicketRows tickets={visible} basePath="/work/tickets" />
+          <TicketRows
+            tickets={visible}
+            categories={options.data?.categories}
+            basePath="/work/tickets"
+          />
         ) : (
           <EmptyState title="No tickets in this queue">
             <p>

@@ -35,10 +35,12 @@ type Stream = {
 
 export function TicketCommunication({
   ticketId,
+  requesterId,
   cycles,
   onChanged,
 }: {
   ticketId: number
+  requesterId: number
   cycles: WorkCycle[]
   onChanged: () => void
 }) {
@@ -47,6 +49,7 @@ export function TicketCommunication({
     <>
       <CommunicationStream
         ticketId={ticketId}
+        requesterId={requesterId}
         cycles={cycles}
         onChanged={onChanged}
         kind="messages"
@@ -55,6 +58,7 @@ export function TicketCommunication({
       {notesAllowed && (
         <CommunicationStream
           ticketId={ticketId}
+          requesterId={requesterId}
           cycles={cycles}
           onChanged={onChanged}
           kind="internal-notes"
@@ -66,12 +70,14 @@ export function TicketCommunication({
 
 function CommunicationStream({
   ticketId,
+  requesterId,
   cycles,
   kind,
   onChanged,
   onAccess,
 }: {
   ticketId: number
+  requesterId: number
   cycles: WorkCycle[]
   kind: 'messages' | 'internal-notes'
   onChanged: () => void
@@ -258,7 +264,11 @@ function CommunicationStream({
   }
   return (
     <>
-      <section className="panel communication" aria-label={title}>
+      <section
+        id={notes ? undefined : 'ticket-conversation'}
+        className={`panel communication ${notes ? 'internal-notes' : 'public-thread'}`}
+        aria-label={title}
+      >
         <div className="list-heading">
           <h2>{title}</h2>
           <button
@@ -271,8 +281,8 @@ function CommunicationStream({
         </div>
         <p className="muted">
           {notes
-            ? 'Visible only to currently authorized support. Never shared with the requester.'
-            : 'Messages here are visible to the requester and currently authorized support.'}
+            ? 'Internal notes are visible to authorized support only.'
+            : 'Shared with the requester and support team.'}
         </p>
         {resource.loading ? (
           <LoadingState label={`Loading ${title.toLowerCase()}...`} />
@@ -327,8 +337,16 @@ function CommunicationStream({
                       {records.map((record) => (
                         <li key={record.id}>
                           <p className="small">
-                            <strong>{record.author.displayName ?? record.author.username}</strong> ·{' '}
-                            {formatDate(record.createdAt, true)}
+                            <strong>
+                              {record.author.displayName ??
+                                record.author.username}
+                            </strong>
+                            <span className="thread-role">
+                              {record.author.id === requesterId
+                                ? 'Requester'
+                                : 'Support'}
+                            </span>{' '}
+                            · {formatDate(record.createdAt, true)}
                             {record.editedAt && (
                               <span title={formatDate(record.editedAt, true)}>
                                 {' '}
@@ -389,10 +407,7 @@ function CommunicationStream({
                 )
               })}
               {!data.canPost && (
-                <p className="notice">
-                  Posting is unavailable with your current relationship or this
-                  ticket's lifecycle state.
-                </p>
+                <p className="notice">This conversation is read-only.</p>
               )}
               {!!error && <ErrorState error={error} onRetry={reload} />}
               {(data.canPost || draft || files.length > 0) && (

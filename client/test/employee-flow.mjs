@@ -1,3 +1,4 @@
+import { requesterPolish } from './ui-polish.mjs'
 import { pageFixture, historyFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
@@ -146,7 +147,7 @@ async function navigate(path) {
 async function click(text) {
   await until(() => evaluate(`[...document.querySelectorAll('button,a')].some(el => el.textContent.trim() === ${JSON.stringify(text)} && !el.disabled)`), `ready: ${text}`)
   await evaluate(
-    `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); el.click(); })()`,
+    `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); const popover=el.closest('[popover]'); if(popover && !popover.matches(':popover-open')) popover.previousElementSibling.click(); el.click(); })()`,
   )
   await delay(70)
 }
@@ -380,7 +381,9 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   })
-  if (process.argv.includes('--ticket-configuration')) {
+  if (process.argv.includes('--ui-polish')) {
+    await requesterPolish({ send, evaluate, navigate, waitText, click, fill, checkLabel, tickets, cycles, requests, browserErrors })
+  } else if (process.argv.includes('--ticket-configuration')) {
     cycles = [original(142)]
     tickets.push({ id: 142, title: 'Retained configuration', description: 'Details', requesterId: 10, status: 'NEW', priority: 'MEDIUM', categoryId: 4, category: { id: 4, name: 'Archived category' }, tagIds: [7], tags: [{ id: 7, name: 'Archived tag' }], allRegions: false, allDepartments: false, affectedRegionIds: [71], affectedDepartmentIds: [72], affectedRegions: [{ id: 71, name: 'Archived region' }], affectedDepartments: [{ id: 72, name: 'Archived department' }], assignedManagerId: null, assignedTeamId: null, assignedAgentId: null, ownership: { manager: null, team: null, agent: null }, createdAt: now, updatedAt: now, resolvedAt: null, closedAt: null, currentCycle: cycles[0] })
     options.categories = [{ id: 8, name: 'Active category' }]
@@ -412,14 +415,14 @@ try {
     console.log('PASS: active-only new choices, readable archived references, retained category/tag edits, explicit tag removal and empty category protection')
   } else {
   await navigate('/tickets')
-  await waitText('Your next request starts here')
+  await waitText('No requests yet')
   assert.equal(refreshCount, 1)
   console.log('PASS: restored employee session and empty list')
   await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
   await waitText('No notifications yet.')
   await evaluate(`document.querySelector('[aria-label="Close dialog"]').click()`)
-  await click('New ticket')
-  await waitText('New support request')
+  await click('New request')
+  await waitText('New request')
   await click('Submit ticket')
   await waitText('Enter a title.')
   await fill('#ticket-title', 'VPN disconnects during calls')
@@ -427,6 +430,7 @@ try {
   await fill('#ticket-category', '4')
   await checkLabel('Beirut')
   await checkLabel('Operations')
+  await evaluate(`document.querySelector('.optional-fields').open = true`)
   await checkLabel('VPN')
   await selectAttachment('input[type=file]', 'remove.txt')
   await waitText('Remove remove.txt')
@@ -667,7 +671,7 @@ try {
   await until(
     () =>
       evaluate(
-        'document.querySelector("aside").getBoundingClientRect().right <= 1',
+        '!document.querySelector(".navigation-drawer[open]")',
       ),
     'mobile navigation hidden',
   )
@@ -677,7 +681,7 @@ try {
   await until(
     () =>
       evaluate(
-        'document.querySelector("aside").getBoundingClientRect().left >= 0',
+        '!!document.querySelector(".navigation-drawer[open]")',
       ),
     'mobile navigation opens',
   )
@@ -687,7 +691,7 @@ try {
   await until(
     () =>
       evaluate(
-        'document.querySelector("aside").getBoundingClientRect().right <= 1',
+        '!document.querySelector(".navigation-drawer[open]")',
       ),
     'mobile navigation closes',
   )

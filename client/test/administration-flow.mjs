@@ -1,3 +1,4 @@
+import { administrationPolish } from './ui-polish.mjs'
 import { pageFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
@@ -474,7 +475,7 @@ async function navigate(path) {
 async function click(text) {
   await until(() => evaluate(`[...document.querySelectorAll('button,a')].some(el => el.textContent.trim() === ${JSON.stringify(text)} && !el.disabled)`), `ready: ${text}`)
   await evaluate(
-    `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); el.click(); })()`,
+    `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); const popover=el.closest('[popover]'); if(popover && !popover.matches(':popover-open')) popover.previousElementSibling.click(); el.click(); })()`,
   )
   await delay(70)
 }
@@ -631,7 +632,12 @@ try {
     await confirm()
     await waitText(`${prefix}-${role.toLowerCase()}`)
   }
-  if (process.argv.includes('--identity-lifecycle')) {
+  if (process.argv.includes('--ui-polish')) {
+    teams.push({id:1,name:'Regional help',scope:'REGION',regionId:1,managerId:null,teamLeadId:4,memberIds:[4]})
+    configuration.categories.push({id:1,name:'Network',archivedAt:null})
+    configuration.tags.push({id:1,name:'VPN',archivedAt:null})
+    await administrationPolish({ send, evaluate, navigate, waitText, click, fill, requests, browserErrors })
+  } else if (process.argv.includes('--identity-lifecycle')) {
     for (const role of ['EMPLOYEE','AGENT','MANAGER','ADMIN','SUPER_ADMIN']) {
       user = {...user, role}
       await navigate('/tickets'); await waitText('Own support request'); await waitText('My Requests')
@@ -641,7 +647,7 @@ try {
       assert.equal(links.includes('/admin'), ['ADMIN','SUPER_ADMIN'].includes(role))
       await navigate('/tickets/42'); await waitText('Cancel ticket'); await waitText('Conversation')
       await absent('Internal notes'); await absent('Assign team'); await absent('Create subtask')
-      await navigate('/tickets/new'); await waitText('New support request')
+      await navigate('/tickets/new'); await waitText('New request')
     }
     user = {...user,role:'ADMIN'}
     await navigate('/admin/accounts'); await waitText('Employee Eve')
@@ -791,12 +797,12 @@ try {
     await waitText('REGION - Beirut')
     assert.deepEqual(teams[0].memberIds, [4]); assert.equal(teams[0].teamLeadId, 4); assert.equal(teams[0].managerId, 5)
     teams[0].archivedAt = new Date().toISOString(); catalogs.regions[0].archivedAt = new Date().toISOString()
-    await click('Refresh organization'); await waitText('ARCHIVED')
+    await click('Refresh organization'); await waitText('Archived')
     await action('Change coverage')
     assert.equal(await evaluate(`document.querySelector('[aria-label="Team region"]').value`), '')
     assert.equal(await evaluate(`document.querySelector('[aria-label="Team region"]').options.length`), 2)
     await fill('[aria-label="Team coverage"]', 'GLOBAL'); await confirm()
-    await waitText('GLOBAL - all regions'); await waitText('ARCHIVED')
+    await waitText('GLOBAL - all regions'); await waitText('Archived')
     assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
     assert.deepEqual(browserErrors, [])
     console.log('PASS: focused Team coverage transitions, active destinations, confirmation, duplicate submit, 400/404/409, archived Team and mobile')
@@ -818,9 +824,9 @@ try {
       await rowAction(`Test ${kind}`, 'Archive')
       await click('Cancel')
       assert.equal(configuration[kind === 'category' ? 'categories' : 'tags'][0].archivedAt, null)
-      await rowAction(`Test ${kind}`, 'Archive'); await confirm(); await waitText('ARCHIVED')
+      await rowAction(`Test ${kind}`, 'Archive'); await confirm(); await waitText('Archived')
       await rowAction(`Test ${kind}`, 'Rename'); await fill('[aria-label="Configuration name"]', `Renamed ${kind}`); await confirm(); await waitText(`Renamed ${kind}`)
-      await rowAction(`Renamed ${kind}`, 'Reactivate'); await confirm(); await waitText('ACTIVE')
+      await rowAction(`Renamed ${kind}`, 'Reactivate'); await confirm(); await waitText('Active')
     }
     rejectMutation = true; failureCode = 409
     await action('Create category'); await fill('[aria-label="Configuration name"]', 'Duplicate'); await click('Confirm'); await waitText('Concurrent change')
@@ -878,7 +884,7 @@ try {
       await evaluate(`(() => { const form = document.querySelector('dialog form'); form.requestSubmit(); form.requestSubmit(); })()`)
       await until(() => evaluate('!document.querySelector("dialog")'), 'archived')
       assert.equal(mutations.length, before + 1)
-      await waitText('ARCHIVED')
+      await waitText('Archived')
       await action('Rename')
       await fill('[aria-label="Organization name"]', `Archived ${tab}`)
       await confirm()
@@ -899,7 +905,7 @@ try {
       await waitText('Previously cleared assignments')
       assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
       await confirm()
-      await waitText('ACTIVE')
+      await waitText('Active')
     }
     await click('Archived Teams')
     await waitText('Team members')
@@ -1179,7 +1185,7 @@ try {
   await until(
     () =>
       evaluate(
-        'document.querySelector("aside").getBoundingClientRect().right <= 1',
+        '!document.querySelector(".navigation-drawer[open]")',
       ),
     'mobile sidebar closed',
   )

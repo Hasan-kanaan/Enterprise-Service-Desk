@@ -51,7 +51,8 @@ export function TicketForm({
       ...activeOptions.regions,
       ...(existingReferences?.affectedRegions ?? [])
         .filter(
-          (item) => !activeOptions.regions.some((active) => active.id === item.id),
+          (item) =>
+            !activeOptions.regions.some((active) => active.id === item.id),
         )
         .map((item) => ({ ...item, name: `${item.name} (ARCHIVED)` })),
     ],
@@ -155,13 +156,12 @@ export function TicketForm({
       <fieldset disabled={isSubmitting || locked}>
         <div className="form-section">
           <h2>What can we help with?</h2>
-          <p>
-            Share enough detail for the support team to understand the issue.
-          </p>
+          <p>Required fields are marked with *.</p>
           <label className="field" htmlFor="ticket-title">
-            Title{' '}
+            Title *{' '}
             <input
               id="ticket-title"
+              aria-required="true"
               {...register('title', {
                 validate: (value) =>
                   value.trim().length > 0 || 'Enter a title.',
@@ -182,14 +182,15 @@ export function TicketForm({
             </p>
           )}
           <label className="field" htmlFor="ticket-description">
-            Description{' '}
+            Description *{' '}
             <textarea
               id="ticket-description"
+              aria-required="true"
               {...register('description', {
                 validate: (value) =>
                   value.trim().length > 0 || 'Describe the issue.',
               })}
-              rows={6}
+              rows={4}
               placeholder="What happened? When did it start? What have you already tried?"
               aria-invalid={!!errors.description}
               aria-describedby={
@@ -205,9 +206,13 @@ export function TicketForm({
           <div className="form-columns">
             <div>
               <label className="field" htmlFor="ticket-category">
-                Category
+                Category *
                 <select
                   id="ticket-category"
+                  aria-required="true"
+                  aria-describedby={
+                    errors.categoryId ? 'category-error' : undefined
+                  }
                   {...register('categoryId', {
                     valueAsNumber: true,
                     validate: (value) =>
@@ -225,7 +230,9 @@ export function TicketForm({
                 </select>
               </label>
               {errors.categoryId && (
-                <p className="field-error">{errors.categoryId.message}</p>
+                <p id="category-error" className="field-error">
+                  {errors.categoryId.message}
+                </p>
               )}
             </div>
             <label className="field" htmlFor="ticket-priority">
@@ -241,57 +248,65 @@ export function TicketForm({
           </div>
         </div>
         <div className="form-section">
-          <h2>Who is affected?</h2>
+          <h2>Where is this happening?</h2>
           <p>Choose the locations and departments experiencing the issue.</p>
-          <fieldset className="scope-field">
-            <legend>Regions</legend>
-            <label className="check-option">
-              <input type="checkbox" {...register('allRegions')} />
-              All regions
-            </label>
-            {!values.allRegions &&
-              (options.regions.length ? (
-                selections('affectedRegionIds', options.regions)
-              ) : (
-                <p className="muted">
-                  No individual regions are available. Choose all regions only
-                  if that describes the impact.
-                </p>
-              ))}
-            {errors.affectedRegionIds && (
-              <p className="field-error" role="alert">
-                {errors.affectedRegionIds.message}
-              </p>
-            )}
-          </fieldset>
-          <fieldset className="scope-field">
-            <legend>Departments</legend>
-            <label className="check-option">
-              <input type="checkbox" {...register('allDepartments')} />
-              All departments
-            </label>
-            {!values.allDepartments &&
-              (options.departments.length ? (
-                selections('affectedDepartmentIds', options.departments)
-              ) : (
-                <p className="muted">
-                  No individual departments are available. Choose all
-                  departments only if that describes the impact.
-                </p>
-              ))}
-            {errors.affectedDepartmentIds && (
-              <p className="field-error" role="alert">
-                {errors.affectedDepartmentIds.message}
-              </p>
-            )}
-          </fieldset>
-          {options.tags.length > 0 && (
+          <div className="scope-columns">
             <fieldset className="scope-field">
-              <legend>
-                Tags <span className="muted">(optional)</span>
-              </legend>
-              {selections('tagIds', options.tags)}
+              <legend>Regions *</legend>
+              <label className="check-option">
+                <input type="checkbox" {...register('allRegions')} />
+                All regions
+              </label>
+              {!values.allRegions &&
+                (options.regions.length ? (
+                  selections('affectedRegionIds', options.regions)
+                ) : (
+                  <p className="muted">
+                    No individual regions are available. Choose all regions only
+                    if that describes the impact.
+                  </p>
+                ))}
+              {errors.affectedRegionIds && (
+                <p className="field-error" role="alert">
+                  {errors.affectedRegionIds.message}
+                </p>
+              )}
             </fieldset>
+            <fieldset className="scope-field">
+              <legend>Departments *</legend>
+              <label className="check-option">
+                <input type="checkbox" {...register('allDepartments')} />
+                All departments
+              </label>
+              {!values.allDepartments &&
+                (options.departments.length ? (
+                  selections('affectedDepartmentIds', options.departments)
+                ) : (
+                  <p className="muted">
+                    No individual departments are available. Choose all
+                    departments only if that describes the impact.
+                  </p>
+                ))}
+              {errors.affectedDepartmentIds && (
+                <p className="field-error" role="alert">
+                  {errors.affectedDepartmentIds.message}
+                </p>
+              )}
+            </fieldset>
+          </div>
+          {options.tags.length > 0 && (
+            <details
+              className="optional-fields"
+              open={initial?.tagIds.length ? true : undefined}
+            >
+              <summary>Tags (optional)</summary>
+              <fieldset className="scope-field">
+                <legend>
+                  Tags <span className="muted">(optional)</span>
+                </legend>
+                {selections('tagIds', options.tags)}
+              </fieldset>
+            </details>
           )}
         </div>
         {allowAttachments && (

@@ -1,7 +1,7 @@
 import { useResource } from '@/hooks/useResource'
 import { getWorkspace } from '@/services/operations.service'
 import {
-  ChevronDown,
+  ChevronRight,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -11,7 +11,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { BrandMark } from '@/components/BrandMark'
@@ -42,23 +42,18 @@ const navigation = {
     },
   ],
   MANAGER: [
-    { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-    { label: 'New ticket intake', to: '/work/intake', icon: Ticket },
-    { label: 'My tickets', to: '/work/tickets', icon: Ticket },
+    { label: 'Intake', to: '/work/intake', icon: Ticket },
+    { label: 'My Work', to: '/work/tickets', icon: Ticket },
     { label: 'Subtasks', to: '/work/subtasks', icon: Ticket },
-    { label: 'My Work History', to: '/work-history', icon: Ticket },
+    { label: 'Work History', to: '/work-history', icon: Ticket },
   ],
   AGENT: [
-    { label: 'Assigned & collaborating', to: '/work/tickets', icon: Ticket },
+    { label: 'Work', to: '/work/tickets', icon: Ticket },
     { label: 'Subtasks', to: '/work/subtasks', icon: Ticket },
-    { label: 'My Work History', to: '/work-history', icon: Ticket },
-    { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+    { label: 'Work History', to: '/work-history', icon: Ticket },
     { label: 'Profile', to: '/profile', icon: Shield },
   ],
-  EMPLOYEE: [
-    { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-    { label: 'Profile', to: '/profile', icon: Shield },
-  ],
+  EMPLOYEE: [{ label: 'Profile', to: '/profile', icon: Shield }],
 } satisfies Record<
   UserRole,
   { label: string; to: string; icon: typeof LayoutDashboard }[]
@@ -66,6 +61,30 @@ const navigation = {
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const drawer = useRef<HTMLDialogElement>(null)
+  const navigationTrigger = useRef<HTMLButtonElement>(null)
+  const closeNavigation = () => {
+    drawer.current?.close()
+    setSidebarOpen(false)
+    navigationTrigger.current?.focus()
+  }
+  useEffect(() => {
+    const dialog = drawer.current
+    if (sidebarOpen) dialog?.showModal()
+    else dialog?.close()
+    if (!sidebarOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const desktop = matchMedia('(min-width: 1024px)')
+    const closeOnDesktop = () => {
+      if (desktop.matches) setSidebarOpen(false)
+    }
+    desktop.addEventListener('change', closeOnDesktop)
+    return () => {
+      document.body.style.overflow = previous
+      desktop.removeEventListener('change', closeOnDesktop)
+    }
+  }, [sidebarOpen])
   const user = useAppSelector((state) => state.auth.user)
   const location = useLocation()
   const navigate = useNavigate()
@@ -92,20 +111,15 @@ export function AppLayout() {
       : userRole === 'ADMIN' || userRole === 'SUPER_ADMIN'
         ? 'Administration'
         : 'Support workspace'
-  const pageLabel =
-    location.pathname === '/work-history'
-      ? 'My Work History'
-      : location.pathname.startsWith('/admin')
-        ? 'Administration'
-        : location.pathname.startsWith('/work')
-          ? 'Operational work'
-          : location.pathname.startsWith('/tickets')
-            ? 'My tickets'
-            : location.pathname.startsWith('/users')
-              ? 'Accounts'
-              : location.pathname.startsWith('/profile')
-                ? 'Profile'
-                : 'Dashboard'
+  const pageLabel = location.pathname.startsWith('/profile')
+    ? 'Profile'
+    : ([...userNavigation]
+        .reverse()
+        .find(
+          (item) =>
+            location.pathname === item.to ||
+            location.pathname.startsWith(`${item.to}/`),
+        )?.label ?? 'Dashboard')
   const handleLogout = async () => {
     try {
       await logout()
@@ -116,98 +130,132 @@ export function AppLayout() {
     toast.success('You have been signed out')
   }
 
-  return (
-    <div className="min-h-svh bg-[var(--background)] text-[var(--foreground)]">
-      <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-72 flex-col border-r border-[var(--border)] bg-[var(--card)] px-5 py-5 shadow-xl shadow-slate-950/5 transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
-      >
-        <div className="flex items-center justify-between">
-          <BrandMark />
+  const identity = user?.displayName ?? user?.username ?? 'Account'
+  const renderNavigation = (mobile = false) => (
+    <>
+      <div className="sidebar-brand">
+        <BrandMark />
+        {mobile && (
           <button
-            className="rounded-lg p-2 text-slate-500 hover:bg-[var(--muted)] lg:hidden"
-            onClick={() => setSidebarOpen(false)}
+            className="icon-button"
+            onClick={closeNavigation}
             aria-label="Close navigation"
           >
-            <X className="size-5" />
+            <X size={18} />
           </button>
-        </div>
-        <div className="mt-10 rounded-xl border border-cyan-100 bg-cyan-50/70 p-4 dark:border-cyan-900/60 dark:bg-cyan-950/30">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800 dark:text-cyan-300">
-            <Shield className="size-4" /> {viewLabel}
-          </div>
-          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-            {userRole === 'EMPLOYEE'
-              ? 'A place to ask for help and follow your support requests.'
-              : 'Your company service desk workspace.'}
-          </p>
-        </div>
-        <nav className="mt-8 space-y-1" aria-label="Main navigation">
-          {userNavigation.map(({ label, to, icon: Icon }) => (
+        )}
+      </div>
+      <nav className="sidebar-nav" aria-label="Main navigation">
+        {userNavigation.map(({ label, to, icon: Icon }, index) => (
+          <div key={to}>
+            {index === 0 && <p className="nav-section-label">Personal</p>}
+            {index === 1 && userRole !== 'EMPLOYEE' && (
+              <p className="nav-section-label">{viewLabel}</p>
+            )}
             <NavLink
-              key={to}
               end={to === '/admin'}
               to={to}
-              onClick={() => setSidebarOpen(false)}
+              onClick={closeNavigation}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isActive ? 'bg-cyan-700 text-white shadow-sm shadow-cyan-950/15' : 'text-slate-600 hover:bg-[var(--muted)] hover:text-slate-950 dark:text-slate-300 dark:hover:text-white'}`
+                `nav-item ${isActive ? 'active' : ''}`
               }
             >
-              <Icon className="size-[18px]" />
+              <Icon size={17} aria-hidden="true" />
               {label}
             </NavLink>
-          ))}
-        </nav>
-        <div className="mt-auto border-t border-[var(--border)] pt-4">
-          <NavLink
-            to="/profile"
-            onClick={() => setSidebarOpen(false)}
-            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-600 hover:bg-[var(--muted)] dark:text-slate-300"
-          >
-            <div className="flex size-8 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-100">
-              {user?.username.slice(0, 2).toUpperCase()}
-            </div>
-            <span className="flex-1">{user?.displayName ?? user?.username ?? 'Account'}</span>
-            <ChevronDown className="size-4" />
-          </NavLink>
-          <button
-            onClick={() => void handleLogout()}
-            className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-500 hover:bg-[var(--muted)] hover:text-slate-900 dark:hover:text-white"
-          >
-            <LogOut className="size-4" /> Sign out
-          </button>
-        </div>
-      </aside>
-      {sidebarOpen && (
+          </div>
+        ))}
+      </nav>
+      <div className="sidebar-account">
+        <NavLink
+          to="/profile"
+          onClick={closeNavigation}
+          className="account-link"
+        >
+          <span className="avatar">{identity.slice(0, 2).toUpperCase()}</span>
+          <span className="account-identity">
+            <strong>{identity}</strong>
+            <small>{userRole.replaceAll('_', ' ').toLowerCase()}</small>
+          </span>
+          <ChevronRight size={15} aria-hidden="true" />
+        </NavLink>
         <button
-          className="fixed inset-0 z-20 bg-slate-950/30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-          aria-label="Close navigation overlay"
-        />
+          onClick={() => void handleLogout()}
+          className="nav-item sign-out"
+        >
+          <LogOut size={16} aria-hidden="true" />
+          Sign out
+        </button>
+      </div>
+    </>
+  )
+  return (
+    <div className="app-shell">
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
+      <aside className="desktop-sidebar">{renderNavigation()}</aside>
+      {sidebarOpen && (
+        <dialog
+          ref={drawer}
+          className="navigation-drawer"
+          aria-label="Navigation"
+          onCancel={(event) => {
+            event.preventDefault()
+            closeNavigation()
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Tab') return
+            const controls = event.currentTarget.querySelectorAll<HTMLElement>(
+              'a[href], button:not(:disabled)',
+            )
+            const first = controls[0],
+              last = controls[controls.length - 1]
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault()
+              last?.focus()
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault()
+              first?.focus()
+            }
+          }}
+          onClick={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              event.clientX > event.currentTarget.getBoundingClientRect().right
+            )
+              closeNavigation()
+          }}
+        >
+          {sidebarOpen && renderNavigation(true)}
+        </dialog>
       )}
-      <div className="lg:pl-72">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[var(--border)] bg-[var(--background)]/90 px-5 backdrop-blur sm:px-8">
+      <div className="app-body">
+        <header className="app-topbar">
           <button
-            className="rounded-lg p-2 text-slate-600 hover:bg-[var(--muted)] lg:hidden"
+            ref={navigationTrigger}
+            className="icon-button navigation-trigger"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open navigation"
+            aria-expanded={sidebarOpen}
           >
-            <Menu className="size-5" />
+            <Menu size={20} />
           </button>
-          <div className="hidden text-sm text-slate-500 lg:block">
-            {viewLabel} /{' '}
-            <span className="text-slate-900 dark:text-slate-100">
-              {pageLabel}
+          <div className="workspace-context">
+            <span>
+              {location.pathname.startsWith('/tickets')
+                ? 'Personal'
+                : viewLabel}
             </span>
+            <ChevronRight size={13} aria-hidden="true" />
+            <strong>{pageLabel}</strong>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="topbar-account">
             <NotificationBell key={user!.id} role={userRole} />
-            <div className="hidden h-6 w-px bg-[var(--border)] sm:block" />
-            <span className="hidden text-sm font-medium sm:block">
-              {user?.displayName ?? user?.username ?? 'Account'}
-            </span>
+            <span>{identity}</span>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:px-10">
+        <main id="main-content" tabIndex={-1} className="app-content">
           <Outlet />
         </main>
       </div>

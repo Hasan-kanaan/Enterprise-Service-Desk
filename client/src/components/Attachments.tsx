@@ -185,12 +185,12 @@ export function TicketAttachments({ ticketId }: { ticketId: number }) {
     ),
   )
   return (
-    <section className="panel" aria-label="Original request attachments">
+    <section
+      className="panel detail-body"
+      aria-label="Original request attachments"
+    >
       <h2>Original request attachments</h2>
-      <p className="small muted">
-        Files submitted with the original request are permanent and cannot be
-        changed.
-      </p>
+      <p className="small muted">Files submitted with this request.</p>
       {resource.loading ? (
         <LoadingState />
       ) : resource.error ? (

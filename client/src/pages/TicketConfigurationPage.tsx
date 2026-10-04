@@ -49,7 +49,7 @@ export function TicketConfigurationPage() {
           <div className="list-heading">
             <h2>{catalog === 'categories' ? 'Categories' : 'Tags'}</h2>
             <button
-              className="button primary"
+              className="button secondary"
               onClick={() => setAction({ catalog, kind: 'create' })}
             >
               Create {catalog === 'categories' ? 'category' : 'tag'}
@@ -57,9 +57,9 @@ export function TicketConfigurationPage() {
           </div>
           {resource.data![catalog].length ? (
             resource.data![catalog].map((record) => (
-              <article className="admin-row" key={record.id}>
+              <article className="admin-row catalog-row" key={record.id}>
                 <span>{record.name}</span>
-                <span>{record.archivedAt ? 'ARCHIVED' : 'ACTIVE'}</span>
+                <span>{record.archivedAt ? 'Archived' : 'Active'}</span>
                 <div className="button-row">
                   <button
                     className="button secondary"

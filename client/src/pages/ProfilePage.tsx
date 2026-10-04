@@ -1,9 +1,60 @@
 import { SessionsPanel } from '@/components/SessionsPanel'
 import { PasswordForm } from '@/components/PasswordForm'
-import { KeyRound, ShieldCheck, UserRound } from 'lucide-react'
 import { useAppSelector } from '@/hooks/storeHooks'
 
 export function ProfilePage() {
   const user = useAppSelector((state) => state.auth.user)
-  return <div className="mx-auto max-w-3xl space-y-8"><header><p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-300">Account</p><h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em]">Profile</h1><p className="mt-2 text-slate-500 dark:text-slate-400">Review your identity and access details.</p></header><section className="rounded-xl border border-[var(--border)] bg-[var(--card)]"><div className="flex items-center gap-4 border-b border-[var(--border)] p-6"><div className="flex size-14 items-center justify-center rounded-full bg-cyan-100 text-lg font-semibold text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-200">{user?.username.slice(0, 2).toUpperCase() ?? 'AC'}</div><div><h2 className="font-semibold">{user?.username ?? 'Account'}</h2><p className="text-sm text-slate-500 dark:text-slate-400">Authenticated workspace account</p></div></div><dl className="grid gap-6 p-6 sm:grid-cols-2"><div><dt className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"><UserRound className="size-3.5" /> Username</dt><dd className="mt-2 text-sm font-medium">{user?.username ?? '—'}</dd></div><div><dt className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"><KeyRound className="size-3.5" /> Email</dt><dd className="mt-2 text-sm font-medium">{user?.email ?? '—'}</dd></div><div><dt className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"><ShieldCheck className="size-3.5" /> Role</dt><dd className="mt-2 text-sm font-medium">{user?.role ?? '—'}</dd></div></dl></section>{user?.passwordChangeRequired && <p role="status">Your administrator reset your password. Change it before continuing.</p>}<PasswordForm />{!user?.passwordChangeRequired && <SessionsPanel />}</div>
+  const identity = user?.displayName ?? user?.username ?? 'Account'
+  return (
+    <div className="ticket-workspace profile-page">
+      <header className="page-heading">
+        <div>
+          <p className="eyebrow">Account</p>
+          <h1>Profile</h1>
+        </div>
+      </header>
+      <section className="panel detail-body">
+        <div className="profile-header">
+          <span className="avatar">{identity.slice(0, 2).toUpperCase()}</span>
+          <div>
+            <h2>{identity}</h2>
+            <p className="muted small">
+              {user?.jobTitle ?? 'Job title not set'}
+            </p>
+          </div>
+        </div>
+        <div className="profile-identity">
+          <dl className="metadata-grid">
+            <div>
+              <dt>Username</dt>
+              <dd>{user?.username ?? 'Not set'}</dd>
+            </div>
+            <div>
+              <dt>Email</dt>
+              <dd>{user?.email ?? 'Not set'}</dd>
+            </div>
+          </dl>
+          <dl className="metadata-grid">
+            <div>
+              <dt>Display name</dt>
+              <dd>{user?.displayName ?? 'Not set'}</dd>
+            </div>
+            <div>
+              <dt>Workspace role</dt>
+              <dd className="capitalize">
+                {user?.role.replaceAll('_', ' ').toLowerCase() ?? 'Not set'}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+      {user?.passwordChangeRequired && (
+        <p className="notice warning" role="status">
+          Your administrator reset your password. Change it before continuing.
+        </p>
+      )}
+      <PasswordForm />
+      {!user?.passwordChangeRequired && <SessionsPanel />}
+    </div>
+  )
 }

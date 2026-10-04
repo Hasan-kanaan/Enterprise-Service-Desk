@@ -1,46 +1,51 @@
+import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+
+const destinations = [
+  {
+    title: 'Accounts',
+    description: 'People, roles and account access',
+    to: '/admin/accounts',
+  },
+  {
+    title: 'Organization',
+    description: 'Teams, coverage, Regions and Departments',
+    to: '/admin/organization',
+  },
+  {
+    title: 'Ticket configuration',
+    description: 'Categories and tags',
+    to: '/admin/ticket-configuration',
+  },
+]
 export function AdministrationPage() {
   return (
     <div className="ticket-workspace">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Administration</p>
-          <h1>Administration workspace</h1>
-          <p className="muted">Manage accounts and organization records.</p>
+          <p className="eyebrow">Workspace</p>
+          <h1>Administration</h1>
+          <p className="muted">
+            Manage your service desk's people and configuration.
+          </p>
         </div>
       </header>
-      <div className="form-columns">
-        <section className="panel detail-body">
-          <h2>Ticket configuration</h2>
-          <p className="muted">Manage categories and tags.</p>
-          <Link className="button primary" to="/admin/ticket-configuration">
-            Manage ticket configuration
+      <nav
+        className="panel admin-destinations"
+        aria-label="Administration areas"
+      >
+        {destinations.map((item) => (
+          <Link key={item.to} className="ticket-row" to={item.to}>
+            <div className="ticket-row-main">
+              <div>
+                <h2>{item.title}</h2>
+                <p>{item.description}</p>
+              </div>
+            </div>
+            <ArrowRight size={18} aria-hidden="true" />
           </Link>
-        </section>
-        <section className="panel detail-body">
-          <h2>Accounts</h2>
-          <p className="muted">
-            Create permitted accounts and manage ACTIVE / INACTIVE access.
-          </p>
-          <Link className="button primary" to="/admin/accounts">
-            Manage accounts
-          </Link>
-        </section>
-        <section className="panel detail-body">
-          <h2>Organization</h2>
-          <p className="muted">
-            Regions, departments, specialties, teams and organizational
-            responsibilities.
-          </p>
-          <Link className="button primary" to="/admin/organization">
-            Manage organization
-          </Link>
-        </section>
-      </div>
-      <p className="quiet-note">
-        System administration does not grant access to service-desk tickets or
-        subtasks.
-      </p>
+        ))}
+      </nav>
     </div>
   )
 }

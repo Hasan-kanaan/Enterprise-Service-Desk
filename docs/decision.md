@@ -728,3 +728,16 @@ Keep two independent pnpm applications with app-owned lockfiles and a dependency
 Add PR/push checks with isolated PostgreSQL migration/e2e tests and a separate manual Chromium workflow until hosted stability is demonstrated. Gate high/critical production advisories and report all others; known server advisories remain visible and currently fail this gate. No broad dependency upgrades, cloud/AI/demo work, commit or push.
 
 See [implementation/configuration/limitations](pre-ai-hardening.md), [dependency findings](dependency-audit.md), and [verification](../status.md). The future demo plan remains unchanged.
+
+
+## Frontend UI/UX polish (2026-10-04)
+
+Keep React/Vite/TypeScript, existing data hooks and server authority unchanged.
+Use compact shared controls, neutral surfaces, a single accent and row-based
+operational/admin views. Native dialog/popover behavior supports mobile navigation
+and contextual actions without a new UI framework. My Requests stays visible for
+all roles and separate from support/administration. Conversation, attachments and
+work history are independent sections; ownership and scope sit alongside them.
+Reuse the existing options catalog for category names and show truthful ID fallbacks
+where list projections do not include names. Do not add per-row lookups, counts or
+API fields for visual decoration. See [implementation and verification](frontend-polish.md).

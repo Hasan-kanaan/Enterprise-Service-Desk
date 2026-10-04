@@ -6,32 +6,32 @@ button:disabled {
   opacity: 0.55;
 }
 :focus-visible {
-  outline: 3px solid var(--ring);
-  outline-offset: 3px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .ticket-workspace {
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 .page-heading {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
 }
 .page-heading h1 {
-  font-size: clamp(26px, 3vw, 34px);
+  font-size: clamp(22px, 2vw, 28px);
   font-weight: 650;
   letter-spacing: -0.035em;
   line-height: 1.2;
-  margin: 8px 0 12px;
+  margin: 5px 0 8px;
   overflow-wrap: anywhere;
 }
 .eyebrow {
   color: var(--primary);
   font-size: 11px;
   font-weight: 750;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .muted {
@@ -52,10 +52,10 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 9px 16px;
+  min-height: 36px;
+  padding: 7px 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 13px;
   font-weight: 650;
   line-height: 1.4;
@@ -64,11 +64,11 @@ button:disabled {
   white-space: nowrap;
 }
 .button.primary {
-  background: #0e7490;
-  color: white;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 .button.primary:hover {
-  background: #155e75;
+  background: color-mix(in srgb, var(--primary), var(--foreground) 12%);
 }
 .button.secondary {
   border-color: var(--border);
@@ -112,7 +112,7 @@ button:disabled {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   color: var(--muted-foreground);
 }
 .icon-button:hover {
@@ -121,7 +121,7 @@ button:disabled {
 .panel {
   border: 1px solid var(--border);
   background: var(--card);
-  border-radius: 12px;
+  border-radius: var(--radius);
   min-width: 0;
   overflow: hidden;
 }
@@ -136,9 +136,9 @@ button:disabled {
   gap: 16px;
 }
 .stat-card {
-  padding: 22px 24px;
+  padding: 16px 20px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: var(--card);
 }
 .stat-card span {
@@ -164,12 +164,12 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--border);
 }
 .ticket-tabs {
   display: flex;
-  gap: 24px;
+  gap: 20px;
   padding: 0 24px;
   border-bottom: 1px solid var(--border);
 }
@@ -188,7 +188,7 @@ button:disabled {
 .list-filters {
   display: flex;
   gap: 12px;
-  padding: 16px 24px;
+  padding: 12px 20px;
 }
 .search-field {
   display: flex;
@@ -196,7 +196,7 @@ button:disabled {
   gap: 10px;
   padding: 0 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   flex: 1;
   color: var(--muted-foreground);
 }
@@ -211,7 +211,7 @@ button:disabled {
 }
 .list-filters select {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 8px 12px;
   background: var(--card);
   font-size: 13px;
@@ -221,7 +221,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 21px 24px;
+  padding: 14px 20px;
   border-top: 1px solid var(--border);
   text-decoration: none;
 }
@@ -315,7 +315,7 @@ button:disabled {
   align-items: center;
   gap: 16px;
   text-align: center;
-  padding: 56px 24px;
+  padding: 36px 24px;
   color: var(--muted-foreground);
 }
 .empty-state h1,
@@ -325,7 +325,7 @@ button:disabled {
 .error-state {
   display: flex;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 14px 20px;
   color: var(--danger);
   font-size: 14px;
   line-height: 1.6;
@@ -383,8 +383,8 @@ button:disabled {
 .field select,
 .field textarea {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 11px 12px;
+  border-radius: var(--radius);
+  padding: 9px 11px;
   color: var(--foreground);
   background: var(--card);
   font-size: 14px;
@@ -442,14 +442,14 @@ button:disabled {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 14px 20px;
 }
 .notice {
   display: flex;
   gap: 12px;
   padding: 18px 22px;
   background: var(--muted);
-  border-radius: 9px;
+  border-radius: var(--radius);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -464,13 +464,13 @@ button:disabled {
 .ticket-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 24px;
+  gap: 20px;
   align-items: start;
 }
 .detail-main,
 .detail-aside {
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 .detail-body {
   padding: 24px;
@@ -479,12 +479,12 @@ button:disabled {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
-  line-height: 1.9;
+  line-height: 1.75;
 }
 .metadata-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 20px;
   border-top: 1px solid var(--border);
   margin-top: 28px;
   padding-top: 24px;
@@ -575,7 +575,7 @@ button:disabled {
 }
 .history-owners {
   display: flex;
-  gap: 24px;
+  gap: 20px;
   flex-wrap: wrap;
   margin: 20px 0;
 }
@@ -590,7 +590,7 @@ button:disabled {
   max-height: calc(100svh - 48px);
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 10px;
   padding: 24px;
   background: var(--card);
   color: var(--foreground);
@@ -722,7 +722,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 24px;
+  padding: 14px 20px;
   border-top: 1px solid var(--border);
   overflow-wrap: anywhere;
 }
@@ -736,13 +736,42 @@ button:disabled {
     padding: 18px;
   }
 }
-.communication { margin-block: 1rem; }
-.communication-records { list-style: none; padding: 0; }
-.communication-records li { padding-block: 1rem; border-bottom: 1px solid var(--border, #dbe2ea); overflow-wrap: anywhere; }
-.communication textarea { width: 100%; min-height: 6rem; }
-.communication-cycle h3 { margin-top: 1.5rem; }
+.communication {
+  margin: 0;
+}
+.communication-records {
+  list-style: none;
+  padding: 0;
+}
+.communication-records li {
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--border, #dbe2ea);
+  overflow-wrap: anywhere;
+}
+.communication textarea {
+  width: 100%;
+  min-height: 6rem;
+}
+.communication-cycle h3 {
+  margin-top: 1.5rem;
+}
 
-.attachment-list { list-style: none; padding: 0; display: grid; gap: .5rem; }
-.attachment-list li { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
-.attachment-list span { overflow-wrap: anywhere; min-width: 0; }
-.attachment-picker input { max-width: 100%; }
+.attachment-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.attachment-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.attachment-list span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.attachment-picker input {
+  max-width: 100%;
+}
