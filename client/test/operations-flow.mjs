@@ -609,7 +609,29 @@ try {
     await click(text)
     await waitText('Confirm')
   }
-  if (process.argv.includes('--ui-polish')) {
+  if (process.argv.includes('--list-fallbacks')) {
+    const checkRows = async (expected) => {
+      await waitText(expected)
+      const text = await evaluate("document.querySelector('.ticket-rows').textContent")
+      assert(!/(Category|Agent|Manager) #\d+/.test(text), 'No database-ID fallback labels')
+    }
+    await navigate('/work/tickets'); await checkRows('Primary agent assigned')
+    await waitText('Network')
+    tickets[1].categoryId = 99999
+    tickets[1].assignedAgentId = null
+    await navigate('/work/tickets'); await checkRows('Manager owned')
+    await waitText('Category unavailable')
+    await navigate('/work/intake'); await checkRows('Unclaimed')
+    user = { ...user, role: 'AGENT', id: 31 }
+    const task = subtasks.find(task => task.ticketId === 143)
+    task.assignedAgentId = 31
+    task.createdInCycleId = history[143][0].id
+    await navigate('/work/tickets'); await checkRows('Collaborating')
+    await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: true })
+    assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'))
+    assert.deepEqual(browserErrors, [])
+    console.log('PASS: known/unavailable categories, primary agent, manager, unclaimed and collaborator labels; no raw-ID fallbacks; mobile layout')
+  } else if (process.argv.includes('--ui-polish')) {
     await operationsPolish({ send, evaluate, navigate, waitText, click, fill, requests, browserErrors })
   } else {
   const originalUser = user

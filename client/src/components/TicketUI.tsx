@@ -97,7 +97,7 @@ export function TicketRows({
               <h2>{ticket.title}</h2>
               <p>
                 {categories?.find((item) => item.id === ticket.categoryId)
-                  ?.name ?? `Category #${ticket.categoryId}`}{' '}
+                  ?.name ?? 'Category unavailable'}{' '}
                 <span aria-hidden="true">&#183;</span> Updated{' '}
                 {formatDate(ticket.updatedAt)}{' '}
                 <span aria-hidden="true">&#183;</span>{' '}
@@ -109,9 +109,9 @@ export function TicketRows({
                     {ticket.isCurrentCollaborator
                       ? 'Collaborating'
                       : ticket.assignedAgentId
-                        ? `Agent #${ticket.assignedAgentId}`
+                        ? 'Primary agent assigned'
                         : ticket.assignedManagerId
-                          ? `Manager #${ticket.assignedManagerId}`
+                          ? 'Manager owned'
                           : 'Unclaimed'}
                   </>
                 )}

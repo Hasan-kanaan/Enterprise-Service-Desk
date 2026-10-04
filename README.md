@@ -710,18 +710,18 @@ PATCH omission preserves ownership; explicit NULL clears only where permitted. C
 
 ### Implemented Ticket API
 
-All routes require authentication. ADMIN and SUPER_ADMIN are denied all ticket/subtask routes.
+All routes require authentication. Every company User may create and access their own requests and use requester actions through `ticket.requesterId === user.id`, including ADMIN and SUPER_ADMIN. System administration grants zero support-side ticket authority and no permission to browse or operate other users' tickets. Support queues, internal notes and subtasks still require legitimate support relationships. Agents and Managers may work their own requested tickets when they independently hold the required support relationship.
 
 | Route | Purpose |
 | --- | --- |
 | GET /tickets, GET /tickets/:ticketId | Filtered ticket reads |
-| GET /ticket-options | Operational roles: category, tag, region, department ID/name choices |
-| POST /tickets | Employee creation with NULL ownership |
+| GET /ticket-options | Authenticated users: category, tag, region, department ID/name choices |
+| POST /tickets | Any authenticated User: requester creation with NULL ownership |
 | PATCH /tickets/:ticketId | Relationship-authorized metadata edits |
 | PATCH /tickets/:ticketId/manager | Initial ownership / transfer; body: assignedManagerId |
 | PATCH /tickets/:ticketId/assignment | Team/agent assignment; body: optional teamId, agentId |
 | PATCH /tickets/:ticketId/status | Authorized transition; optional resolutionSummary only when resolving |
-| POST /tickets/:ticketId/cancel | Employee requester; NEW/ASSIGNED only |
+| POST /tickets/:ticketId/cancel | Requester; NEW/ASSIGNED only |
 | POST /tickets/:ticketId/reopen | Requester/responsible manager; required reason |
 | GET /tickets/:ticketId/history | Currently authorized cycle history with separately filtered subtasks |
 | GET/POST /tickets/:ticketId/messages | Read public conversation / create a requester-visible message |
@@ -752,9 +752,9 @@ Inactive users cannot log in, refresh sessions, or receive new operational assig
 
 ## Reopening and Work-Cycle History
 
-An employee may cancel only their own NEW/ASSIGNED ticket. CANCELLED is permanently frozen. RESOLVED/CLOSED/CANCELLED reject ordinary metadata, ownership, and subtask changes. RESOLVED can still be explicitly closed. Only explicit reopening starts new work from RESOLVED/CLOSED; assignments never reopen implicitly.
+A requester of any role may cancel only their own NEW/ASSIGNED ticket. CANCELLED is permanently frozen. RESOLVED/CLOSED/CANCELLED reject ordinary metadata, ownership, and subtask changes. RESOLVED can still be explicitly closed. Only explicit reopening starts new work from RESOLVED/CLOSED; assignments never reopen implicitly.
 
-`POST /tickets/:ticketId/reopen` accepts `{ "reason": "The problem returned" }`. Only the requester or responsible manager may reopen; AGENT/Team Lead/ADMIN/SUPER_ADMIN do not gain that authority. There is no reopen time limit.
+`POST /tickets/:ticketId/reopen` accepts `{ "reason": "The problem returned" }`. Only the requester or responsible manager may reopen; AGENT/Team Lead/ADMIN/SUPER_ADMIN status alone does not grant that authority. There is no reopen time limit.
 
 Normal reopen preserves active manager, valid team, and eligible agent and moves to IN_PROGRESS. An inactive historical agent is automatically cleared without replacement. An inactive/missing manager returns the ticket to NEW with manager/team/agent NULL. Other invalid legacy routing requires an explicit `returnToIntake: true` request; that option is rejected for valid routing. Previous-cycle ownership and work are preserved.
 

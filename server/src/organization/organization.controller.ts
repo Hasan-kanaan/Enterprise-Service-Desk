@@ -322,9 +322,14 @@ export class OrganizationController {
     });
   }
   @Delete('teams/:teamId/manager') removeManager(
+    @Req() req: ActorRequest,
     @Param('teamId', ParseIntPipe) teamId: number,
   ) {
-    return this.organizationService.removeManager(teamId);
+    return this.organizationService.removeManager(teamId, {
+      id: req.user.sub,
+      role: req.user.role,
+      sessionVersion: req.user.sessionVersion,
+    });
   }
   @Post('teams/:teamId/lead/:userId') assignTeamLead(
     @Req() req: ActorRequest,
@@ -338,9 +343,14 @@ export class OrganizationController {
     });
   }
   @Delete('teams/:teamId/lead') removeTeamLead(
+    @Req() req: ActorRequest,
     @Param('teamId', ParseIntPipe) teamId: number,
   ) {
-    return this.organizationService.removeTeamLead(teamId);
+    return this.organizationService.removeTeamLead(teamId, {
+      id: req.user.sub,
+      role: req.user.role,
+      sessionVersion: req.user.sessionVersion,
+    });
   }
   @Get('agents/:id/specialties') agentSpecialties(
     @Req() req: ActorRequest,

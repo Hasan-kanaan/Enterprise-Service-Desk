@@ -12,6 +12,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { jwtConstants } from '../src/auth/auth.constants';
 import {
+  Prisma,
   TicketStatus,
   UserRole,
   User,
@@ -901,5 +902,220 @@ describe('Organization maintenance (focused PostgreSQL and HTTP)', () => {
     } finally {
       await db.team.deleteMany({ where: { name } });
     }
+  });
+  describe('responsibility removal cleanup', () => {
+    const actor = (user: User) => ({
+      id: user.id,
+      role: user.role,
+      sessionVersion: user.sessionVersion,
+    });
+    const remove = (kind: 'manager' | 'lead', name = 'admin', id = teamA.id) =>
+      request(app.getHttpServer())
+        .delete(`/organization/teams/${id}/${kind}`)
+        .set('Authorization', `Bearer ${token(name)}`);
+
+    it('removes Manager, preserves membership/lead, and keeps missing relationship/team 404s', async () => {
+      const members = await db.teamMember.findMany({
+        where: { teamId: teamA.id },
+      });
+      await remove('manager').expect(200, { message: 'Team manager removed' });
+      expect(
+        await db.teamManager.findUnique({ where: { teamId: teamA.id } }),
+      ).toBeNull();
+      expect(
+        (await db.team.findUniqueOrThrow({ where: { id: teamA.id } }))
+          .teamLeadId,
+      ).toBe(users.lead.id);
+      expect(
+        await db.teamMember.findMany({ where: { teamId: teamA.id } }),
+      ).toEqual(members);
+      const missing = await remove('manager').expect(404);
+      expect(missing.body).toMatchObject({ message: 'Team manager not found' });
+      await remove('manager', 'admin', 2147483647).expect(404);
+    });
+
+    it('clears Lead idempotently, preserves memberships/Manager, and retains membership rules', async () => {
+      const service = app.get(OrganizationService);
+      await expect(
+        service.removeMember(teamA.id, users.lead.id, actor(users.admin)),
+      ).rejects.toThrow();
+      await expect(
+        service.assignTeamLead(
+          teamA.id,
+          users.otherAgent.id,
+          actor(users.admin),
+        ),
+      ).rejects.toThrow('Team Lead must be a member');
+      const members = await db.teamMember.findMany({
+        where: { teamId: teamA.id },
+      });
+      const manager = await db.teamManager.findUnique({
+        where: { teamId: teamA.id },
+      });
+      for (let i = 0; i < 2; i++) {
+        const result = await remove('lead').expect(200);
+        expect(result.body).toMatchObject({ teamLeadId: null });
+      }
+      expect(
+        await db.teamMember.findMany({ where: { teamId: teamA.id } }),
+      ).toEqual(members);
+      expect(
+        await db.teamManager.findUnique({ where: { teamId: teamA.id } }),
+      ).toEqual(manager);
+      await remove('lead', 'admin', 2147483647).expect(404);
+    });
+
+    it.each(['manager', 'lead'] as const)(
+      '%s retains administration guards',
+      async (kind) => {
+        await remove(kind, 'employee').expect(403);
+        await remove(kind, 'manager').expect(403);
+        await remove(kind, 'superAdmin').expect(200);
+      },
+    );
+
+    it.each([
+      ['inactive', { status: 'INACTIVE' }],
+      ['stale session', { sessionVersion: { increment: 1 } }],
+      ['changed role', { role: 'EMPLOYEE' }],
+    ] as const)(
+      'transaction rejects an already-authorized but now %s actor',
+      async (_label, data) => {
+        const service = app.get(OrganizationService);
+        const stale = actor(users.admin);
+        await db.user.update({ where: { id: stale.id }, data });
+        await expect(
+          service.removeManager(teamA.id, stale),
+        ).rejects.toMatchObject({ status: 401 });
+        await expect(
+          service.removeTeamLead(teamA.id, stale),
+        ).rejects.toMatchObject({ status: 401 });
+        expect(
+          await db.teamManager.count({ where: { teamId: teamA.id } }),
+        ).toBe(1);
+        expect(
+          (await db.team.findUniqueOrThrow({ where: { id: teamA.id } }))
+            .teamLeadId,
+        ).toBe(users.lead.id);
+      },
+    );
+
+    it.each(['manager', 'lead'] as const)(
+      'stale %s removal cannot delete a committed replacement',
+      async (kind) => {
+        let signal!: () => void;
+        let resume!: () => void;
+        const reached = new Promise<void>((resolve) => {
+          signal = resolve;
+        });
+        const released = new Promise<void>((resolve) => {
+          resume = resolve;
+        });
+        // Pause before the Team lock, after requireActiveActor established the snapshot.
+        // The real PostgreSQL transaction and SQL remain in use.
+        const pausedDb = new Proxy(db, {
+          get(target, key) {
+            if (key === '$transaction')
+              return (
+                action: (tx: Prisma.TransactionClient) => Promise<unknown>,
+                options: { isolationLevel: Prisma.TransactionIsolationLevel },
+              ) =>
+                target.$transaction(async (tx) => {
+                  const wrapped = new Proxy(tx, {
+                    get(transaction, property) {
+                      if (property === '$queryRaw')
+                        return async (
+                          sql: TemplateStringsArray,
+                          ...values: unknown[]
+                        ) => {
+                          if (sql.join('').includes('FROM "Team"')) {
+                            signal();
+                            await released;
+                          }
+                          return transaction.$queryRaw(sql, ...values);
+                        };
+                      return Reflect.get(transaction, property) as unknown;
+                    },
+                  });
+                  return action(wrapped);
+                }, options);
+            return Reflect.get(target, key) as unknown;
+          },
+        });
+        const service = new OrganizationService(pausedDb);
+        const pending = (
+          kind === 'manager'
+            ? service.removeManager(teamA.id, actor(users.admin))
+            : service.removeTeamLead(teamA.id, actor(users.admin))
+        ).then(
+          () => null,
+          (error: unknown) => error,
+        );
+        try {
+          await reached;
+          const live = app.get(OrganizationService);
+          if (kind === 'manager') {
+            await live.removeManager(teamA.id, actor(users.superAdmin));
+            await live.assignManager(
+              teamA.id,
+              users.otherManager.id,
+              actor(users.superAdmin),
+            );
+          } else {
+            await live.assignTeamLead(
+              teamA.id,
+              users.member.id,
+              actor(users.superAdmin),
+            );
+          }
+        } finally {
+          resume();
+        }
+        expect(await pending).toMatchObject({
+          status: 409,
+          message: 'Data changed concurrently; reload before retrying',
+        });
+        if (kind === 'manager') {
+          expect(
+            (
+              await db.teamManager.findUniqueOrThrow({
+                where: { teamId: teamA.id },
+              })
+            ).managerId,
+          ).toBe(users.otherManager.id);
+        } else {
+          expect(
+            (await db.team.findUniqueOrThrow({ where: { id: teamA.id } }))
+              .teamLeadId,
+          ).toBe(users.member.id);
+        }
+      },
+    );
+
+    it.each(['P2034', '40001', '40P01'])(
+      'maps database conflict %s to 409 without retries',
+      async (code) => {
+        const conflict = new Prisma.PrismaClientKnownRequestError('conflict', {
+          clientVersion: 'test',
+          code: code === 'P2034' ? code : 'P2010',
+          meta: { driverAdapterError: { cause: { originalCode: code } } },
+        });
+        const transaction = jest
+          .spyOn(db, '$transaction')
+          .mockRejectedValue(conflict);
+        try {
+          const service = app.get(OrganizationService);
+          await expect(
+            service.removeManager(teamA.id, actor(users.admin)),
+          ).rejects.toMatchObject({ status: 409 });
+          await expect(
+            service.removeTeamLead(teamA.id, actor(users.admin)),
+          ).rejects.toMatchObject({ status: 409 });
+          expect(transaction).toHaveBeenCalledTimes(2);
+        } finally {
+          transaction.mockRestore();
+        }
+      },
+    );
   });
 });

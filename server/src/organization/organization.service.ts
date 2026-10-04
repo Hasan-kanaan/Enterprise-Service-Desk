@@ -408,18 +408,22 @@ export class OrganizationService {
     });
   }
 
-  async removeManager(teamId: number) {
-    await this.requireTeam(teamId);
-    const manager = await this.prisma.teamManager.findUnique({
-      where: { teamId },
+  async removeManager(
+    teamId: number,
+    actor: { id: number; role: UserRole; sessionVersion?: number },
+  ) {
+    return serializable(this.prisma, async (db) => {
+      await requireActiveActor(db, actor);
+      await db.$queryRaw`SELECT id FROM "Team" WHERE id = ${teamId} FOR UPDATE`;
+      const team = await db.team.findUnique({ where: { id: teamId } });
+      if (!team) throw new NotFoundException('Team not found');
+      const manager = await db.teamManager.findUnique({ where: { teamId } });
+      if (!manager) throw new NotFoundException('Team manager not found');
+      await db.teamManager.delete({
+        where: { teamId_managerId: { teamId, managerId: manager.managerId } },
+      });
+      return { message: 'Team manager removed' };
     });
-
-    if (!manager) {
-      throw new NotFoundException('Team manager not found');
-    }
-
-    await this.prisma.teamManager.delete({ where: { teamId } });
-    return { message: 'Team manager removed' };
   }
 
   async assignTeamLead(
@@ -463,11 +467,19 @@ export class OrganizationService {
     return user;
   }
 
-  async removeTeamLead(teamId: number) {
-    await this.requireTeam(teamId);
-    return this.prisma.team.update({
-      where: { id: teamId },
-      data: { teamLeadId: null },
+  async removeTeamLead(
+    teamId: number,
+    actor: { id: number; role: UserRole; sessionVersion?: number },
+  ) {
+    return serializable(this.prisma, async (db) => {
+      await requireActiveActor(db, actor);
+      await db.$queryRaw`SELECT id FROM "Team" WHERE id = ${teamId} FOR UPDATE`;
+      const team = await db.team.findUnique({ where: { id: teamId } });
+      if (!team) throw new NotFoundException('Team not found');
+      return db.team.update({
+        where: { id: teamId },
+        data: { teamLeadId: null },
+      });
     });
   }
 
