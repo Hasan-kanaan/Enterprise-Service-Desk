@@ -1,3 +1,4 @@
+import { manageableRoles } from '../users/account-authority';
 import {
   BadRequestException,
   ConflictException,
@@ -307,12 +308,14 @@ export class OrganizationService {
     }
   }
 
-  async agentSpecialties(userId: number) {
+  async agentSpecialties(userId: number, actor: { role: UserRole }) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },
     });
     if (!user) throw new NotFoundException('User not found');
+    if (!manageableRoles(actor.role).includes(user.role))
+      throw new ForbiddenException('No specialty authority for this account');
     const links = await this.prisma.userSpecialty.findMany({
       where: { userId },
       select: {
@@ -336,6 +339,10 @@ export class OrganizationService {
         if (kind === 'agents') {
           const user = await lockUser(db, id);
           if (!user) throw new NotFoundException('User not found');
+          if (!manageableRoles(actor.role).includes(user.role))
+            throw new ForbiddenException(
+              'No specialty authority for this account',
+            );
           if (add && user.role !== 'AGENT')
             throw new BadRequestException('User must be an AGENT');
           if (add && (user.status !== 'ACTIVE' || !user.activatedAt))

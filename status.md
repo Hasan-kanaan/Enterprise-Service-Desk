@@ -1,5 +1,23 @@
 # Project Status
 
+## Focused specialty authority and self-notification correction (2026-10-04)
+
+User-specialty GET/POST/DELETE now share the account-management target hierarchy:
+SUPER_ADMIN may target ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN may target
+MANAGER/AGENT/EMPLOYEE; neither may target SUPER_ADMIN. Retained links remain
+listable/removable for inactive or pending former Agents within that hierarchy.
+Addition still requires an ACTIVE activated Agent and active Specialty. Accounts
+only show Manage specialties for manageable targets. The central notification
+helper excludes the actor, preserving deduplication, ACTIVE filtering and transactions.
+
+Targeted verification passed: 30 notification PostgreSQL/HTTP tests, six selected
+identity/lifecycle tests (retained specialties, addition eligibility and both role
+matrices), one existing specialty integration test, and five authority-helper unit
+tests. Updated two stale assertions in that specialty test to the already-shipped
+universal-requester behavior (inaccessible ticket 404; own-request list allowed).
+Backend/frontend lint, typechecks/builds and git diff --check pass. No full regression,
+browser run, migration, commit or push was performed for this correction.
+
 ## Universal requester identity and role lifecycle (2026-10-03)
 
 Implemented both slices: required new-account displayName/jobTitle with truthful

@@ -206,6 +206,32 @@ describe('Persistent notifications (PostgreSQL and HTTP)', () => {
     await db.ticketCategory.delete({ where: { id: categoryId } });
   });
 
+  it.each(['agent', 'manager'])(
+    'excludes the %s working their own request while notifying other recipients',
+    async (who) => {
+      await db.ticket.update({
+        where: { id: ticketId },
+        data: { requesterId: users[who].id },
+      });
+      await message(who).expect(201);
+      expect((await rows()).map((n) => n.recipientUserId).sort()).toEqual(
+        ['manager', 'agent', 'lead', 'collaborator']
+          .filter((name) => name !== who)
+          .map((name) => users[name].id)
+          .sort(),
+      );
+      expect((await rows()).every((n) => n.type === 'REQUESTER_MESSAGE')).toBe(
+        true,
+      );
+      await db.notification.deleteMany({ where: { ticketId } });
+      // A support action would ordinarily send a resolution event to the requester.
+      await patch(`/tickets/${ticketId}/status`, who, {
+        status: 'RESOLVED',
+      }).expect(200);
+      expect(await rows()).toHaveLength(0);
+    },
+  );
+
   it('notifies actual primary-agent changes including A -> B -> A, not no-ops or clearing', async () => {
     await assign('agent').expect(200);
     await assign(null).expect(200);

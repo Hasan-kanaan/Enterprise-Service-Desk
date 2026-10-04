@@ -343,9 +343,10 @@ export class OrganizationController {
     return this.organizationService.removeTeamLead(teamId);
   }
   @Get('agents/:id/specialties') agentSpecialties(
+    @Req() req: ActorRequest,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.organizationService.agentSpecialties(id);
+    return this.organizationService.agentSpecialties(id, req.user);
   }
   @Post('agents/:id/specialties/:specialtyId') addagentsSpecialty(
     @Req() req: ActorRequest,

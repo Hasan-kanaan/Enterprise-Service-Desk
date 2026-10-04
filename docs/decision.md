@@ -21,6 +21,7 @@ own policy. Requester edit/cancel/close/reopen, public messages, attachments and
 safe history depend on requesterId. Notes/subtasks/routing still require support
 relationships. Agents/Managers may work their own requests when separately
 support-authorized. Requester reply and notification semantics use requesterId.
+Notifications exclude the actor while retaining recipient deduplication and ACTIVE filtering.
 Inactive requester status is a support warning, never an automatic lifecycle change.
 
 Dedicated `PATCH /users/:userId/role` preserves the account and historical IDs.
@@ -34,8 +35,10 @@ Leaving AGENT clears primary operational assignments and ALL assignedAgentId lin
 in the current unfinished cycle, including completed/cancelled subtasks, preserving
 status, Team, completedById/completedAt and ended-cycle history. Team Lead and Team
 memberships are removed. Specialties persist: administration can list/remove them
-for any role/status; adding still requires an active activated Agent and active
-Specialty. Entering a role invents or restores no responsibilities.
+across statuses within the account-management hierarchy: SUPER_ADMIN may target
+ADMIN/MANAGER/AGENT/EMPLOYEE, and ADMIN may target MANAGER/AGENT/EMPLOYEE.
+No specialty operation targets SUPER_ADMIN. Adding still requires an active
+activated Agent and active Specialty. Entering a role invents or restores no responsibilities.
 
 Leaving MANAGER returns current operational owned tickets to NEW intake, clearing
 Manager/Team/Agent, and removes TeamManager. Terminal tickets and cycle evidence

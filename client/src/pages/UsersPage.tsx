@@ -129,6 +129,7 @@ export function UsersPage() {
                   <button className="button secondary" onClick={() => setEditing(account)}>Edit account</button>
                 )}
                 {manageableRoles(role).includes(account.role) && <button className="button secondary" onClick={() => setChangingRole(account)}>Change role</button>}
+                {manageableRoles(role).includes(account.role) && (
                   <button
                     className="button secondary"
                     onClick={() =>
@@ -139,6 +140,7 @@ export function UsersPage() {
                   >
                     Manage specialties
                   </button>
+                )}
                 <span className="status-badge">{account.status}</span>
                 <span className="status-badge">{account.activatedAt ? 'Activated' : 'Pending activation'}</span>
                 {manageableRoles(role).includes(account.role) && account.status === 'ACTIVE' && <button className="button secondary" disabled={sending !== null} onClick={async () => {
@@ -160,7 +162,7 @@ export function UsersPage() {
                   </button>
                 )}
               </div>
-              {specialties === account.id && (
+              {manageableRoles(role).includes(account.role) && specialties === account.id && (
                 <AgentSpecialties
                   id={account.id}
                   canAdd={account.role === 'AGENT' && account.status === 'ACTIVE' && !!account.activatedAt}

@@ -20,7 +20,11 @@ export async function notify(
   event: Event,
 ) {
   const ids = [
-    ...new Set(recipients.filter((id): id is number => id !== null)),
+    ...new Set(
+      recipients.filter(
+        (id): id is number => id !== null && id !== event.actorUserId,
+      ),
+    ),
   ];
   if (!ids.length) return;
   await db.$queryRaw(

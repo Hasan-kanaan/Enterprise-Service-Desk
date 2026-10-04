@@ -1,3 +1,4 @@
+import { manageableRoles } from './account-authority';
 import {
   BadRequestException,
   ConflictException,
@@ -92,12 +93,7 @@ export class UsersService {
           );
         const target = await db.user.findUnique({ where: { id: targetId } });
         if (!target) throw new NotFoundException('User not found');
-        const allowed =
-          actor.role === 'SUPER_ADMIN'
-            ? ['ADMIN', 'MANAGER', 'AGENT', 'EMPLOYEE']
-            : actor.role === 'ADMIN'
-              ? ['MANAGER', 'AGENT', 'EMPLOYEE']
-              : [];
+        const allowed = manageableRoles(actor.role);
         if (!allowed.includes(target.role))
           throw new ForbiddenException(
             'No metadata authority for this account',
@@ -380,12 +376,7 @@ export class UsersService {
       await this.requireSession(db, actor);
       const target = await db.user.findUnique({ where: { id: targetId } });
       if (!target) throw new NotFoundException('User not found');
-      const allowed =
-        actor.role === 'SUPER_ADMIN'
-          ? ['ADMIN', 'MANAGER', 'AGENT', 'EMPLOYEE']
-          : actor.role === 'ADMIN'
-            ? ['MANAGER', 'AGENT', 'EMPLOYEE']
-            : [];
+      const allowed = manageableRoles(actor.role);
       if (!allowed.includes(target.role) || !allowed.includes(role))
         throw new ForbiddenException(
           'No role-transition authority for this account or destination',
@@ -426,12 +417,7 @@ export class UsersService {
       await this.requireSession(db, actor);
       const target = await db.user.findUnique({ where: { id: targetId } });
       if (!target) throw new NotFoundException('User not found');
-      const allowed =
-        actor.role === 'SUPER_ADMIN'
-          ? ['ADMIN', 'MANAGER', 'AGENT', 'EMPLOYEE']
-          : actor.role === 'ADMIN'
-            ? ['MANAGER', 'AGENT', 'EMPLOYEE']
-            : [];
+      const allowed = manageableRoles(actor.role);
       if (!allowed.includes(target.role))
         throw new ForbiddenException('No lifecycle authority for this account');
       if (target.status === status)

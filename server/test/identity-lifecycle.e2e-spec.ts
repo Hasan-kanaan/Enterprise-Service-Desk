@@ -121,6 +121,85 @@ describe('Universal requester and identity lifecycle (PostgreSQL/HTTP)', () => {
     await app?.close();
   });
 
+  it.each(['ADMIN', 'SUPER_ADMIN'] as const)(
+    '%s specialty operations enforce the account target hierarchy for retained links',
+    async (caller) => {
+      const specialty = await db.specialty.create({
+        data: { name: `${prefix}-${caller}-authority` },
+      });
+      for (const role of Object.values(UserRole)) {
+        const target = await person(`specialty-${caller}-${role}`, 'AGENT');
+        await db.userSpecialty.create({
+          data: { userId: target.id, specialtyId: specialty.id },
+        });
+        // Retain a former Agent's link through a role change and inactivation/pending activation.
+        await db.user.update({
+          where: { id: target.id },
+          data: { role, status: 'INACTIVE', activatedAt: null },
+        });
+        const path = `/organization/agents/${target.id}/specialties`;
+        const allowed =
+          role !== 'SUPER_ADMIN' &&
+          (caller === 'SUPER_ADMIN' || role !== 'ADMIN');
+        const listed = await get(path, caller).expect(allowed ? 200 : 403);
+        if (allowed)
+          expect(listed.body).toEqual([
+            expect.objectContaining({ id: specialty.id }),
+          ]);
+        await post(`${path}/${specialty.id}`, caller).expect(
+          !allowed ? 403 : role === 'AGENT' ? 409 : 400,
+        );
+        await request(app.getHttpServer())
+          .delete(`${path}/${specialty.id}`)
+          .set('Authorization', `Bearer ${token(caller)}`)
+          .expect(allowed ? 200 : 403);
+        expect(
+          await db.userSpecialty.count({
+            where: { userId: target.id, specialtyId: specialty.id },
+          }),
+        ).toBe(allowed ? 0 : 1);
+      }
+    },
+  );
+
+  it('specialty additions still require a current ACTIVE activated Agent and active Specialty', async () => {
+    const target = await person('specialty-eligibility', 'AGENT');
+    const specialty = await db.specialty.create({
+      data: { name: `${prefix}-eligibility` },
+    });
+    const path = `/organization/agents/${target.id}/specialties/${specialty.id}`;
+    for (const caller of ['ADMIN', 'SUPER_ADMIN']) {
+      await db.user.update({
+        where: { id: target.id },
+        data: { status: 'INACTIVE', activatedAt: new Date() },
+      });
+      await post(path, caller).expect(409);
+      await db.user.update({
+        where: { id: target.id },
+        data: { status: 'ACTIVE', activatedAt: null },
+      });
+      await post(path, caller).expect(409);
+      await db.user.update({
+        where: { id: target.id },
+        data: { activatedAt: new Date() },
+      });
+      await db.specialty.update({
+        where: { id: specialty.id },
+        data: { archivedAt: new Date() },
+      });
+      await post(path, caller).expect(409);
+      await db.specialty.update({
+        where: { id: specialty.id },
+        data: { archivedAt: null },
+      });
+      await post(path, caller).expect(201);
+      await request(app.getHttpServer())
+        .delete(path)
+        .set('Authorization', `Bearer ${token(caller)}`)
+        .expect(200);
+    }
+  });
+
   it.each(Object.values(UserRole))(
     '%s creates, lists, edits, communicates and cancels own requests',
     async (role) => {

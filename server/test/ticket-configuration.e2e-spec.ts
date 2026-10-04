@@ -461,8 +461,9 @@ describe('Service desk configuration (focused PostgreSQL and HTTP)', () => {
         {},
       ).expect(409);
       await del(agentPath).expect(200);
-      await get(`/tickets/${owned.id}`, 'admin').expect(403);
-      await get('/tickets', 'superAdmin').expect(403);
+      await get(`/tickets/${owned.id}`, 'admin').expect(404);
+      const ownRequests = await get('/tickets', 'superAdmin').expect(200);
+      expect(ownRequests.body.items).toEqual([]);
     } finally {
       await db.specialty.delete({ where: { id: specialty.id } });
     }
