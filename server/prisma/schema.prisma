@@ -118,6 +118,8 @@ model User {
   notifications     Notification[] @relation("NotificationRecipient")
   causedNotifications Notification[] @relation("NotificationActor")
   id                Int             @id @default(autoincrement())
+  displayName String? @db.VarChar(100)
+  jobTitle String? @db.VarChar(100)
   username          String          @unique @db.VarChar(50)
   email             String          @unique @db.VarChar(255)
   password          String?         @db.VarChar(255)

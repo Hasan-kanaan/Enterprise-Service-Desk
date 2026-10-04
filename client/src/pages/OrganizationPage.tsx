@@ -1,6 +1,6 @@
 import { SpecialtyLinks } from '@/components/SpecialtyLinks'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useResource } from '@/hooks/useResource'
 import { getOrganization } from '@/services/administration.service'
@@ -19,6 +19,8 @@ import {
 import type { Catalog } from '@/types/administration'
 export function OrganizationPage() {
   const { teamId } = useParams()
+  const [params, setParams] = useSearchParams()
+  const needsManager = params.get('needsManager') === 'true'
   const resource = useResource(getOrganization)
   const [tab, setTab] = useState<Catalog | 'teams'>('teams'),
     [creating, setCreating] = useState(false),
@@ -52,7 +54,7 @@ export function OrganizationPage() {
         onRetry={reload}
       />
     )
-  const data = resource.data
+  const data = { ...resource.data, teams: needsManager ? resource.data.teams.filter(team => team.scope === 'REGION' && !team.archivedAt && team.managers.length === 0) : resource.data.teams }
   const team = teamId
     ? data.teams.find((item) => item.id === Number(teamId))
     : null
@@ -81,6 +83,7 @@ export function OrganizationPage() {
           Refresh organization
         </button>
       </header>
+      {needsManager && <p className="notice">Active regional Teams requiring a Manager. <button className="text-button" onClick={() => setParams({})}>Show all Teams</button></p>}
       {team ? (
         <>
           <Link className="back-link" to="/admin/organization">

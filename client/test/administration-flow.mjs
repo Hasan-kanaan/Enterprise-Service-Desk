@@ -227,6 +227,17 @@ function response(request) {
     return [503, { message: 'Administration temporarily unavailable' }]
   if (path === '/ticket-workspace' && user.role === 'AGENT')
     return [200, { ledTeams: [] }]
+  if (process.argv.includes('--identity-lifecycle')) {
+    const own = { id: 42, requesterId: user.id, title: 'Own support request', description: 'Help please', status: 'NEW', priority: 'MEDIUM', categoryId: 1, allRegions: true, allDepartments: true, tagIds: [], affectedRegionIds: [], affectedDepartmentIds: [], assignedManagerId: null, assignedTeamId: null, assignedAgentId: null, ownership: {manager:null,team:null,agent:null}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentCycle: null }
+    if (path === '/ticket-workspace') return [200, {ledTeams:[]}]
+    if (path === '/ticket-options') return [200, {categories:[{id:1,name:'IT'}],tags:[],regions:[],departments:[]}]
+    if (path === '/tickets/summary') return [200, {counts:[1,0,0]}]
+    if (path === '/tickets') { assert.equal(url.searchParams.get('queue'), 'requests'); return [200, {items:[own],hasMore:false,nextCursor:null}] }
+    if (path === '/tickets/42') return [200, own]
+    if (path === '/tickets/42/history') return [200, {ticketId:42,cycles:[],currentCycleId:null,subtasksAccess:'NONE',hasMore:false,nextCursor:null}]
+    if (path === '/tickets/42/attachments') return [200, []]
+    if (path === '/tickets/42/messages') return [200, {records:[],cycles:[],canPost:true,canReadNotes:false,hasMore:false,nextCursor:null}]
+  }
   assert(
     !path.startsWith('/tickets') &&
       !path.startsWith('/ticket-workspace') &&
@@ -286,13 +297,28 @@ function response(request) {
     accounts.push(created)
     return [201, { user: created, delivery: 'SENT' }]
   }
+  const roleChange = path.match(/^\/users\/(\d+)\/role$/)
+  if (roleChange) {
+    const account = accounts.find(a => a.id === Number(roleChange[1]))
+    assert(account.role !== 'SUPER_ADMIN' && body.role !== 'SUPER_ADMIN')
+    assert(user.role === 'SUPER_ADMIN' || (account.role !== 'ADMIN' && body.role !== 'ADMIN'))
+    const managerlessTeams = teams.filter(t => t.managerId === account.id && t.scope === 'REGION' && !t.archivedAt).map(({id,name}) => ({id,name}))
+    for (const team of teams) {
+      if (team.managerId === account.id) team.managerId = null
+      if (team.teamLeadId === account.id) team.teamLeadId = null
+      if (account.role === 'AGENT') team.memberIds = team.memberIds.filter(id => id !== account.id)
+    }
+    account.role = body.role
+    return [200, {id:account.id, role:account.role, changed:true, managerlessTeams}]
+  }
   const lifecycle = path.match(/^\/users\/(\d+)\/status$/)
   const metadata = path.match(/^\/users\/(\d+)$/)
   if (metadata) {
     assert.equal(request.method, 'PATCH')
-    assert(Object.keys(body).every(key => ['username', 'phoneNumber', 'regionId', 'departmentId'].includes(key)))
+    assert(Object.keys(body).every(key => ['username', 'displayName', 'jobTitle', 'phoneNumber', 'regionId', 'departmentId'].includes(key)))
     const account = accounts.find(a => a.id === Number(metadata[1]))
     if (body.username && accounts.some(a => a.id !== account.id && a.username === body.username)) return [409, { message: 'Username already exists' }]
+    for (const field of ['displayName', 'jobTitle']) if (body[field] !== undefined) account[field] = body[field]
     if (body.username !== undefined) account.username = body.username
     if (body.phoneNumber !== undefined) account.phoneNumber = body.phoneNumber
     for (const [field, catalog] of [['region', 'regions'], ['department', 'departments']]) {
@@ -304,6 +330,7 @@ function response(request) {
     const account = accounts.find((a) => a.id === Number(lifecycle[1]))
     assert(account.role !== 'SUPER_ADMIN')
     assert(user.role === 'SUPER_ADMIN' || account.role !== 'ADMIN')
+    const managerlessTeams = teams.filter(t => t.managerId === account.id && t.scope === 'REGION' && !t.archivedAt).map(({id,name}) => ({id,name}))
     account.status = body.status
     if (body.status === 'INACTIVE') {
       for (const team of teams) {
@@ -311,7 +338,7 @@ function response(request) {
         if (team.managerId === account.id) team.managerId = null
       }
     }
-    return [200, { id: account.id, status: account.status }]
+    return [200, { id: account.id, status: account.status, managerlessTeams }]
   }
   const coverage = path.match(/^\/organization\/teams\/(\d+)\/coverage$/)
   if (coverage) {
@@ -598,11 +625,64 @@ try {
       `${prefix}-${role.toLowerCase()}@test.invalid`,
     )
     assert.equal(await evaluate(`!!document.querySelector('[aria-label="Account password"]')`), false)
+    await fill('[aria-label="Account display name"]', `${prefix}-${role.toLowerCase()}`)
+    await fill('[aria-label="Account job title"]', 'Analyst')
     await fill('[aria-label="Account role"]', role)
     await confirm()
     await waitText(`${prefix}-${role.toLowerCase()}`)
   }
-  if (process.argv.includes('--account-metadata')) {
+  if (process.argv.includes('--identity-lifecycle')) {
+    for (const role of ['EMPLOYEE','AGENT','MANAGER','ADMIN','SUPER_ADMIN']) {
+      user = {...user, role}
+      await navigate('/tickets'); await waitText('Own support request'); await waitText('My Requests')
+      const links = await evaluate(`[...document.querySelectorAll('aside a')].map(a=>a.getAttribute('href'))`)
+      assert(links.includes('/tickets'))
+      assert.equal(links.some(l=>l?.startsWith('/work')), ['AGENT','MANAGER'].includes(role))
+      assert.equal(links.includes('/admin'), ['ADMIN','SUPER_ADMIN'].includes(role))
+      await navigate('/tickets/42'); await waitText('Cancel ticket'); await waitText('Conversation')
+      await absent('Internal notes'); await absent('Assign team'); await absent('Create subtask')
+      await navigate('/tickets/new'); await waitText('New support request')
+    }
+    user = {...user,role:'ADMIN'}
+    await navigate('/admin/accounts'); await waitText('Employee Eve')
+    await createUser('EMPLOYEE', 'identity')
+    assert.equal(mutations.at(-1).body.displayName, 'identity-employee')
+    assert.equal(mutations.at(-1).body.jobTitle, 'Analyst')
+    await rowClick(3,'Edit account'); await until(()=>evaluate(`!!document.querySelector('[aria-label="Home Region"]')`),'metadata choices')
+    await fill('[aria-label="Account display name"]','Eve Example'); await fill('[aria-label="Account job title"]','Director'); await confirm(); await waitText('Eve Example')
+    await rowClick(3,'Change role'); await waitText('Resend activation')
+    assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="New role"]').options].map(o=>o.value).filter(Boolean)`), ['MANAGER','AGENT'])
+    await fill('[aria-label="New role"]','AGENT'); await confirm()
+    specialtyLinks.set('agents/4',[1])
+    await rowClick(4,'Change role'); await waitText('Team Lead and Team memberships will be removed')
+    await fill('[aria-label="New role"]','EMPLOYEE'); await confirm()
+    // Locate by text because account action ordering may change.
+    await evaluate(`{const b=[...document.querySelector('[data-account-id="4"]').querySelectorAll('button')].find(b=>b.textContent.trim()==='Manage specialties');b.click()}`)
+    await waitText('Networking')
+    assert(await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Add specialty').disabled`))
+    await action('Remove specialty'); await confirm(); await waitText('No specialties linked')
+    teams.push({id:1,name:'Regional help',scope:'REGION',regionId:1,managerId:6,teamLeadId:null,memberIds:[]},{id:2,name:'Global help',scope:'GLOBAL',regionId:null,managerId:6,teamLeadId:null,memberIds:[]})
+    await rowClick(6,'Change role'); await waitText('operational tickets return to intake')
+    await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true})
+    assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+    await fill('[aria-label="New role"]','AGENT'); await confirm(); await waitText('These active regional Teams now require a Manager')
+    await evaluate(`[...document.querySelectorAll('a')].find(a=>a.textContent==='Review Teams').click()`)
+    await waitText('Regional help'); await absent('Global help'); await waitText('Active regional Teams requiring a Manager')
+    assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+    await navigate('/tickets'); await waitText('Own support request')
+    assert(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+    accounts.find(a=>a.id===6).role = 'MANAGER'; teams[0].managerId = 6
+    await navigate('/admin/accounts'); await waitText('Manager Sara')
+    await rowClick(6,'Deactivate'); await confirm(); await waitText('These active regional Teams now require a Manager')
+    assert.equal(teams[0].managerId, null)
+    user = {...user,role:'SUPER_ADMIN'}
+    await navigate('/admin/accounts'); await waitText('Eve Example')
+    await rowClick(3,'Change role')
+    assert((await evaluate(`[...document.querySelector('[aria-label="New role"]').options].map(o=>o.value)`)).includes('ADMIN'))
+    await fill('[aria-label="New role"]','ADMIN'); await confirm()
+    assert.equal(accounts.find(a=>a.id===3).role,'ADMIN')
+    console.log('PASS: all-role My Requests, Admin support isolation, Work/Admin navigation, identity metadata, role matrix/warnings, pending guidance, retained specialties, managerless Team filter, mobile')
+  } else if (process.argv.includes('--account-metadata')) {
     for (const catalog of ['regions', 'departments']) {
       catalogs[catalog][0].archivedAt = new Date().toISOString()
       catalogs[catalog].push({ id: 2, name: `Active ${catalog}` }, { id: 3, name: `Other archived ${catalog}`, archivedAt: new Date().toISOString() })

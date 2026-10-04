@@ -41,7 +41,7 @@ const projection = {
   editedAt: true,
   deletedAt: true,
   attachments: { select: attachmentSelect, orderBy: { id: 'asc' as const } },
-  author: { select: { id: true, username: true } },
+  author: { select: { id: true, username: true, displayName: true } },
 } as const;
 function publicRecord<
   T extends {
@@ -95,16 +95,23 @@ export class TicketCommunicationService {
     });
     if (!ticket) throw new NotFoundException('Ticket communication not found');
     const cycle = ticket.workCycles[0];
+    const support =
+      user.role === UserRole.AGENT || user.role === UserRole.MANAGER
+        ? !!(await db.ticket.findFirst({
+            where: {
+              AND: [{ id: ticketId }, this.visibility.supportWhere(user)],
+            },
+            select: { id: true },
+          }))
+        : false;
     const canPost =
       !!cycle &&
       cycle.outcome === null &&
       operationalStatuses.includes(
         ticket.status as (typeof operationalStatuses)[number],
       ) &&
-      (user.role !== UserRole.MANAGER || ticket.assignedManagerId === user.id);
-    const canReadNotes =
-      user.role !== UserRole.EMPLOYEE &&
-      (user.role !== UserRole.MANAGER || ticket.assignedManagerId === user.id);
+      (support || (kind === 'messages' && ticket.requesterId === user.id));
+    const canReadNotes = support;
     return { ticket, cycle, canPost, canReadNotes };
   }
 
@@ -206,7 +213,8 @@ export class TicketCommunicationService {
       // original cycle subsequently ended. It never inserts or changes status.
       if (
         user.role === UserRole.MANAGER &&
-        context.ticket.assignedManagerId !== user.id
+        context.ticket.assignedManagerId !== user.id &&
+        context.ticket.requesterId !== user.id
       )
         throw new ForbiddenException(
           'Claim responsibility before participating',
@@ -364,7 +372,6 @@ export class TicketCommunicationService {
           : await db.ticketInternalNote.create(args);
       if (
         kind === 'messages' &&
-        user.role === UserRole.EMPLOYEE &&
         context.ticket.requesterId === user.id &&
         context.ticket.status === 'WAITING_FOR_EMPLOYEE'
       )
@@ -373,9 +380,7 @@ export class TicketCommunicationService {
           data: { status: 'IN_PROGRESS' },
         });
       if (kind === 'messages') {
-        const requester =
-          user.role === UserRole.EMPLOYEE &&
-          context.ticket.requesterId === user.id;
+        const requester = context.ticket.requesterId === user.id;
         await notify(
           db,
           requester

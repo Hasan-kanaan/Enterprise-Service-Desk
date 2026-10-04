@@ -12,6 +12,22 @@ import {
 import { UserRole } from '../../users/user-role.enum';
 
 export class CreateAccountDto {
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  displayName!: string;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  jobTitle!: string;
+
   @IsString()
   @IsNotEmpty()
   @MinLength(3)

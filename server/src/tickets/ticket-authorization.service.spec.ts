@@ -32,11 +32,10 @@ describe('TicketAuthorizationService', () => {
   const service = new TicketAuthorizationService();
 
   it.each([UserRole.ADMIN, UserRole.SUPER_ADMIN])(
-    'denies all %s ticket/subtask policies',
+    'denies %s support and other-request policies',
     (role) => {
       const actor = user(31, role);
       for (const operation of [
-        () => service.assertCanCreateTicket(actor),
         () => service.assertCanMutateTicket(actor, ticket()),
         () => service.assertCanAssignManager(actor, ticket()),
         () => service.assertCanAssignTicket(actor, ticket(), 30),
@@ -51,6 +50,47 @@ describe('TicketAuthorizationService', () => {
           ),
       ])
         expect(operation).toThrow(ForbiddenException);
+    },
+  );
+
+  it.each(Object.values(UserRole))(
+    'allows %s requester actions without support authority',
+    (role) => {
+      const actor = user(10, role);
+      expect(() => service.assertCanCreateTicket(actor)).not.toThrow();
+      expect(() =>
+        service.assertCanMutateTicket(actor, ticket()),
+      ).not.toThrow();
+      expect(() =>
+        service.assertCanCancel(actor, ticket({ status: 'NEW' })),
+      ).not.toThrow();
+      expect(() =>
+        service.assertCanReopen(actor, ticket({ status: 'RESOLVED' })),
+      ).not.toThrow();
+      expect(() =>
+        service.assertCanTransitionStatus(
+          actor,
+          ticket({ status: 'RESOLVED' }),
+          'CLOSED',
+        ),
+      ).not.toThrow();
+      expect(() => service.assertCanCreateSubtask(actor, ticket(), 30)).toThrow(
+        ForbiddenException,
+      );
+      expect(() =>
+        service.assertCanTransitionStatus(actor, ticket(), 'RESOLVED'),
+      ).toThrow(ForbiddenException);
+    },
+  );
+
+  it.each([UserRole.AGENT, UserRole.MANAGER])(
+    'allows separately authorized %s to support their own request',
+    (role) => {
+      const actor = user(10, role);
+      const own = ticket({ assignedManagerId: 10, assignedAgentId: 10 });
+      expect(() =>
+        service.assertCanTransitionStatus(actor, own, 'RESOLVED'),
+      ).not.toThrow();
     },
   );
 

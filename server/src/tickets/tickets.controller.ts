@@ -44,7 +44,13 @@ type AuthenticatedRequest = {
 
 @Controller('tickets')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles(UserRole.MANAGER, UserRole.AGENT, UserRole.EMPLOYEE)
+@Roles(
+  UserRole.MANAGER,
+  UserRole.AGENT,
+  UserRole.EMPLOYEE,
+  UserRole.ADMIN,
+  UserRole.SUPER_ADMIN,
+)
 export class TicketsController {
   constructor(
     private readonly ticketVisibilityService: TicketVisibilityService,
@@ -67,9 +73,13 @@ export class TicketsController {
   }
 
   @Get('summary')
-  summary(@Req() request: AuthenticatedRequest) {
+  summary(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: ListTicketsDto,
+  ) {
     return this.ticketVisibilityService.summary(
       this.authenticatedUser(request),
+      query.queue,
     );
   }
 

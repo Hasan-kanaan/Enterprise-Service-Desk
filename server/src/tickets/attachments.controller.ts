@@ -21,7 +21,13 @@ import { AttachmentStorage, attachmentSelect } from './attachment-storage';
 type Request = { user: { sub: number; role: UserRole } };
 @Controller('tickets')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles(UserRole.EMPLOYEE, UserRole.AGENT, UserRole.MANAGER)
+@Roles(
+  UserRole.EMPLOYEE,
+  UserRole.AGENT,
+  UserRole.MANAGER,
+  UserRole.ADMIN,
+  UserRole.SUPER_ADMIN,
+)
 export class AttachmentsController {
   constructor(
     private readonly prisma: PrismaService,

@@ -241,8 +241,10 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
             : 200,
         );
       }
-      await get('/tickets', admin).expect(403);
-      await get('/ticket-options', admin).expect(403);
+      expect(
+        (await get('/tickets?queue=requests', admin).expect(200)).body.items,
+      ).toEqual([]);
+      await get('/ticket-options', admin).expect(200);
     }
     for (const role of ['manager', 'agent', 'employee'])
       await edit('employee', { phoneNumber: null }, role).expect(403);
@@ -362,6 +364,8 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
       [
         'id',
         'username',
+        'displayName',
+        'jobTitle',
         'email',
         'role',
         'status',

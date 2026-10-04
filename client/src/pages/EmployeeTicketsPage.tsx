@@ -5,7 +5,7 @@ import { useResource } from '@/hooks/useResource'
 import { usePagedList, useDebouncedValue } from '@/hooks/usePagedList'
 import { useListFilters } from '@/hooks/useListFilters'
 import { ListContinuation } from '@/components/ListContinuation'
-import { getTicketSummary } from '@/services/tickets.service'
+import { getRequesterSummary } from '@/services/tickets.service'
 import {
   ticketStatuses,
   type TicketSummary,
@@ -31,6 +31,7 @@ export function EmployeeTicketsPage({
   const status = filters.get('status') as TicketStatus | ''
   const search = useDebouncedValue(query)
   const resource = usePagedList<TicketSummary>('/tickets', {
+    queue: 'requests',
     search: search || undefined,
     status: status || undefined,
     active:
@@ -41,7 +42,7 @@ export function EmployeeTicketsPage({
           : undefined,
     limit: overview ? 5 : 25,
   })
-  const summary = useResource(getTicketSummary)
+  const summary = useResource(getRequesterSummary)
   const { items: tickets, error, loading } = resource
   const reload = () => {
     resource.reload()
@@ -54,9 +55,9 @@ export function EmployeeTicketsPage({
     <div className="ticket-workspace">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Employee workspace</p>
+          <p className="eyebrow">Requester workspace</p>
           <h1>
-            {overview ? `Hello, ${user?.username ?? 'there'}.` : 'My tickets'}
+            {overview ? `Hello, ${user?.displayName ?? user?.username ?? 'there'}.` : 'My Requests'}
           </h1>
           <p className="muted">
             {overview

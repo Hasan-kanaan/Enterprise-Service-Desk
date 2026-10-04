@@ -313,8 +313,6 @@ export class OrganizationService {
       select: { role: true },
     });
     if (!user) throw new NotFoundException('User not found');
-    if (user.role !== 'AGENT')
-      throw new BadRequestException('User must be an AGENT');
     const links = await this.prisma.userSpecialty.findMany({
       where: { userId },
       select: {
@@ -338,7 +336,7 @@ export class OrganizationService {
         if (kind === 'agents') {
           const user = await lockUser(db, id);
           if (!user) throw new NotFoundException('User not found');
-          if (user.role !== 'AGENT')
+          if (add && user.role !== 'AGENT')
             throw new BadRequestException('User must be an AGENT');
           if (add && (user.status !== 'ACTIVE' || !user.activatedAt))
             throw new ConflictException('Agent must be active and activated');

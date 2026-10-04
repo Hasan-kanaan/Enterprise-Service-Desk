@@ -1,3 +1,6 @@
+import { Link } from 'react-router-dom'
+import { ChangeRoleForm } from '@/components/ChangeRoleForm'
+import type { Reference } from '@/types/administration'
 import { AgentSpecialties } from '@/components/SpecialtyLinks'
 import api, { getApiErrorMessage } from '@/services/api'
 import { useState } from 'react'
@@ -24,6 +27,8 @@ export function UsersPage() {
     status: status || undefined,
     role: accountRole || undefined,
   })
+  const [changingRole, setChangingRole] = useState<Account | null>(null)
+  const [managerlessTeams, setManagerlessTeams] = useState<Reference[]>([])
   const [specialties, setSpecialties] = useState<number | null>(null)
   const [editing, setEditing] = useState<Account | null>(null)
   const [sending, setSending] = useState<number | null>(null)
@@ -32,6 +37,8 @@ export function UsersPage() {
   const reload = () => {
     setCreating(false)
     setEditing(null)
+    setChangingRole(null)
+    setSpecialties(null)
     setTarget(null)
     resource.reload()
   }
@@ -57,12 +64,13 @@ export function UsersPage() {
           </button>
         </div>
       </header>
+      {!!managerlessTeams.length && <div className="notice" role="status"><p>These active regional Teams now require a Manager</p><ul>{managerlessTeams.map(team => <li key={team.id}>{team.name}</li>)}</ul><Link className="button secondary" to="/admin/organization?needsManager=true">Review Teams</Link></div>}
       <section className="panel">
         <div className="list-filters">
           <label className="search-field">
             <input
               aria-label="Search accounts"
-              placeholder="Search username or email"
+              placeholder="Search name, username or email"
               value={query}
               maxLength={120}
               onChange={(e) => filters.set('search', e.target.value)}
@@ -106,7 +114,8 @@ export function UsersPage() {
               data-account-id={account.id}
             >
               <div>
-                <h2>{account.username}</h2>
+                <h2>{account.displayName ?? account.username}</h2>
+                <p>{account.jobTitle ?? 'Not set'}</p>
                 <p className="muted">{account.email}</p>
                 {account.phoneNumber && <p>Phone: {account.phoneNumber} (unverified)</p>}
                 <p className="quiet-note">
@@ -119,7 +128,7 @@ export function UsersPage() {
                 {manageableRoles(role).includes(account.role) && (
                   <button className="button secondary" onClick={() => setEditing(account)}>Edit account</button>
                 )}
-                {account.role === 'AGENT' && (
+                {manageableRoles(role).includes(account.role) && <button className="button secondary" onClick={() => setChangingRole(account)}>Change role</button>}
                   <button
                     className="button secondary"
                     onClick={() =>
@@ -130,7 +139,6 @@ export function UsersPage() {
                   >
                     Manage specialties
                   </button>
-                )}
                 <span className="status-badge">{account.status}</span>
                 <span className="status-badge">{account.activatedAt ? 'Activated' : 'Pending activation'}</span>
                 {manageableRoles(role).includes(account.role) && account.status === 'ACTIVE' && <button className="button secondary" disabled={sending !== null} onClick={async () => {
@@ -155,7 +163,7 @@ export function UsersPage() {
               {specialties === account.id && (
                 <AgentSpecialties
                   id={account.id}
-                  canAdd={account.status === 'ACTIVE' && !!account.activatedAt}
+                  canAdd={account.role === 'AGENT' && account.status === 'ACTIVE' && !!account.activatedAt}
                 />
               )}
             </article>
@@ -167,6 +175,7 @@ export function UsersPage() {
         )}
         <ListContinuation resource={resource} />
       </section>
+      {changingRole && <ChangeRoleForm account={changingRole} caller={role} onClose={() => setChangingRole(null)} onReload={reload} onResult={teams => { setManagerlessTeams(teams); toast.success(changingRole.activatedAt ? 'Role changed. Fresh sign-in required.' : 'Role changed. Resend activation instructions from the directory.') }} />}
       {editing && <EditAccountForm account={editing} onClose={() => setEditing(null)} onReload={reload} onDone={() => { toast.success('Account updated'); reload() }} />}
       {creating && (
         <AccountForm
@@ -192,12 +201,13 @@ export function UsersPage() {
             )
             reload()
           }}
-          submit={() =>
-            updateAccountStatus(
+          submit={async () => {
+            const result = await updateAccountStatus(
               target.id,
               target.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
             )
-          }
+            setManagerlessTeams(result.managerlessTeams ?? [])
+          }}
         >
           {target.status === 'ACTIVE' ? (
             <>

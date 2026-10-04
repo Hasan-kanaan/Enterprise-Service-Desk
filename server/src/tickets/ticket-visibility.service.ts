@@ -21,6 +21,12 @@ export class TicketVisibilityService {
   constructor(private readonly prisma: PrismaService) {}
 
   buildWhere(user: TicketVisibilityUser): Prisma.TicketWhereInput {
+    if (user.role === UserRole.AGENT || user.role === UserRole.MANAGER)
+      return { OR: [{ requesterId: user.id }, this.operationalWhere(user)] };
+    return { requesterId: user.id };
+  }
+
+  operationalWhere(user: TicketVisibilityUser): Prisma.TicketWhereInput {
     switch (user.role) {
       case UserRole.EMPLOYEE:
         return { requesterId: user.id };
@@ -61,7 +67,7 @@ export class TicketVisibilityService {
   }
 
   supportWhere(user: TicketVisibilityUser): Prisma.TicketWhereInput {
-    if (user.role === UserRole.AGENT) return this.buildWhere(user);
+    if (user.role === UserRole.AGENT) return this.operationalWhere(user);
     if (user.role === UserRole.MANAGER) return { assignedManagerId: user.id };
     throw new ForbiddenException(
       'Support communication requires current support responsibility',
@@ -72,6 +78,12 @@ export class TicketVisibilityService {
     user: TicketVisibilityUser,
     queue?: string,
   ): Prisma.TicketWhereInput {
+    if (queue === 'requests') return { requesterId: user.id };
+    if (
+      (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN) &&
+      queue
+    )
+      throw new ForbiddenException('Only the requests queue is available');
     switch (queue) {
       case 'intake':
         return user.role === UserRole.MANAGER
@@ -113,7 +125,10 @@ export class TicketVisibilityService {
     const reference = Number(query.search?.trim().replace(/^#/, ''));
     return {
       AND: [
-        this.buildWhere(user),
+        query.queue === 'requests' ||
+        (user.role !== UserRole.AGENT && user.role !== UserRole.MANAGER)
+          ? { requesterId: user.id }
+          : this.operationalWhere(user),
         this.queueWhere(user, query.queue),
         query.status ? { status: query.status } : {},
         query.active === 'true'
@@ -182,14 +197,18 @@ export class TicketVisibilityService {
     );
   }
 
-  async summary(user: TicketVisibilityUser) {
+  async summary(user: TicketVisibilityUser, queue?: string) {
+    this.queueWhere(user, queue);
     const count = (query: ListTicketsDto) =>
       this.prisma.ticket.count({ where: this.listWhere(user, query) });
-    if (user.role === UserRole.EMPLOYEE) {
+    if (
+      queue === 'requests' ||
+      (user.role !== UserRole.AGENT && user.role !== UserRole.MANAGER)
+    ) {
       const [active, waiting, resolved] = await Promise.all([
-        count({ active: 'true' }),
-        count({ status: 'WAITING_FOR_EMPLOYEE' }),
-        count({ status: 'RESOLVED' }),
+        count({ queue: 'requests', active: 'true' }),
+        count({ queue: 'requests', status: 'WAITING_FOR_EMPLOYEE' }),
+        count({ queue: 'requests', status: 'RESOLVED' }),
       ]);
       return { counts: [active, waiting, resolved] };
     }
@@ -230,10 +249,20 @@ export class TicketVisibilityService {
               include: cycleInclude,
             },
             assignedManager: {
-              select: { id: true, username: true, status: true },
+              select: {
+                id: true,
+                username: true,
+                displayName: true,
+                status: true,
+              },
             },
             assignedAgent: {
-              select: { id: true, username: true, status: true },
+              select: {
+                id: true,
+                username: true,
+                displayName: true,
+                status: true,
+              },
             },
             assignedTeam: { select: { id: true, name: true } },
             category: { select: { id: true, name: true } },
@@ -255,7 +284,23 @@ export class TicketVisibilityService {
           throw new NotFoundException('Ticket not found');
         }
 
-        return mapTicket(ticket);
+        const support =
+          user.role === UserRole.AGENT || user.role === UserRole.MANAGER
+            ? await db.ticket.findFirst({
+                where: { AND: [{ id: ticketId }, this.operationalWhere(user)] },
+                select: { id: true },
+              })
+            : null;
+        const requester = support
+          ? await db.user.findUnique({
+              where: { id: ticket.requesterId },
+              select: { status: true },
+            })
+          : null;
+        return {
+          ...mapTicket(ticket),
+          ...(requester ? { requesterStatus: requester.status } : {}),
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
@@ -274,10 +319,20 @@ export class TicketVisibilityService {
           where: { AND: [{ id: ticketId }, this.buildWhere(user)] },
           include: {
             assignedManager: {
-              select: { id: true, username: true, status: true },
+              select: {
+                id: true,
+                username: true,
+                displayName: true,
+                status: true,
+              },
             },
             assignedAgent: {
-              select: { id: true, username: true, status: true },
+              select: {
+                id: true,
+                username: true,
+                displayName: true,
+                status: true,
+              },
             },
             assignedTeam: { select: { id: true, name: true } },
           },
@@ -304,7 +359,7 @@ export class TicketVisibilityService {
         );
         const loadedCycles = cycles.slice(0, limit);
         const subtasks =
-          user.role === UserRole.EMPLOYEE
+          user.role !== UserRole.AGENT && user.role !== UserRole.MANAGER
             ? []
             : await db.subtask.findMany({
                 where: {
@@ -321,8 +376,12 @@ export class TicketVisibilityService {
                 take: 26,
                 orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
                 include: {
-                  assignedAgent: { select: { id: true, username: true } },
-                  completedBy: { select: { id: true, username: true } },
+                  assignedAgent: {
+                    select: { id: true, username: true, displayName: true },
+                  },
+                  completedBy: {
+                    select: { id: true, username: true, displayName: true },
+                  },
                 },
               });
         // A shared page budget avoids cycles * tasks fan-out. The boundary is
@@ -330,7 +389,7 @@ export class TicketVisibilityService {
         // already included. hasMore is conservative until that cycle is opened.
         const tasksPage = listPage(subtasks, 25);
         const access =
-          user.role === UserRole.EMPLOYEE
+          user.role !== UserRole.AGENT && user.role !== UserRole.MANAGER
             ? 'NONE'
             : user.role === UserRole.MANAGER
               ? ticket.assignedManagerId === user.id
@@ -386,8 +445,12 @@ export class TicketVisibilityService {
           take: limit + 1,
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           include: {
-            assignedAgent: { select: { id: true, username: true } },
-            completedBy: { select: { id: true, username: true } },
+            assignedAgent: {
+              select: { id: true, username: true, displayName: true },
+            },
+            completedBy: {
+              select: { id: true, username: true, displayName: true },
+            },
           },
         });
         return listPage(rows, limit);

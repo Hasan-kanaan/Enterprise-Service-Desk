@@ -57,7 +57,6 @@ const navigation = {
   ],
   EMPLOYEE: [
     { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-    { label: 'My tickets', to: '/tickets', icon: Ticket },
     { label: 'Profile', to: '/profile', icon: Shield },
   ],
 } satisfies Record<
@@ -81,6 +80,7 @@ export function AppLayout() {
     ),
   )
   const userNavigation = [
+    { label: 'My Requests', to: '/tickets', icon: Ticket },
     ...navigation[userRole],
     ...(workspace.data?.ledTeams.length
       ? [{ label: 'Led-team tickets', to: '/work/team', icon: Ticket }]
@@ -166,7 +166,7 @@ export function AppLayout() {
             <div className="flex size-8 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-100">
               {user?.username.slice(0, 2).toUpperCase()}
             </div>
-            <span className="flex-1">{user?.username ?? 'Account'}</span>
+            <span className="flex-1">{user?.displayName ?? user?.username ?? 'Account'}</span>
             <ChevronDown className="size-4" />
           </NavLink>
           <button
@@ -203,7 +203,7 @@ export function AppLayout() {
             <NotificationBell key={user!.id} role={userRole} />
             <div className="hidden h-6 w-px bg-[var(--border)] sm:block" />
             <span className="hidden text-sm font-medium sm:block">
-              {user?.username ?? 'Account'}
+              {user?.displayName ?? user?.username ?? 'Account'}
             </span>
           </div>
         </header>

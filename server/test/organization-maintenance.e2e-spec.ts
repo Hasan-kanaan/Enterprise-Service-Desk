@@ -623,7 +623,7 @@ describe('Organization maintenance (focused PostgreSQL and HTTP)', () => {
       'admin',
       {},
     ).expect(409);
-    await get(`/tickets/${owned.id}`, 'admin').expect(403);
+    await get(`/tickets/${owned.id}`, 'admin').expect(404);
     await get(`/tickets/${owned.id}`, 'lead').expect(404);
     await reactivate('teams', teamA.id).expect(201);
     expect(

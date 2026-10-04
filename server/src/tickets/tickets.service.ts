@@ -642,11 +642,12 @@ export class TicketsService {
           ? null
           : await lockUser(db, ticket.assignedManagerId);
       let intake =
-        !manager || manager.status !== 'ACTIVE' || !manager.activatedAt;
+        !manager ||
+        manager.status !== 'ACTIVE' ||
+        !manager.activatedAt ||
+        manager.role !== UserRole.MANAGER;
       let agentId = ticket.assignedAgentId;
       if (!intake) {
-        if (manager?.role !== UserRole.MANAGER)
-          throw new ConflictException('Invalid retained manager');
         const team =
           ticket.assignedTeamId === null
             ? null
@@ -661,7 +662,12 @@ export class TicketsService {
           intake = true;
         } else if (agentId !== null) {
           const agent = await lockUser(db, agentId);
-          if (agent && (agent.status === 'INACTIVE' || !agent.activatedAt))
+          if (
+            !agent ||
+            agent.status !== 'ACTIVE' ||
+            !agent.activatedAt ||
+            agent.role !== UserRole.AGENT
+          )
             agentId = null;
           else {
             const member = await db.teamMember.findUnique({
@@ -705,7 +711,7 @@ export class TicketsService {
         },
       });
       const recipients =
-        user.role === UserRole.EMPLOYEE
+        ticket.requesterId === user.id
           ? await supportRecipients(db, ticketId, false)
           : [ticket.requesterId];
       await notify(db, recipients, {

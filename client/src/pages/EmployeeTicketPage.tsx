@@ -1,6 +1,7 @@
+import { useAppSelector } from '@/hooks/storeHooks'
 import { TicketAttachments } from '@/components/Attachments'
 import { useCallback, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Check, Pencil, RefreshCw, RotateCcw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useResource } from '@/hooks/useResource'
@@ -44,6 +45,7 @@ export function EmployeeTicketPage() {
   return <TicketContent key={id} id={id} />
 }
 function TicketContent({ id }: { id: number }) {
+  const user = useAppSelector(state => state.auth.user)
   const ticketResource = useResource(
     useCallback((signal: AbortSignal) => getTicket(id, signal), [id]),
   )
@@ -133,6 +135,7 @@ function TicketContent({ id }: { id: number }) {
           items?.find((item) => item.id === value)?.name ?? 'Name unavailable',
       )
       .join(', ') || 'None selected'
+  if (ticket.requesterId !== user?.id) return <Navigate to={`/work/tickets/${id}`} replace />
   const initial: TicketInput = {
     title: ticket.title,
     description: ticket.description,
@@ -341,7 +344,7 @@ function TicketContent({ id }: { id: number }) {
               <div>
                 <dt>Responsible manager</dt>
                 <dd>
-                  {ticket.ownership.manager?.username ?? 'Awaiting assignment'}
+                  {ticket.ownership.manager?.displayName ?? ticket.ownership.manager?.username ?? 'Awaiting assignment'}
                 </dd>
               </div>
               <div>
@@ -350,7 +353,7 @@ function TicketContent({ id }: { id: number }) {
               </div>
               <div>
                 <dt>Primary agent</dt>
-                <dd>{ticket.ownership.agent?.username ?? 'Not assigned'}</dd>
+                <dd>{ticket.ownership.agent?.displayName ?? ticket.ownership.agent?.username ?? 'Not assigned'}</dd>
               </div>
             </dl>
             <p className="quiet-note">

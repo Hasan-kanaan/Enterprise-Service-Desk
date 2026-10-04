@@ -1,5 +1,25 @@
 # Enterprise Service Desk
 
+## Universal requester identity and role lifecycle (2026-10-03)
+
+Every authenticated company User may act as requester for their own tickets.
+System administration grants no service-desk support authority or other-user ticket
+visibility. ADMIN/SUPER_ADMIN may still create and access their own requests through
+requester authority. My Requests is separate from Work and Administration.
+
+New accounts, including initial setup, require displayName and jobTitle; legacy
+NULL values are preserved with username/Not set fallbacks. Job title grants no
+authorization, email is immutable, and ordinary metadata editing cannot change role.
+Dedicated role changes preserve identity/history, atomically reconcile old work and
+organization responsibilities, and invalidate sessions and unused action tokens.
+No replacement responsibilities are invented. Deactivation remains a single atomic
+workflow; it now revokes unused action tokens and reports managerless regional Teams.
+
+See [the current identity and lifecycle contract](docs/decision.md#universal-requester-identity-and-role-lifecycle-2026-10-03)
+for the authority matrix, requester/support separation, role-change versus
+deactivation cleanup, specialties, reopening and scale boundaries. These rules
+supersede earlier phase descriptions below. See [verification](status.md).
+
 ## Account activation and recovery (2026-09-27)
 
 Administrators manage identities; users choose passwords. Activation and recovery use single-use emailed links. ACTIVE/INACTIVE is separate from activation; pending accounts cannot log in or receive work. Legacy password-bearing users remain activated without fabricated email verification. See the [implementation, configuration and migration guide](docs/account-security.md). This supersedes earlier admin-password and email-exclusion statements below.
@@ -354,7 +374,7 @@ ADMIN
    └── creates MANAGER accounts
 ```
 
-ADMIN users can manage users and organization configuration but do not have ticket visibility or access to ticket conversations. Ticket oversight belongs to managers and the operational users authorized for the ticket.
+ADMIN users can manage users and organization configuration and access their own requests/public conversations, without support authority. Ticket oversight belongs to managers and the operational users authorized for the ticket.
 
 ### SUPER_ADMIN
 
@@ -366,7 +386,7 @@ They can:
 - Create and manage `ADMIN`, `MANAGER`, `AGENT`, and `EMPLOYEE` accounts
 - Perform system-level administration
 
-They cannot create another `SUPER_ADMIN`. They have no ticket, subtask, or future internal-note access. Their account and organization administrative responsibilities remain intact.
+They cannot create another `SUPER_ADMIN`. They have own-request access, but no support-subtask or internal-note access. Their account and organization administrative responsibilities remain intact.
 
 There is no public registration. Users cannot choose their own role. All account-creation endpoints must be protected by authentication and server-side role-based authorization.
 
@@ -475,7 +495,7 @@ EMPLOYEE  → own tickets
 AGENT     → directly assigned tickets/subtasks
 TEAM LEAD → tickets and operational work for their team
 MANAGER   -> unowned NEW intake and explicitly manager-owned tickets
-ADMIN / SUPER_ADMIN -> administration only; no ticket/subtask access
+ADMIN / SUPER_ADMIN -> administration plus own requests; no support authority
 ```
 
 Team membership alone does not grant an agent team-wide ticket visibility. Cross-region or global ticket scope affects the issue, not automatic authorization. Server-side visibility, creation/editing, manager ownership, team/agent assignment, status, and subtask policies are connected to the API. Manager-level authority follows assignedManagerId, never TeamManager. Intake visibility alone permits initial manager assignment, not other mutations.
@@ -726,7 +746,7 @@ Mutations lock the parent ticket in serializable PostgreSQL transactions. Concur
 
 Users are ACTIVE or INACTIVE; no user or ticket DELETE endpoint exists. `PATCH /users/:userId/status` accepts `{ "status": "INACTIVE" }` or ACTIVE. SUPER_ADMIN can manage ADMIN/MANAGER/AGENT/EMPLOYEE status; ADMIN can manage MANAGER/AGENT/EMPLOYEE status. SUPER_ADMIN deactivation is excluded.
 
-Deactivation atomically removes only the departing user's current operational responsibilities. Manager-owned active tickets return to NEW with manager/team/agent all NULL. Active primary-agent assignments clear only the agent. Actionable TODO/IN_PROGRESS current-cycle subtask assignments clear only the agent. Team Lead and TeamManager responsibilities are removed without replacement. Terminal tickets and historical work remain unchanged. This administrative operation returns only user ID/status and grants no ticket visibility or ordinary service-desk powers.
+Deactivation atomically removes only the departing user's current operational responsibilities. Manager-owned active tickets return to NEW with manager/team/agent all NULL. Active primary-agent assignments clear only the agent. Actionable TODO/IN_PROGRESS current-cycle subtask assignments clear only the agent. Team Lead and TeamManager responsibilities are removed without replacement. Terminal tickets and historical work remain unchanged. This operation returns user ID/status and safe managerless active REGION Team metadata, and grants no support powers.
 
 Inactive users cannot log in, refresh sessions, or receive new operational assignments. Protected requests check database status, current role, and sessionVersion. Deactivation increments the version and revokes refresh tokens atomically. Reactivation permits fresh login but never restores previous sessions. Serializable conflicts return 409; reload and explicitly retry, with no partial offboarding.
 
@@ -756,7 +776,7 @@ ADMIN/SUPER_ADMIN configure real categories and tags at `/admin/ticket-configura
 
 Both catalogs support list/create/rename/archive/reactivate under `/ticket-configuration/{categories|tags}`. Nullable `archivedAt` preserves stable IDs and all existing ticket/suggestion references. Archived names remain reserved by the existing unique constraints; names are trimmed, nonblank and at most 100 characters. Archived records may be renamed. There is no physical-delete operation.
 
-`GET /ticket-options` offers active categories, tags, regions and departments only. Creation and new selections reject archived records. Existing tickets may retain an unchanged archived category and already-attached archived tags, or explicitly remove those tags. Detail views retain readable names. Duplicate tag IDs return 400. Reactivation restores future eligibility only. Configuration responses contain no ticket content or affected counts, and administration grants no ticket access.
+`GET /ticket-options` offers active categories, tags, regions and departments only. Creation and new selections reject archived records. Existing tickets may retain an unchanged archived category and already-attached archived tags, or explicitly remove those tags. Detail views retain readable names. Duplicate tag IDs return 400. Reactivation restores future eligibility only. Configuration responses contain no ticket content or affected counts, and administration grants no support or other-user ticket access.
 
 ---
 
@@ -893,7 +913,7 @@ Completed current-cycle collaborators remain eligible for requester-message noti
 | PATCH /notifications/:notificationId/read | Idempotently mark own record read; another recipient's ID returns 404 |
 | PATCH /notifications/read-all | Idempotently mark all own unread records read, including older records |
 
-All endpoints require current ACTIVE/sessionVersion authentication. ADMIN/SUPER_ADMIN can access only their own empty notification UI and gain no ticket authority or access to other recipients. No notification DELETE endpoint exists.
+All endpoints require current ACTIVE/sessionVersion authentication. ADMIN/SUPER_ADMIN receive notifications for their own requests; notifications grant no support authority or access to other recipients. No notification DELETE endpoint exists.
 
 Refresh is explicit REST: initial authenticated load, opening the panel, the refresh button, after mark-read operations, and after successful local ticket/subtask/communication mutations. No polling, email, WebSockets, SSE, browser notifications or realtime delivery. Migration `20260923150000_in_app_notifications` creates an empty table; it does not fabricate notifications from existing tickets or messages.
 
@@ -929,7 +949,7 @@ Departments are independent organizational entities and are not tied to a single
 
 A cycle-bound ticket conversation is implemented in Employee and authorized operational ticket views.
 
-The requesting employee, primary agent, current collaborators, primary-team lead and responsible manager can post while the current cycle is unfinished and the ticket is operational. Intake-only managers can read conversation but must claim responsibility before posting. ADMIN/SUPER_ADMIN have no access. Historical authorship grants no visibility.
+The requesting employee, primary agent, current collaborators, primary-team lead and responsible manager can post while the current cycle is unfinished and the ticket is operational. Intake-only managers can read conversation but must claim responsibility before posting. ADMIN/SUPER_ADMIN may participate as requester on their own tickets. Historical authorship grants no visibility.
 
 Example:
 
@@ -1065,7 +1085,7 @@ boundary; AI and public-demo deployment remain separate, unimplemented phases.
 
 Employees can attach files when creating a ticket. These original request attachments are permanently immutable: no later additions, replacements, edits or deletion. New public messages and support-only internal notes can include attachments in the same submission. Content remains required. Files cannot be appended or replaced afterward.
 
-The parent author alone may soft-delete a message/note or one of its attachments while currently authorized and while the parent belongs to the current unfinished work cycle. Managers, Team Leads and other support users cannot delete another author's work. RESOLVED/CLOSED/CANCELLED and all previous-cycle communication stay frozen, including after reopening. ADMIN/SUPER_ADMIN have no attachment access.
+The parent author alone may soft-delete a message/note or one of its attachments while currently authorized and while the parent belongs to the current unfinished work cycle. Managers, Team Leads and other support users cannot delete another author's work. RESOLVED/CLOSED/CANCELLED and all previous-cycle communication stay frozen, including after reopening. ADMIN/SUPER_ADMIN have requester-authorized attachment access on their own tickets only.
 
 Deletion retains IDs, author/uploader, creation time, cycle and deletion time. APIs return message/note content as null and attachment tombstones without the old filename/type/size. Deleting a parent also hides all its attached files. Deleted files cannot be downloaded, edited or restored. Deletion changes no ticket status, ownership, subtasks, routing, collaboration, cycles or notifications. A requester reply followed by deletion leaves the ticket IN_PROGRESS. Creation keys stay consumed; replay returns the tombstone without new files or notifications.
 
@@ -1259,11 +1279,11 @@ The goal is to keep the frontend familiar while learning backend development.
 
 ### Implemented Employee Workspace
 
-The responsive employee workspace includes a dashboard with real request counts, a searchable/filterable ticket list, ticket creation, current ticket detail, metadata editing, and public work-cycle history. `/tickets`, `/tickets/new`, and `/tickets/:ticketId` are employee routes. Manager and Agent/Team Lead screens use the operational routes described below. Administrative users have no ticket navigation or ticket authority.
+The responsive employee workspace includes a dashboard with real request counts, a searchable/filterable ticket list, ticket creation, current ticket detail, metadata editing, and public work-cycle history. `/tickets`, `/tickets/new`, and `/tickets/:ticketId` are universal requester routes. Manager and Agent/Team Lead screens use the operational routes described below. Administrative users have My Requests navigation and requester authority only.
 
 Employees can cancel their own NEW/ASSIGNED requests, close RESOLVED requests, and reopen RESOLVED/CLOSED requests with a reason. Confirmation dialogs explain each operation. Terminal tickets hide metadata editing; CANCELLED cannot reopen. History retains the server's historical ownership and timestamps and never requests or displays support subtasks. The server remains authoritative for every operation. A 409 requires explicit reload; mutations are not automatically retried on conflicts. Invalid legacy reopen routing offers the backend's explicit return-to-intake choice.
 
-Creation/edit forms load actual category, tag, region, and department choices from `GET /ticket-options`. No organization IDs or owners are invented. Missing categories block submission with an explanatory state. This endpoint is read-only and restricted to EMPLOYEE/AGENT/MANAGER; configuration is available to administrators in the separate Ticket configuration screen.
+Creation/edit forms load actual category, tag, region, and department choices from `GET /ticket-options`. No organization IDs or owners are invented. Missing categories block submission with an explanatory state. This endpoint is read-only and available to every authenticated role; configuration is available to administrators in the separate Ticket configuration screen.
 
 Access tokens remain in memory. Startup restores the session through the HttpOnly refresh cookie before protected routes render. Concurrent 401 responses share one refresh; refreshed identity updates Redux, and rejected sessions return to sign-in with the requested path preserved. Network failures show a retry state. Pages handle loading, empty lists, validation errors, unavailable tickets, and conflicts. Larger route modules load on demand.
 
@@ -1340,7 +1360,7 @@ Organization controls:
 
 GLOBAL creation omits regionId; REGION creation requires one actual region. No organization records or relationships are invented. Agents can join multiple teams and managers can manage multiple teams. TeamManager remains organizational only, with no ticket authority. Ordinary member removal atomically clears only that Agent from current operational primary assignments and actionable subtasks in the latest unfinished cycle for that Team. Team/Manager/status remain; no replacement is chosen. Terminal tickets, ended cycles, completed/cancelled subtasks and completion attribution are preserved. Making completed/cancelled work actionable revalidates retained Agent membership and eligibility. Team Lead responsibility must be removed first.
 
-PATCH `/users/:userId` and **Edit account** support only optional `username`, `phoneNumber`, `regionId` and `departmentId`. Omission preserves values; null clears phone/home organization, but username cannot be null. Empty/unknown-field patches return 400. SUPER_ADMIN edits ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN edits MANAGER/AGENT/EMPLOYEE, including inactive or pending accounts. SUPER_ADMIN accounts cannot be edited through this flow. Email is the immutable login/recovery identity and is not admin-editable. Role editing remains deferred; this endpoint preserves role unchanged. Dedicated activation, status, password and session workflows remain separate.
+PATCH `/users/:userId` and **Edit account** support only optional `username`, `displayName`, `jobTitle`, `phoneNumber`, `regionId` and `departmentId`. Omission preserves values; null clears phone/home organization, but username cannot be null. Empty/unknown-field patches return 400. SUPER_ADMIN edits ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN edits MANAGER/AGENT/EMPLOYEE, including inactive or pending accounts. SUPER_ADMIN accounts cannot be edited through this flow. Email is the immutable login/recovery identity and is not admin-editable. Role editing uses the dedicated lifecycle endpoint;  this endpoint preserves role unchanged. Dedicated activation, status, password and session workflows remain separate.
 
 Username trims/lowercases, requires 3–50 characters and remains database-unique (duplicate -> 409). Username updates preserve sessions, sessionVersion and refresh/action tokens. Historical records keep stable User IDs and display the current username; no history is rewritten. Optional phone uses the existing international normalization/validation, remains unverified/non-auth, and clears phoneVerifiedAt on change or explicit null.
 
@@ -1358,11 +1378,11 @@ ADMIN/SUPER_ADMIN can change Team coverage through PATCH `/organization/teams/:i
 
 Coverage affects future routing eligibility only. TeamManager, Team Lead, memberships, specialties, current ticket owners/status/scope, all subtasks, terminal work, work-cycle snapshots, AI suggestion history and notifications are preserved. No reconciliation, replacement people/Teams, reactivation or return to intake occurs. Existing reopening rules remain unchanged. Choices and writes reuse existing routing: active GLOBAL Teams are selectable by any responsible Manager; active REGION Teams only by their organizational TeamManager. Existing assignments can remain after coverage narrows. Moving an active Team changes which Region it blocks from archival; archived Teams do not block archival.
 
-Serializable transactions revalidate the active actor and session, lock the Team then the destination Region (matching reactivation), and serialize safely with Region archival and primary assignment. Earlier valid assignments remain intact. Serialization/deadlock conflicts return 409 without automatic retry. Regional composite and GLOBAL partial name-uniqueness indexes remain authoritative; no migration is needed. AdminDialog provides active-only destinations, preservation/routing explanations, pending protection, error recovery and mobile layout. Responses expose only id/name/scope/regionId/archivedAt; Admins gain no ticket visibility or affected-work previews.
+Serializable transactions revalidate the active actor and session, lock the Team then the destination Region (matching reactivation), and serialize safely with Region archival and primary assignment. Earlier valid assignments remain intact. Serialization/deadlock conflicts return 409 without automatic retry. Regional composite and GLOBAL partial name-uniqueness indexes remain authoritative; no migration is needed. AdminDialog provides active-only destinations, preservation/routing explanations, pending protection, error recovery and mobile layout. Responses expose only id/name/scope/regionId/archivedAt; Admins gain no support or other-user ticket visibility or affected-work previews.
 
 Focused coverage checks: run `test/team-coverage.e2e-spec.ts` alone with the server e2e Jest configuration and isolated `TEST_DATABASE_URL`; after the client build, run `node test/administration-flow.mjs --team-coverage`.
 
-POST/DELETE `/organization/{agents|teams}/:id/specialties/:specialtyId` manage existing many-to-many specialty relations. New links require active entities and an activated AGENT; duplicate links return 409 and missing removal returns 404. Links survive deactivation/archival, remain explicitly removable, and grant no ticket/routing authority. Team coverage editing is implemented; account username/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing remains deferred. Focused maintenance checks: from `server`, run the `test/organization-maintenance.e2e-spec.ts` Jest path against the isolated test database; from `client`, build then run `node test/administration-flow.mjs --organization-maintenance`. For service-desk configuration use `test/ticket-configuration.e2e-spec.ts` and `node test/administration-flow.mjs --ticket-configuration`; `node test/employee-flow.mjs --ticket-configuration` runs only active-choice and archived-reference form checks. These focused modes skip unrelated suites.
+POST/DELETE `/organization/{agents|teams}/:id/specialties/:specialtyId` manage existing many-to-many specialty relations. New links require active entities and an activated AGENT; duplicate links return 409 and missing removal returns 404. Links survive deactivation/archival, remain explicitly removable, and grant no ticket/routing authority. Team coverage editing is implemented; account username/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing uses the dedicated lifecycle endpoint described above. Focused maintenance checks: from `server`, run the `test/organization-maintenance.e2e-spec.ts` Jest path against the isolated test database; from `client`, build then run `node test/administration-flow.mjs --organization-maintenance`. For service-desk configuration use `test/ticket-configuration.e2e-spec.ts` and `node test/administration-flow.mjs --ticket-configuration`; `node test/employee-flow.mjs --ticket-configuration` runs only active-choice and archived-reference form checks. These focused modes skip unrelated suites.
 
 Administration uses shared loading/error states and native confirmation dialogs, explicit 403/404/409 reload, disabled pending controls, validation, empty states, and responsive layouts. `pnpm test:browser` now runs Employee, operational, and administration suites sequentially. Administration acceptance covers both creation/lifecycle matrices, every organization operation exposed above, relationship restrictions, route isolation, token renewal, error recovery, and mobile layout. Browser fixtures remain isolated from actual application data; PostgreSQL tests separately verify real backend contracts and authorization.
 

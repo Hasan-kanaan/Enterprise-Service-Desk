@@ -349,10 +349,10 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       );
     }
     for (const name of ['admin', 'superAdmin']) {
-      await get(`/tickets/${owned.id}/messages`, name).expect(403);
+      await get(`/tickets/${owned.id}/messages`, name).expect(404);
       await get(`/tickets/${owned.id}/internal-notes`, name).expect(403);
       await communicate(name).then((response) =>
-        expect(response.status).toBe(403),
+        expect(response.status).toBe(404),
       );
     }
     await get(`/tickets/${owned.id}/internal-notes`, 'employee').expect(403);
@@ -431,6 +431,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       expect(preserved.author).toEqual({
         id: users.otherAgent.id,
         username: users.otherAgent.username,
+        displayName: null,
       });
       await get(`/tickets/${owned.id}/${kind}`, 'otherAgent').expect(401);
     },
@@ -710,8 +711,8 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
           expect(Object.keys(value).sort()).toEqual(['id', 'name']);
       }
     }
-    await get('/ticket-options', 'admin').expect(403);
-    await get('/ticket-options', 'superAdmin').expect(403);
+    await get('/ticket-options', 'admin').expect(200);
+    await get('/ticket-options', 'superAdmin').expect(200);
   });
 
   it('limits workspace context to the caller led team and operational roles', async () => {
@@ -780,6 +781,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     expect(agents).toContainEqual({
       id: users.agent.id,
       username: users.agent.username,
+      displayName: null,
     });
     expect(agents).not.toEqual(
       expect.arrayContaining([
@@ -787,7 +789,11 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       ]),
     );
     for (const person of agents)
-      expect(Object.keys(person).sort()).toEqual(['id', 'username']);
+      expect(Object.keys(person).sort()).toEqual([
+        'displayName',
+        'id',
+        'username',
+      ]);
     const queue = (
       await get(`/ticket-workspace/tickets/${intake.id}`, 'manager').expect(200)
     ).body;
@@ -871,6 +877,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     expect(delegated.subtask.assignedAgent).toEqual({
       id: users.otherAgent.id,
       username: users.otherAgent.username,
+      displayName: null,
     });
     await get(`/ticket-workspace/tickets/${owned.id}`, 'otherAgent').expect(
       200,
@@ -915,6 +922,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     expect(complete.subtask.completedBy).toEqual({
       id: users.otherAgent.id,
       username: users.otherAgent.username,
+      displayName: null,
     });
     expect(complete.subtask.completedAt).not.toBeNull();
     await patch(`/tickets/${owned.id}/status`, 'manager', {
@@ -983,6 +991,8 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       for (const role of Object.values(UserRole)) {
         const suffix = randomUUID().slice(0, 8);
         const response = await post('/auth/accounts', caller, {
+          displayName: 'New Person',
+          jobTitle: 'Analyst',
           username: `new-${suffix}`,
           email: `${suffix}@test.invalid`,
           role,
@@ -1014,10 +1024,12 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       expect(account!.region).toEqual({
         id: regionId,
         name: expect.any(String) as unknown,
+        archivedAt: null,
       });
       expect(account!.department).toEqual({
         id: departmentId,
         name: expect.any(String) as unknown,
+        archivedAt: null,
       });
       expect(account).not.toHaveProperty('password');
       expect(account).not.toHaveProperty('tickets');
@@ -1065,7 +1077,10 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       otherLead: [],
     };
     for (const [name, ids] of Object.entries(expected)) {
-      const response = await get('/tickets', name).expect(200);
+      const response = await get(
+        `/tickets?categoryId=${categoryId}`,
+        name,
+      ).expect(200);
       expect(
         response.body.items.map((row: { id: number }) => row.id).sort(),
       ).toEqual(ids.sort());
@@ -1078,25 +1093,46 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       data: { status: TicketStatus.ASSIGNED },
     });
     expect(
-      (await get('/tickets', 'otherManager').expect(200)).body.items,
+      (
+        await get(`/tickets?categoryId=${categoryId}`, 'otherManager').expect(
+          200,
+        )
+      ).body.items,
     ).toEqual([]);
   });
 
   it.each(['admin', 'superAdmin'])(
-    'denies %s every ticket/subtask API while preserving administration',
+    'denies %s support and other-request access while preserving own requests and administration',
     async (name) => {
+      expect(
+        (await get('/tickets?queue=requests', name).expect(200)).body.items,
+      ).toEqual([]);
+      await get('/tickets?queue=intake', name).expect(403);
+      await get(`/tickets/${owned.id}`, name).expect(404);
       for (const path of [
-        '/tickets',
-        `/tickets/${owned.id}`,
         '/tickets/subtasks',
         `/tickets/subtasks/${subtask.id}`,
         `/tickets/${owned.id}/subtasks`,
       ])
         await get(path, name).expect(403);
-      await post('/tickets', name, {}).expect(403);
-      for (const suffix of ['', '/manager', '/assignment', '/status'])
-        await patch(`/tickets/${owned.id}${suffix}`, name, {}).expect(403);
-      await post(`/tickets/${owned.id}/subtasks`, name, {}).expect(403);
+      await post('/tickets', name, {}).expect(400);
+      await patch(`/tickets/${owned.id}`, name, { title: 'Forbidden' }).expect(
+        403,
+      );
+      await patch(`/tickets/${owned.id}/manager`, name, {
+        assignedManagerId: users.manager.id,
+      }).expect(403);
+      await patch(`/tickets/${owned.id}/assignment`, name, {
+        teamId: teamA.id,
+      }).expect(403);
+      await patch(`/tickets/${owned.id}/status`, name, {
+        status: 'RESOLVED',
+        resolutionSummary: 'Forbidden',
+      }).expect(403);
+      await post(`/tickets/${owned.id}/subtasks`, name, {
+        title: 'Forbidden',
+        description: 'Forbidden',
+      }).expect(403);
       await patch(`/tickets/subtasks/${subtask.id}`, name, {}).expect(403);
       await get('/users', name).expect(200);
       await get('/organization/teams', name).expect(200);
@@ -1125,7 +1161,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       ...body,
       assignedManagerId: users.manager.id,
     }).expect(400);
-    await post('/tickets', 'manager', body).expect(403);
+    await post('/tickets', 'manager', body).expect(201);
   });
 
   it('allows intake assignment to another real manager without changing status', async () => {
@@ -2079,8 +2115,8 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     await get(`/tickets/${owned.id}/history`, 'agent').expect(404);
     await get(`/tickets/${owned.id}/history`, 'otherAgent').expect(404);
     await get(`/tickets/subtasks/${subtask.id}`, 'otherAgent').expect(200);
-    await get(`/tickets/${owned.id}/history`, 'admin').expect(403);
-    await get(`/tickets/${owned.id}/history`, 'superAdmin').expect(403);
+    await get(`/tickets/${owned.id}/history`, 'admin').expect(404);
+    await get(`/tickets/${owned.id}/history`, 'superAdmin').expect(404);
     expect(
       (await get('/tickets', 'agent')).body.items.some(
         (ticket: { id: number }) => ticket.id === owned.id,
@@ -2132,7 +2168,11 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         where: { ticketId: owned.id },
       });
       const result = await deactivate('manager').expect(200);
-      expect(result.body).toEqual({ id: users.manager.id, status: 'INACTIVE' });
+      expect(result.body).toMatchObject({
+        id: users.manager.id,
+        status: 'INACTIVE',
+        managerlessTeams: expect.any(Array) as unknown,
+      });
       expect(
         await db.ticket.findUniqueOrThrow({ where: { id: intake.id } }),
       ).toMatchObject({
@@ -2150,7 +2190,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       expect(
         await db.teamManager.count({ where: { managerId: users.manager.id } }),
       ).toBe(0);
-      await get(`/tickets/${owned.id}`, 'admin').expect(403);
+      await get(`/tickets/${owned.id}`, 'admin').expect(404);
       await post(`/tickets/${owned.id}/reopen`, 'employee', {
         reason: 'Manager departed',
       }).expect(201);

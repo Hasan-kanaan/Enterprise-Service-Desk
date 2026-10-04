@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "displayName" VARCHAR(100), ADD COLUMN "jobTitle" VARCHAR(100);

@@ -32,11 +32,11 @@ export function NotificationBell({ role }: { role: UserRole }) {
     reload()
   }
   const destination = (record: Notification) => {
-    if (role === 'ADMIN' || role === 'SUPER_ADMIN') return null
+    if (record.ticketId && (['SUPPORT_MESSAGE', 'WAITING_FOR_EMPLOYEE', 'RESOLVED'].includes(record.type) || role === 'ADMIN' || role === 'SUPER_ADMIN')) return `/tickets/${record.ticketId}`
     if (record.subtaskId && role !== 'EMPLOYEE')
       return `/work/subtasks/${record.subtaskId}`
     return record.ticketId
-      ? `${role === 'EMPLOYEE' ? '/tickets' : '/work/tickets'}/${record.ticketId}`
+      ? `/tickets/${record.ticketId}`
       : null
   }
   const mark = async (record?: Notification, open = false) => {

@@ -14,7 +14,7 @@ import type { WorkCycle } from '@/types/tickets'
 type Entry = {
   id: number
   createdInCycleId: number
-  author: { id: number; username: string }
+  author: { id: number; username: string; displayName?: string | null }
   content: string | null
   deletedAt: string | null
   canDelete: boolean
@@ -327,7 +327,7 @@ function CommunicationStream({
                       {records.map((record) => (
                         <li key={record.id}>
                           <p className="small">
-                            <strong>{record.author.username}</strong> ·{' '}
+                            <strong>{record.author.displayName ?? record.author.username}</strong> ·{' '}
                             {formatDate(record.createdAt, true)}
                             {record.editedAt && (
                               <span title={formatDate(record.editedAt, true)}>

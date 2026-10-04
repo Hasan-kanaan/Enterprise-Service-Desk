@@ -8,6 +8,8 @@ export type LoginInput = {
 
 export type SetupInput = {
   setupSecret: string
+  displayName: string
+  jobTitle: string
   username: string
   email: string
   password: string

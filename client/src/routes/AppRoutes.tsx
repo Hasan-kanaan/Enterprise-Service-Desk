@@ -91,7 +91,7 @@ export function AppRoutes() {
               />
             </Route>
             <Route path="/profile" element={<ProfilePage />} />
-            <Route element={<ProtectedRoute roles={['EMPLOYEE']} />}>
+            <Route element={<ProtectedRoute />}>
               <Route path="/tickets" element={<EmployeeTicketsPage />} />
               <Route path="/tickets/new" element={<CreateTicketPage />} />
               <Route

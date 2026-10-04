@@ -7,7 +7,7 @@ import type {
 } from '@/types/administration'
 export const updateAccountStatus = async (id: number, status: AccountStatus) =>
   (
-    await api.patch<{ id: number; status: AccountStatus }>(
+    await api.patch<{ id: number; status: AccountStatus; managerlessTeams: Reference[] }>(
       `/users/${id}/status`,
       { status },
     )

@@ -1,3 +1,4 @@
+import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import {
   Controller,
   Get,
@@ -46,6 +47,29 @@ export class UsersController {
     );
   }
 
+  @Patch(':userId/role')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  updateRole(
+    @Param('userId', ParseIntPipe) id: number,
+    @Body() dto: UpdateUserRoleDto,
+    @Req()
+    request: {
+      user: {
+        sub: number;
+        role: PrismaUserRole;
+        sessionVersion: number;
+        sid: string;
+      };
+    },
+  ) {
+    return this.usersService.updateRole(
+      { ...request.user, id: request.user.sub },
+      id,
+      dto.role,
+    );
+  }
+
   @Patch(':userId/status')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
@@ -54,7 +78,12 @@ export class UsersController {
     @Body() dto: UpdateUserStatusDto,
     @Req()
     request: {
-      user: { sub: number; role: PrismaUserRole; sessionVersion: number };
+      user: {
+        sub: number;
+        role: PrismaUserRole;
+        sessionVersion: number;
+        sid: string;
+      };
     },
   ) {
     return this.usersService.updateStatus(
@@ -62,6 +91,7 @@ export class UsersController {
         id: request.user.sub,
         role: request.user.role,
         sessionVersion: request.user.sessionVersion,
+        sid: request.user.sid,
       },
       id,
       dto.status,

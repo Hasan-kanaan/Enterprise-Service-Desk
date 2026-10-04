@@ -19,6 +19,8 @@ export function AccountForm({
     [email, setEmail] = useState(''),
     [phoneNumber, setPhoneNumber] = useState(''),
     [role, setRole] = useState<UserRole | ''>('')
+  const [displayName, setDisplayName] = useState('')
+  const [jobTitle, setJobTitle] = useState('')
   return (
     <AdminDialog
       title="Create account"
@@ -26,19 +28,21 @@ export function AccountForm({
       onDone={onDone}
       onReload={onReload}
       valid={
-        username.trim().length >= 3 &&
+        username.trim().length >= 3 && !!displayName.trim() && !!jobTitle.trim() &&
         !!email.trim() &&
         roles.includes(role as UserRole)
       }
       submit={() =>
         createAccount({
-          username: username.trim(),
+          username: username.trim(), displayName: displayName.trim(), jobTitle: jobTitle.trim(),
           email: email.trim(),
           ...(phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}),
           role: role as UserRole,
         })
       }
     >
+      <label className="field">Display name<input aria-label="Account display name" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
+      <label className="field">Job title<input aria-label="Account job title" maxLength={100} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} /></label>
       <label className="field">
         Username
         <input

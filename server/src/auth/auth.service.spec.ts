@@ -53,6 +53,8 @@ describe('AuthService', () => {
     const usersService = {
       findByEmail: jest.fn().mockResolvedValue({
         id: 1,
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'adminuser',
         email: 'admin@company.com',
         password: passwordHash,
@@ -64,6 +66,8 @@ describe('AuthService', () => {
       issueSession: jest.fn().mockResolvedValue({
         sid: '11111111-1111-4111-8111-111111111111',
         id: 1,
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'adminuser',
         email: 'admin@company.com',
         role: UserRole.ADMIN,
@@ -101,6 +105,8 @@ describe('AuthService', () => {
     const usersService = {
       findByEmail: jest.fn().mockResolvedValue({
         id: 1,
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'employee',
         email: 'employee@company.com',
         password: passwordHash,
@@ -112,6 +118,8 @@ describe('AuthService', () => {
       issueSession: jest.fn().mockResolvedValue({
         sid: '11111111-1111-4111-8111-111111111111',
         id: 1,
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'adminuser',
         email: 'admin@company.com',
         role: UserRole.ADMIN,
@@ -159,6 +167,8 @@ describe('AuthService', () => {
     const usersService = {
       createInitialSuperAdmin: jest.fn().mockResolvedValue({
         id: 1,
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'rootadmin',
         email: 'root@company.com',
         role: UserRole.SUPER_ADMIN,
@@ -173,6 +183,8 @@ describe('AuthService', () => {
     await expect(
       auth.setup({
         setupSecret: process.env.INITIAL_SETUP_SECRET!,
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'RootAdmin',
         email: 'root@company.com',
         password: 'StrongPass123!',
@@ -183,6 +195,8 @@ describe('AuthService', () => {
 
     expect(usersService.createInitialSuperAdmin).toHaveBeenCalledWith(
       expect.objectContaining({
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'rootadmin',
         email: 'root@company.com',
       }),
@@ -202,6 +216,8 @@ describe('AuthService', () => {
     await expect(
       auth.setup({
         setupSecret: process.env.INITIAL_SETUP_SECRET!,
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'anotheradmin',
         email: 'another@company.com',
         password: 'StrongPass123!',
@@ -232,6 +248,8 @@ describe('AuthService', () => {
       accountSecurity,
     );
     const result = await auth.createAccount(UserRole.SUPER_ADMIN, {
+      displayName: 'Test Person',
+      jobTitle: 'Test Job',
       username: 'NewUser',
       email: 'new@company.test',
       role,
@@ -260,6 +278,8 @@ describe('AuthService', () => {
     ]) {
       await expect(
         auth.createAccount(caller, {
+          displayName: 'Test Person',
+          jobTitle: 'Test Job',
           username: 'someone',
           email: 'someone@test.invalid',
           role,
@@ -276,6 +296,8 @@ describe('AuthService', () => {
         .mockImplementation((data: Parameters<UsersService['create']>[0]) =>
           Promise.resolve({
             id: 2,
+            displayName: 'Test Person',
+            jobTitle: 'Test Job',
             username: data.username,
             email: data.email,
             role: data.role,
@@ -291,6 +313,8 @@ describe('AuthService', () => {
     for (const role of [UserRole.EMPLOYEE, UserRole.AGENT, UserRole.MANAGER]) {
       await expect(
         auth.createAccount(UserRole.ADMIN, {
+          displayName: 'Test Person',
+          jobTitle: 'Test Job',
           username: `new${role.toLowerCase()}`,
           email: `${role.toLowerCase()}@company.com`,
           role,
@@ -308,6 +332,8 @@ describe('AuthService', () => {
 
     await expect(
       auth.createAccount(UserRole.ADMIN, {
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'root2',
         email: 'root2@company.com',
         role: UserRole.SUPER_ADMIN,
@@ -324,6 +350,8 @@ describe('AuthService', () => {
         revokedAt: null,
         user: {
           id: 1,
+          displayName: 'Test Person',
+          jobTitle: 'Test Job',
           username: 'adminuser',
           email: 'admin@company.com',
           password: 'hash',
@@ -337,6 +365,8 @@ describe('AuthService', () => {
       issueSession: jest.fn().mockResolvedValue({
         sid: '11111111-1111-4111-8111-111111111111',
         id: 1,
+        displayName: 'Test Person',
+        jobTitle: 'Test Job',
         username: 'adminuser',
         email: 'admin@company.com',
         role: UserRole.ADMIN,

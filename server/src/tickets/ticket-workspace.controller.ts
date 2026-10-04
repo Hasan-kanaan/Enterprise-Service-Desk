@@ -35,7 +35,9 @@ class AssignmentLookupQuery extends ListQuery {
 }
 
 type Request = { user: { sub: number; role: UserRole } };
-const person = { select: { id: true, username: true } } as const;
+const person = {
+  select: { id: true, username: true, displayName: true },
+} as const;
 const subjectSelect = {
   requesterId: true,
   assignedManagerId: true,
@@ -125,7 +127,7 @@ export class TicketWorkspaceController {
     return this.prisma.$transaction(
       async (db) => {
         const ticket = await db.ticket.findFirst({
-          where: { AND: [{ id }, this.visibility.buildWhere(user)] },
+          where: { AND: [{ id }, this.visibility.operationalWhere(user)] },
           select: subjectSelect,
         });
         if (!ticket) throw new NotFoundException('Ticket not found');
@@ -231,7 +233,7 @@ export class TicketWorkspaceController {
           },
         ],
       },
-      select: { id: true, username: true },
+      select: { id: true, username: true, displayName: true },
       orderBy: [{ username: 'asc' }, { id: 'asc' }],
       take: 20,
     });
@@ -243,7 +245,7 @@ export class TicketWorkspaceController {
     return this.prisma.$transaction(
       async (db) => {
         const ticket = await db.ticket.findFirst({
-          where: { AND: [{ id }, this.visibility.buildWhere(user)] },
+          where: { AND: [{ id }, this.visibility.operationalWhere(user)] },
           select: subjectSelect,
         });
         if (!ticket) throw new NotFoundException('Ticket not found');
@@ -342,7 +344,10 @@ export class TicketWorkspaceController {
         void ticket; // The parent is used for authorization but excluded from this response.
         const parentVisible = !!(await db.ticket.findFirst({
           where: {
-            AND: [{ id: record.ticketId }, this.visibility.buildWhere(user)],
+            AND: [
+              { id: record.ticketId },
+              this.visibility.operationalWhere(user),
+            ],
           },
           select: { id: true },
         }));

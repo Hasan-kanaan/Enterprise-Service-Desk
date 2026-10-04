@@ -1,7 +1,9 @@
 import { Prisma } from '../../generated/prisma/client';
 import { autoCloseAt } from './auto-close.config';
 
-const person = { select: { id: true, username: true } } as const;
+const person = {
+  select: { id: true, username: true, displayName: true },
+} as const;
 export const cycleInclude = {
   startedBy: person,
   endedBy: person,
@@ -51,8 +53,12 @@ export function mapTicket(
   ticket: Prisma.TicketGetPayload<{
     include: {
       workCycles: { include: typeof cycleInclude };
-      assignedManager: { select: { id: true; username: true; status: true } };
-      assignedAgent: { select: { id: true; username: true; status: true } };
+      assignedManager: {
+        select: { id: true; username: true; displayName: true; status: true };
+      };
+      assignedAgent: {
+        select: { id: true; username: true; displayName: true; status: true };
+      };
       assignedTeam: { select: { id: true; name: true } };
       category: { select: { id: true; name: true } };
       tags: { include: { tag: { select: { id: true; name: true } } } };
@@ -85,9 +91,7 @@ export function mapTicket(
     tagIds: tags.map((tag) => tag.tagId),
     tags: tags.map((link) => link.tag),
     affectedRegionIds: affectedRegions.map((item) => item.regionId),
-    affectedDepartmentIds: affectedDepartments.map(
-      (item) => item.departmentId,
-    ),
+    affectedDepartmentIds: affectedDepartments.map((item) => item.departmentId),
     affectedRegions: affectedRegions.map((item) => item.region),
     affectedDepartments: affectedDepartments.map((item) => item.department),
     ownership: {

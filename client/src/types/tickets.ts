@@ -15,6 +15,7 @@ export type NamedOption = { id: number; name: string }
 export type Person = {
   id: number
   username: string
+  displayName?: string | null
   status?: 'ACTIVE' | 'INACTIVE'
 }
 export type Ownership = {
@@ -65,6 +66,7 @@ export type WorkCycle = {
   }
 }
 export type TicketDetail = TicketSummary & {
+  requesterStatus?: 'ACTIVE' | 'INACTIVE'
   category?: NamedOption
   tags?: NamedOption[]
   affectedRegions?: NamedOption[]

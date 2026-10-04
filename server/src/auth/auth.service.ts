@@ -74,6 +74,8 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await this.usersService.createInitialSuperAdmin({
       username,
+      displayName: dto.displayName,
+      jobTitle: dto.jobTitle,
       email,
       password: passwordHash,
     });
@@ -87,6 +89,8 @@ export class AuthService {
       user: {
         id: user.id,
         username: user.username,
+        displayName: user.displayName,
+        jobTitle: user.jobTitle,
         email: user.email,
         role: user.role,
       },
@@ -112,6 +116,8 @@ export class AuthService {
 
     const user = await this.usersService.create({
       username,
+      displayName: dto.displayName,
+      jobTitle: dto.jobTitle,
       email,
       phoneNumber: dto.phoneNumber,
       role: dto.role,
@@ -223,6 +229,8 @@ export class AuthService {
     user: {
       id: number;
       username: string;
+      displayName?: string | null;
+      jobTitle?: string | null;
       email: string;
       role: UserRole;
       sessionVersion: number;
@@ -252,6 +260,8 @@ export class AuthService {
       user: {
         id: user.id,
         username: user.username,
+        displayName: user.displayName,
+        jobTitle: user.jobTitle,
         email: user.email,
         role: user.role,
         passwordChangeRequired: current.passwordChangeRequired,

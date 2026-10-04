@@ -35,6 +35,8 @@ export type RefreshTokenRecord = {
 
 export type UserRecord = {
   id: number;
+  displayName?: string | null;
+  jobTitle?: string | null;
   username: string;
   email: string;
   password: string | null;
@@ -59,9 +61,14 @@ export class UsersService {
     change: UpdateUserMetadataDto,
   ) {
     if (
-      !['username', 'phoneNumber', 'regionId', 'departmentId'].some(
-        (key) => change[key as keyof UpdateUserMetadataDto] !== undefined,
-      )
+      ![
+        'username',
+        'displayName',
+        'jobTitle',
+        'phoneNumber',
+        'regionId',
+        'departmentId',
+      ].some((key) => change[key as keyof UpdateUserMetadataDto] !== undefined)
     )
       throw new BadRequestException(
         'Provide at least one account metadata field',
@@ -119,6 +126,9 @@ export class UsersService {
             throw new ConflictException('Department is archived');
         }
         const data: Prisma.UserUncheckedUpdateInput = {};
+        if (change.displayName !== undefined)
+          data.displayName = change.displayName;
+        if (change.jobTitle !== undefined) data.jobTitle = change.jobTitle;
         if (
           change.username !== undefined &&
           change.username !== target.username
@@ -148,6 +158,8 @@ export class UsersService {
         const select = {
           id: true,
           username: true,
+          displayName: true,
+          jobTitle: true,
           email: true,
           role: true,
           status: true,
@@ -221,8 +233,187 @@ export class UsersService {
     });
   }
 
+  private async reconcileResponsibilities(
+    db: Prisma.TransactionClient,
+    targetId: number,
+    leavingAgent = false,
+  ) {
+    const tickets = await db.ticket.findMany({
+      where: {
+        status: { in: [...operationalStatuses] },
+        OR: [
+          { assignedManagerId: targetId },
+          { assignedAgentId: targetId },
+          {
+            subtasks: {
+              some: {
+                assignedAgentId: targetId,
+                ...(leavingAgent
+                  ? {}
+                  : {
+                      status: {
+                        in: ['TODO', 'IN_PROGRESS'] as (
+                          'TODO' | 'IN_PROGRESS'
+                        )[],
+                      },
+                    }),
+                createdInCycle: { outcome: null },
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    });
+    for (const ticket of tickets) {
+      await db.$queryRaw`SELECT id FROM "Ticket" WHERE id = ${ticket.id} FOR UPDATE`;
+      const current = await db.ticket.findUniqueOrThrow({
+        where: { id: ticket.id },
+        include: {
+          workCycles: { orderBy: { sequenceNumber: 'desc' }, take: 1 },
+        },
+      });
+      if (!(operationalStatuses as readonly string[]).includes(current.status))
+        continue;
+      if (current.assignedManagerId === targetId) {
+        await db.ticket.update({
+          where: { id: current.id },
+          data: {
+            status: 'NEW',
+            assignedManagerId: null,
+            assignedTeamId: null,
+            assignedAgentId: null,
+          },
+        });
+      } else if (current.assignedAgentId === targetId) {
+        await db.ticket.update({
+          where: { id: current.id },
+          data: { assignedAgentId: null },
+        });
+      }
+      const cycle = current.workCycles[0];
+      if (cycle && cycle.outcome === null)
+        await db.subtask.updateMany({
+          where: {
+            ticketId: current.id,
+            createdInCycleId: cycle.id,
+            assignedAgentId: targetId,
+            ...(leavingAgent
+              ? {}
+              : {
+                  status: {
+                    in: ['TODO', 'IN_PROGRESS'] as ('TODO' | 'IN_PROGRESS')[],
+                  },
+                }),
+          },
+          data: { assignedAgentId: null },
+        });
+    }
+    await db.team.updateMany({
+      where: { teamLeadId: targetId },
+      data: { teamLeadId: null },
+    });
+    const managerlessTeams = await db.team.findMany({
+      where: {
+        scope: 'REGION',
+        archivedAt: null,
+        managers: { some: { managerId: targetId } },
+      },
+      select: { id: true, name: true },
+      orderBy: { id: 'asc' },
+    });
+    await db.teamManager.deleteMany({ where: { managerId: targetId } });
+    if (leavingAgent)
+      await db.teamMember.deleteMany({ where: { userId: targetId } });
+    return managerlessTeams;
+  }
+
+  private async revokeAuthorization(
+    db: Prisma.TransactionClient,
+    targetId: number,
+  ) {
+    const revokedAt = new Date();
+    await db.userSession.updateMany({
+      where: { userId: targetId, revokedAt: null },
+      data: { revokedAt },
+    });
+    await db.refreshToken.updateMany({
+      where: { userId: targetId, revokedAt: null },
+      data: { revokedAt },
+    });
+    await db.accountActionToken.updateMany({
+      where: { userId: targetId, usedAt: null, revokedAt: null },
+      data: { revokedAt },
+    });
+  }
+
+  private async requireSession(
+    db: Prisma.TransactionClient,
+    actor: { id: number; sid?: string },
+  ) {
+    if (!actor.sid) return;
+    await db.$queryRaw`SELECT id FROM "UserSession" WHERE id = ${actor.sid} FOR SHARE`;
+    if (
+      !(await db.userSession.findFirst({
+        where: { id: actor.sid, userId: actor.id, revokedAt: null },
+        select: { id: true },
+      }))
+    )
+      throw new UnauthorizedException('Account or session is no longer active');
+  }
+
+  async updateRole(
+    actor: {
+      id: number;
+      role: PrismaUserRole;
+      sessionVersion: number;
+      sid: string;
+    },
+    targetId: number,
+    role: PrismaUserRole,
+  ) {
+    return serializable(this.prisma, async (db) => {
+      for (const id of [...new Set([actor.id, targetId])].sort((a, b) => a - b))
+        await lockUser(db, id);
+      await requireActiveActor(db, actor);
+      await this.requireSession(db, actor);
+      const target = await db.user.findUnique({ where: { id: targetId } });
+      if (!target) throw new NotFoundException('User not found');
+      const allowed =
+        actor.role === 'SUPER_ADMIN'
+          ? ['ADMIN', 'MANAGER', 'AGENT', 'EMPLOYEE']
+          : actor.role === 'ADMIN'
+            ? ['MANAGER', 'AGENT', 'EMPLOYEE']
+            : [];
+      if (!allowed.includes(target.role) || !allowed.includes(role))
+        throw new ForbiddenException(
+          'No role-transition authority for this account or destination',
+        );
+      if (target.role === role)
+        return { id: target.id, role, managerlessTeams: [], changed: false };
+      const managerlessTeams = await this.reconcileResponsibilities(
+        db,
+        targetId,
+        target.role === 'AGENT',
+      );
+      // No new role assigns work, membership, specialties or management.
+      await db.user.update({
+        where: { id: targetId },
+        data: { role, sessionVersion: { increment: 1 } },
+      });
+      await this.revokeAuthorization(db, targetId);
+      return { id: targetId, role, managerlessTeams, changed: true };
+    });
+  }
+
   async updateStatus(
-    actor: { id: number; role: PrismaUserRole; sessionVersion?: number },
+    actor: {
+      id: number;
+      role: PrismaUserRole;
+      sessionVersion?: number;
+      sid?: string;
+    },
     targetId: number,
     status: UserStatus,
   ) {
@@ -232,6 +423,7 @@ export class UsersService {
       for (const id of [...new Set([actor.id, targetId])].sort((a, b) => a - b))
         await lockUser(db, id);
       await requireActiveActor(db, actor);
+      await this.requireSession(db, actor);
       const target = await db.user.findUnique({ where: { id: targetId } });
       if (!target) throw new NotFoundException('User not found');
       const allowed =
@@ -243,84 +435,14 @@ export class UsersService {
       if (!allowed.includes(target.role))
         throw new ForbiddenException('No lifecycle authority for this account');
       if (target.status === status)
-        return { id: target.id, status: target.status };
-      if (status === 'INACTIVE') {
-        const tickets = await db.ticket.findMany({
-          where: {
-            status: { in: [...operationalStatuses] },
-            OR: [
-              { assignedManagerId: targetId },
-              { assignedAgentId: targetId },
-              {
-                subtasks: {
-                  some: {
-                    assignedAgentId: targetId,
-                    status: { in: ['TODO', 'IN_PROGRESS'] },
-                    createdInCycle: { outcome: null },
-                  },
-                },
-              },
-            ],
-          },
-          select: { id: true },
-          orderBy: { id: 'asc' },
-        });
-        for (const ticket of tickets) {
-          await db.$queryRaw`SELECT id FROM "Ticket" WHERE id = ${ticket.id} FOR UPDATE`;
-          const current = await db.ticket.findUniqueOrThrow({
-            where: { id: ticket.id },
-            include: {
-              workCycles: { orderBy: { sequenceNumber: 'desc' }, take: 1 },
-            },
-          });
-          if (
-            !(operationalStatuses as readonly string[]).includes(current.status)
-          )
-            continue;
-          if (current.assignedManagerId === targetId) {
-            await db.ticket.update({
-              where: { id: current.id },
-              data: {
-                status: 'NEW',
-                assignedManagerId: null,
-                assignedTeamId: null,
-                assignedAgentId: null,
-              },
-            });
-          } else if (current.assignedAgentId === targetId) {
-            await db.ticket.update({
-              where: { id: current.id },
-              data: { assignedAgentId: null },
-            });
-          }
-          const cycle = current.workCycles[0];
-          if (cycle && cycle.outcome === null)
-            await db.subtask.updateMany({
-              where: {
-                ticketId: current.id,
-                createdInCycleId: cycle.id,
-                assignedAgentId: targetId,
-                status: { in: ['TODO', 'IN_PROGRESS'] },
-              },
-              data: { assignedAgentId: null },
-            });
-        }
-        await db.team.updateMany({
-          where: { teamLeadId: targetId },
-          data: { teamLeadId: null },
-        });
-        await db.teamManager.deleteMany({ where: { managerId: targetId } });
-        await db.userSession.updateMany({
-          where: { userId: targetId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
-        await db.refreshToken.updateMany({
-          where: { userId: targetId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
-      }
+        return { id: target.id, status: target.status, managerlessTeams: [] };
+      const managerlessTeams =
+        status === 'INACTIVE'
+          ? await this.reconcileResponsibilities(db, targetId)
+          : [];
+      if (status === 'INACTIVE') await this.revokeAuthorization(db, targetId);
       // No operational records or counts are returned to administrators.
-      return db.user.update({
+      const updated = await db.user.update({
         where: { id: targetId },
         data: {
           status,
@@ -330,6 +452,7 @@ export class UsersService {
         },
         select: { id: true, status: true },
       });
+      return { ...updated, managerlessTeams };
     });
   }
 
@@ -402,6 +525,8 @@ export class UsersService {
   }
 
   async createInitialSuperAdmin(data: {
+    displayName: string;
+    jobTitle: string;
     username: string;
     email: string;
     password: string;
@@ -427,6 +552,8 @@ export class UsersService {
         const user = await transaction.user.create({
           data: {
             username: normalizedUsername,
+            displayName: data.displayName.trim(),
+            jobTitle: data.jobTitle.trim(),
             email: normalizedEmail,
             password: data.password,
             activatedAt: new Date(),
@@ -435,6 +562,8 @@ export class UsersService {
           select: {
             id: true,
             username: true,
+            displayName: true,
+            jobTitle: true,
             email: true,
             role: true,
             status: true,
@@ -471,6 +600,7 @@ export class UsersService {
             ? {
                 OR: [
                   { username: { contains: search, mode: 'insensitive' } },
+                  { displayName: { contains: search, mode: 'insensitive' } },
                   { email: { contains: search, mode: 'insensitive' } },
                 ],
               }
@@ -482,6 +612,8 @@ export class UsersService {
       select: {
         id: true,
         username: true,
+        displayName: true,
+        jobTitle: true,
         email: true,
         role: true,
         status: true,
@@ -504,6 +636,8 @@ export class UsersService {
       select: {
         id: true,
         username: true,
+        displayName: true,
+        jobTitle: true,
         email: true,
         password: true,
         role: true,
@@ -524,6 +658,8 @@ export class UsersService {
       select: {
         id: true,
         username: true,
+        displayName: true,
+        jobTitle: true,
         email: true,
         password: true,
         role: true,
@@ -537,6 +673,8 @@ export class UsersService {
   }
 
   async create(data: {
+    displayName: string;
+    jobTitle: string;
     username: string;
     email: string;
     phoneNumber?: string;
@@ -559,6 +697,8 @@ export class UsersService {
         .create({
           data: {
             username: normalizedUsername,
+            displayName: data.displayName.trim(),
+            jobTitle: data.jobTitle.trim(),
             email: normalizedEmail,
             phoneNumber: data.phoneNumber,
             role: data.role,
@@ -566,6 +706,8 @@ export class UsersService {
           select: {
             id: true,
             username: true,
+            displayName: true,
+            jobTitle: true,
             email: true,
             role: true,
             status: true,

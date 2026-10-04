@@ -52,8 +52,8 @@ describe('Lifecycle policies', () => {
     [3, UserRole.AGENT],
     [5, UserRole.AGENT],
     [6, UserRole.MANAGER],
-    [1, UserRole.ADMIN],
-    [1, UserRole.SUPER_ADMIN],
+    [99, UserRole.ADMIN],
+    [99, UserRole.SUPER_ADMIN],
   ] as const)('denies reopen by %s/%s', (id, role) => {
     expect(() => policy.assertCanReopen({ id, role }, ticket)).toThrow(
       ForbiddenException,

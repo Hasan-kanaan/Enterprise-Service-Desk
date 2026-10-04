@@ -40,7 +40,7 @@ describe('TicketVisibilityService', () => {
   });
 
   it('filters agents to direct assignment or their current Team Lead team', () => {
-    expect(service.buildWhere(agent(20))).toEqual({
+    expect(service.operationalWhere(agent(20))).toEqual({
       OR: [
         { assignedAgentId: 20 },
         { assignedTeam: { teamLeadId: 20 } },
@@ -50,19 +50,19 @@ describe('TicketVisibilityService', () => {
   });
 
   it('does not use team membership as agent visibility', () => {
-    const where = service.buildWhere(agent(20));
+    const where = service.operationalWhere(agent(20));
     expect(where).not.toHaveProperty('assignedTeam.members');
   });
 
   it('does not use region, department, or specialty as agent visibility', () => {
-    const where = JSON.stringify(service.buildWhere(agent(20)));
+    const where = JSON.stringify(service.operationalWhere(agent(20)));
     expect(where).not.toContain('regionId');
     expect(where).not.toContain('departmentId');
     expect(where).not.toContain('specialties');
   });
 
   it('filters managers to unowned NEW intake and explicitly owned tickets', () => {
-    expect(service.buildWhere(manager(30))).toEqual({
+    expect(service.operationalWhere(manager(30))).toEqual({
       OR: [
         { status: 'NEW', assignedManagerId: null },
         { assignedManagerId: 30 },
@@ -71,13 +71,13 @@ describe('TicketVisibilityService', () => {
   });
 
   it('does not use manager home region or department', () => {
-    const where = JSON.stringify(service.buildWhere(manager(30)));
+    const where = JSON.stringify(service.operationalWhere(manager(30)));
     expect(where).not.toContain('regionId');
     expect(where).not.toContain('departmentId');
   });
 
   it('does not derive manager visibility from TeamManager', () => {
-    expect(service.buildWhere(manager(30))).toEqual({
+    expect(service.operationalWhere(manager(30))).toEqual({
       OR: [
         { status: 'NEW', assignedManagerId: null },
         { assignedManagerId: 30 },
@@ -86,7 +86,7 @@ describe('TicketVisibilityService', () => {
   });
 
   it('uses the same team-lead relationship for global team leads', () => {
-    expect(service.buildWhere(agent(20))).toEqual({
+    expect(service.operationalWhere(agent(20))).toEqual({
       OR: [
         { assignedAgentId: 20 },
         { assignedTeam: { teamLeadId: 20 } },
@@ -96,20 +96,20 @@ describe('TicketVisibilityService', () => {
   });
 
   it('does not grant ordinary team members team visibility', () => {
-    expect(service.buildWhere(agent(21))).not.toEqual({
+    expect(service.operationalWhere(agent(21))).not.toEqual({
       assignedTeam: { members: { some: { userId: 21 } } },
     });
   });
 
   it('uses responsible-manager ownership instead of affected-region relationships', () => {
-    const where = JSON.stringify(service.buildWhere(manager(30)));
+    const where = JSON.stringify(service.operationalWhere(manager(30)));
     expect(where).toContain('assignedManagerId');
     expect(where).not.toContain('assignedTeam');
     expect(where).not.toContain('affectedRegions');
   });
 
   it('does not grant operational visibility to unassigned agents', () => {
-    expect(service.buildWhere(agent(20))).toEqual({
+    expect(service.operationalWhere(agent(20))).toEqual({
       OR: [
         { assignedAgentId: 20 },
         { assignedTeam: { teamLeadId: 20 } },
@@ -124,17 +124,32 @@ describe('TicketVisibilityService', () => {
     expect(where).not.toContain('assignedAgentId');
   });
 
-  it('denies SUPER_ADMIN ticket visibility', () => {
-    expect(() =>
-      service.buildWhere({ id: 1, role: UserRole.SUPER_ADMIN }),
-    ).toThrow(ForbiddenException);
-  });
+  it.each(Object.values(UserRole))(
+    'gives %s own-request detail visibility',
+    (role) => {
+      const actor = { id: 1, role };
+      const where = service.buildWhere(actor);
+      expect(JSON.stringify(where)).toContain('requesterId');
+      if (role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN) {
+        expect(where).toEqual({ requesterId: 1 });
+        expect(() => service.operationalWhere(actor)).toThrow(
+          ForbiddenException,
+        );
+      }
+    },
+  );
 
-  it('denies ADMIN ticket visibility', () => {
-    expect(() => service.buildWhere({ id: 2, role: UserRole.ADMIN })).toThrow(
-      ForbiddenException,
-    );
-  });
+  it.each(Object.values(UserRole))(
+    'scopes %s requests queue independently of support',
+    async (role) => {
+      findMany.mockResolvedValue([]);
+      await service.listVisible({ id: 1, role }, { queue: 'requests' });
+      const filter = JSON.stringify(findMany.mock.calls[0]);
+      expect(filter).toContain('requesterId');
+      expect(filter).not.toContain('assignedManagerId');
+      expect(filter).not.toContain('assignedAgentId');
+    },
+  );
 
   it.each([UserRole.EMPLOYEE, UserRole.ADMIN, UserRole.SUPER_ADMIN])(
     'denies %s subtask reads',
@@ -156,7 +171,7 @@ describe('TicketVisibilityService', () => {
       assignedManagerId: 30,
     });
     expect(service.supportWhere(agent(20))).toEqual(
-      service.buildWhere(agent(20)),
+      service.operationalWhere(agent(20)),
     );
     for (const role of [
       UserRole.EMPLOYEE,
@@ -194,7 +209,9 @@ describe('TicketVisibilityService', () => {
       expect.objectContaining({
         where: {
           AND: [
-            { AND: [service.buildWhere(manager(30)), {}, {}, {}, {}, {}] },
+            {
+              AND: [service.operationalWhere(manager(30)), {}, {}, {}, {}, {}],
+            },
             {},
           ],
         },
@@ -236,12 +253,7 @@ describe('TicketVisibilityService', () => {
 
     await expect(service.countVisible(manager(30))).resolves.toBe(2);
     expect(count).toHaveBeenCalledWith({
-      where: {
-        OR: [
-          { status: 'NEW', assignedManagerId: null },
-          { assignedManagerId: 30 },
-        ],
-      },
+      where: service.buildWhere(manager(30)),
     });
   });
 });

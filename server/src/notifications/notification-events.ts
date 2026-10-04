@@ -30,7 +30,6 @@ export async function notify(
     where: {
       id: { in: ids },
       status: 'ACTIVE',
-      role: { in: ['EMPLOYEE', 'MANAGER', 'AGENT'] },
     },
     select: { id: true },
   });

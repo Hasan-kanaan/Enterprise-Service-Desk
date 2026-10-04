@@ -531,7 +531,7 @@ describe('Persistent notifications (PostgreSQL and HTTP)', () => {
     await get(`/tickets/${ticketId}`, 'collaborator').expect(404);
     for (const who of ['admin', 'superAdmin']) {
       expect((await get('/notifications', who).expect(200)).body).toEqual([]);
-      await get(`/tickets/${ticketId}`, who).expect(403);
+      await get(`/tickets/${ticketId}`, who).expect(404);
     }
   });
 

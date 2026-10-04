@@ -52,6 +52,10 @@ export function EditAccountForm({
     change.regionId = region ? Number(region) : null
   if (department !== (account.department?.id.toString() ?? ''))
     change.departmentId = department ? Number(department) : null
+  const [displayName, setDisplayName] = useState(account.displayName ?? '')
+  const [jobTitle, setJobTitle] = useState(account.jobTitle ?? '')
+  if (displayName !== (account.displayName ?? '')) change.displayName = displayName.trim()
+  if (jobTitle !== (account.jobTitle ?? '')) change.jobTitle = jobTitle.trim()
   return (
     <AdminDialog
       title="Edit account"
@@ -62,12 +66,14 @@ export function EditAccountForm({
         !!catalogs.data &&
         username.trim().length >= 3 &&
         username.trim().length <= 50 &&
-        Object.keys(change).length > 0
+        Object.keys(change).length > 0 && (change.displayName === undefined || !!change.displayName) && (change.jobTitle === undefined || !!change.jobTitle)
       }
       submit={() => updateAccount(account.id, change)}
     >
       <p>Email (read-only): {account.email}</p>
       <p>Current role: {account.role}. This dialog does not edit roles.</p>
+      <label className="field">Display name<input aria-label="Account display name" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
+      <label className="field">Job title<input aria-label="Account job title" maxLength={100} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} /></label>
       <label className="field">
         Username
         <input

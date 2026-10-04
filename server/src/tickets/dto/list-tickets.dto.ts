@@ -12,7 +12,7 @@ import { TicketStatus } from '../../../generated/prisma/client';
 
 export class ListTicketsDto extends ListQuery {
   @IsOptional()
-  @IsIn(['intake', 'mine', 'primary', 'collaboration', 'team'])
+  @IsIn(['requests', 'intake', 'mine', 'primary', 'collaboration', 'team'])
   queue?: string;
 
   @IsOptional()

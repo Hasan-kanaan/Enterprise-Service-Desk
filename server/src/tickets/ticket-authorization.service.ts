@@ -32,20 +32,12 @@ export class TicketAuthorizationService {
   }
 
   assertServiceDeskUser(user: TicketAuthorizationUser) {
-    if (
-      user.role !== UserRole.EMPLOYEE &&
-      user.role !== UserRole.AGENT &&
-      user.role !== UserRole.MANAGER
-    ) {
-      throw new ForbiddenException(
-        'System administration does not grant ticket access',
-      );
-    }
+    if (!Object.values(UserRole).includes(user.role))
+      throw new ForbiddenException('Unknown company role');
   }
 
   assertCanCreateTicket(user: TicketAuthorizationUser) {
-    if (user.role !== UserRole.EMPLOYEE)
-      throw new ForbiddenException('Only employees may create tickets');
+    this.assertServiceDeskUser(user);
   }
 
   isResponsibleManager(
@@ -83,7 +75,7 @@ export class TicketAuthorizationService {
     this.assertServiceDeskUser(user);
     this.assertActive(ticket);
     if (
-      (user.role === UserRole.EMPLOYEE && ticket.requesterId === user.id) ||
+      ticket.requesterId === user.id ||
       (user.role === UserRole.AGENT && ticket.assignedAgentId === user.id) ||
       this.isTeamLead(user, ticket.assignedTeam) ||
       this.isResponsibleManager(user, ticket)
@@ -186,8 +178,7 @@ export class TicketAuthorizationService {
   ) {
     this.assertServiceDeskUser(user);
     if (!(
-      (user.role === UserRole.EMPLOYEE && ticket.requesterId === user.id) ||
-      this.isResponsibleManager(user, ticket)
+      ticket.requesterId === user.id || this.isResponsibleManager(user, ticket)
     ))
       throw new ForbiddenException(
         'Only the requester or responsible manager may reopen',
@@ -203,8 +194,8 @@ export class TicketAuthorizationService {
     user: TicketAuthorizationUser,
     ticket: TicketAuthorizationSubject,
   ) {
-    if (user.role !== UserRole.EMPLOYEE || ticket.requesterId !== user.id)
-      throw new ForbiddenException('Only the employee requester may cancel');
+    if (ticket.requesterId !== user.id)
+      throw new ForbiddenException('Only the requester may cancel');
     if (
       ticket.status !== TicketStatus.NEW &&
       ticket.status !== TicketStatus.ASSIGNED
@@ -240,7 +231,7 @@ export class TicketAuthorizationService {
     }
     if (to === TicketStatus.CLOSED) {
       if (
-        (user.role === UserRole.EMPLOYEE && ticket.requesterId === user.id) ||
+        ticket.requesterId === user.id ||
         this.isResponsibleManager(user, ticket)
       )
         return;

@@ -92,6 +92,7 @@ function OperationalTicket({ id }: { id: number }) {
         <div>
           <p className="eyebrow">Ticket #{id}</p>
           <h1>{ticket.title}</h1>
+          {ticket.requesterStatus === 'INACTIVE' && <p className="notice" role="alert">Requester account is inactive.</p>}
           <div className="button-row">
             <StatusBadge status={ticket.status} />
             <span className="muted">
@@ -269,7 +270,7 @@ function OperationalTicket({ id }: { id: number }) {
             <dl className="owner-list">
               <div>
                 <dt>Responsible manager</dt>
-                <dd>{ticket.ownership.manager?.username ?? 'Unassigned'}</dd>
+                <dd>{ticket.ownership.manager?.displayName ?? ticket.ownership.manager?.username ?? 'Unassigned'}</dd>
               </div>
               <div>
                 <dt>Primary team</dt>
@@ -277,7 +278,7 @@ function OperationalTicket({ id }: { id: number }) {
               </div>
               <div>
                 <dt>Primary agent</dt>
-                <dd>{ticket.ownership.agent?.username ?? 'Unassigned'}</dd>
+                <dd>{ticket.ownership.agent?.displayName ?? ticket.ownership.agent?.username ?? 'Unassigned'}</dd>
               </div>
             </dl>
           </section>

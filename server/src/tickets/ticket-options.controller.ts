@@ -7,7 +7,13 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('ticket-options')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles(UserRole.EMPLOYEE, UserRole.AGENT, UserRole.MANAGER)
+@Roles(
+  UserRole.EMPLOYEE,
+  UserRole.AGENT,
+  UserRole.MANAGER,
+  UserRole.ADMIN,
+  UserRole.SUPER_ADMIN,
+)
 export class TicketOptionsController {
   constructor(private readonly prisma: PrismaService) {}
 

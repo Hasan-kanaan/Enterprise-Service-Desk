@@ -48,7 +48,7 @@ export function TicketHistory({
               </div>
               <p className="muted small">
                 Started {formatDate(cycle.startedAt, true)}
-                {cycle.startedBy ? ` by ${cycle.startedBy.username}` : ''}
+                {cycle.startedBy ? ` by ${cycle.startedBy.displayName ?? cycle.startedBy.username}` : ''}
               </p>
               {cycle.startReason && (
                 <div className="history-text">
@@ -70,7 +70,7 @@ export function TicketHistory({
               <dl className="history-owners">
                 <div>
                   <dt>Manager</dt>
-                  <dd>{cycle.ownership.manager?.username ?? 'Not recorded'}</dd>
+                  <dd>{cycle.ownership.manager?.displayName ?? cycle.ownership.manager?.username ?? 'Not recorded'}</dd>
                 </div>
                 <div>
                   <dt>Team</dt>
@@ -78,14 +78,14 @@ export function TicketHistory({
                 </div>
                 <div>
                   <dt>Agent</dt>
-                  <dd>{cycle.ownership.agent?.username ?? 'Not recorded'}</dd>
+                  <dd>{cycle.ownership.agent?.displayName ?? cycle.ownership.agent?.username ?? 'Not recorded'}</dd>
                 </div>
               </dl>
               {cycle.isEnded && (
                 <p className="muted small">
                   {cycle.outcome === 'CANCELLED' ? 'Cancelled' : 'Resolved'}{' '}
                   {formatDate(cycle.endedAt, true)}
-                  {cycle.endedBy ? ` by ${cycle.endedBy.username}` : ''}
+                  {cycle.endedBy ? ` by ${cycle.endedBy.displayName ?? cycle.endedBy.username}` : ''}
                 </p>
               )}
               {cycle.closedAt && (
@@ -94,7 +94,7 @@ export function TicketHistory({
                     ? 'Automatically closed'
                     : 'Closed'}{' '}
                   {formatDate(cycle.closedAt, true)}
-                  {cycle.closedBy ? ` by ${cycle.closedBy.username}` : ''}
+                  {cycle.closedBy ? ` by ${cycle.closedBy.displayName ?? cycle.closedBy.username}` : ''}
                 </p>
               )}
               {renderWork?.(cycle)}
