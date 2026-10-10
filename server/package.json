@@ -6,6 +6,9 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "manual-test:seed": "node scripts/manual-test.cjs seed",
+    "manual-test:reset": "node scripts/manual-test.cjs reset",
+    "manual-test:verify": "node --test scripts/manual-test.test.cjs",
     "storage:check": "node --env-file-if-exists=.env -r ts-node/register src/storage-check.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit --incremental false",
     "build": "nest build",

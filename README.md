@@ -1,5 +1,9 @@
 # Enterprise Service Desk
 
+For isolated human browser testing, follow [the manual database guide](docs/manual-testing.md).
+It uses `enterprise_service_desk_manual`, preserves the real `/setup` bootstrap,
+and provides explicitly guarded seed/reset commands separate from startup and tests.
+
 ## Universal requester identity and role lifecycle (2026-10-03)
 
 Every authenticated company User may act as requester for their own tickets.

@@ -6,6 +6,9 @@
     "node": "24.x"
   },
   "scripts": {
+    "manual-test:seed": "pnpm --dir server manual-test:seed",
+    "manual-test:reset": "pnpm --dir server manual-test:reset",
+    "manual-test:verify": "pnpm --dir server manual-test:verify",
     "install:apps": "pnpm --dir server install --frozen-lockfile && pnpm --dir client install --frozen-lockfile",
     "build": "pnpm --dir server build && pnpm --dir client build"
   }
