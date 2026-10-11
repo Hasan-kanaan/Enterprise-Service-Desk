@@ -1,5 +1,20 @@
 # Project Status
 
+## Production dependency gate cleared (2026-10-11)
+
+Patched `@nestjs/platform-express > express > proxy-addr` from 2.0.7 to 2.0.8
+through Express's existing compatible range. Only the server lockfile and audit/status
+documentation changed; no direct update or new override was needed. Nest 11.2.7
+still uses the same Express version, so updating the framework adds no benefit here.
+Production audit reports no known vulnerabilities. Frozen install, dependency
+checks (2), lint, typecheck, build, unit tests (244) and focused hardening/account-security
+PostgreSQL HTTP tests (24) pass; `git diff --check` passes. Full PostgreSQL suite
+not rerun for this isolated patch. The first HTTP run failed with Docker stopped;
+the unchanged rerun passed after starting the existing database container.
+Full development-inclusive audit still reports 2 critical / 20 high / 6 moderate
+findings, outside this task. See [dependency audit](docs/dependency-audit.md).
+The identity-phase audit failure below is historical and is resolved by this follow-up.
+
 ## Identity and navigation (2026-10-11)
 
 Username has been removed from the Enterprise Service Desk identity model.

@@ -1,5 +1,52 @@
 # Server runtime dependency remediation - 2026-09-27
 
+## proxy-addr follow-up - 2026-10-11
+
+Resolved the identity-phase production audit blocker
+[GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h)
+with a compatible lockfile-only patch from **proxy-addr 2.0.7 to 2.0.8**.
+The installed path is `@nestjs/platform-express@11.2.6 > express@5.2.1 > proxy-addr`;
+pnpm also reports the Nest core/testing peer paths to the same platform adapter.
+Express declares `proxy-addr: ^2.0.7`, which already supports the patched release.
+Registry inspection found Nest 11.2.7 still uses Express 5.2.1; a direct Nest
+update is unnecessary to obtain this fix. Nest 12 is outside this narrow task.
+No direct dependency or override was added or changed. Existing overrides remain
+unchanged, as do proxy-addr's forwarded 0.2.0 and ipaddr.js 1.9.1 dependencies.
+
+`pnpm.cmd --dir server update proxy-addr --depth Infinity --no-save` resolved
+the patch but also refreshed unrelated tooling transitives. Those unrelated
+lockfile changes were discarded before final verification, retaining only the
+generated proxy-addr version, integrity and snapshot changes. A successful
+`pnpm.cmd --dir server install --frozen-lockfile` verified the narrowed lockfile.
+No application, authorization, bootstrap/session, Prisma/schema or migration
+source changed. The existing default trust-proxy configuration remains false.
+
+Verification: production audit (`pnpm.cmd --dir server audit --prod --audit-level high`)
+reports **no known vulnerabilities**; dependency compatibility **2/2**, lint,
+typecheck, build and unit tests **19 suites / 244 tests** pass. The unit run
+includes real Nest/Express HTTP security tests for forwarded-IP handling,
+explicit trusted hops, request parsing and rate limits.
+
+Focused PostgreSQL HTTP verification passed **2 suites / 24 tests** with
+`TEST_DATABASE_URL` targeting `eds_stabilization_test`:
+`pnpm.cmd --dir server test:e2e --runInBand --runTestsByPath test/hardening.e2e-spec.ts test/account-security.e2e-spec.ts`.
+The first attempt could not connect because Docker was stopped; starting Docker
+and the existing database container allowed the unchanged rerun to pass. Tests
+use private schemas and fake mail. No development/manual database reset or seed
+was performed. An initial sandboxed pnpm check also failed to access its store;
+the permitted rerun passed. Existing pg/VM warnings remain.
+`git diff --check` passed. The complete 363-test PostgreSQL suite was not rerun:
+this isolated compatible patch retains the HTTP stack and is covered by the
+security HTTP unit tests and focused lifecycle suites. No commit or push.
+
+The fresh informational full server audit still reports **2 critical / 20 high /
+6 moderate** development findings: brace-expansion, js-yaml, browserslist,
+baseline-browser-mapping, sprintf-js and handlebars. Both critical findings are
+under `ts-jest > handlebars` (GHSA-8r5x-fm3f-whwj and GHSA-p8wg-vrv2-v86f).
+These remain outside this production dependency task; no suppression or threshold
+change was made. The older full-audit counts below are historical, not current.
+
+
 ## Before updates
 
 Fresh `pnpm audit --prod --json`: **11 high / 5 moderate / 1 low**, 17 advisory entries across six transitive packages. Counts are not a measure of application exploitability. All original findings and complete chains are below; optional Prisma CLI peers are included by pnpm production audit.
