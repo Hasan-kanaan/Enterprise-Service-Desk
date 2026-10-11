@@ -13,7 +13,7 @@ function App() {
           <AppRoutes />
         </SessionBootstrap>
       </BrowserRouter>
-      <Toaster position="top-right" richColors />
+      <Toaster position="top-right" richColors theme="system" />
     </Provider>
   )
 }

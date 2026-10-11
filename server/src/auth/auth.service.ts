@@ -1,7 +1,6 @@
 import { mailLogger } from './mail.provider';
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   HttpException,
@@ -48,7 +47,7 @@ export class AuthService {
   ) {}
 
   async getSetupStatus() {
-    const hasSuperAdmin = await this.usersService.hasSuperAdmin();
+    const hasSuperAdmin = await this.usersService.hasActivatedSuperAdmin();
 
     return { available: !hasSuperAdmin };
   }
@@ -60,41 +59,7 @@ export class AuthService {
       .digest();
     if (!timingSafeEqual(expected, supplied))
       throw new ForbiddenException('Invalid setup credentials');
-    assertPassword(dto.password);
-    const username = dto.username?.trim().toLowerCase();
-    const email = dto.email?.trim().toLowerCase();
-    const password = dto.password;
-
-    if (!username || !email || !password) {
-      throw new BadRequestException(
-        'Username, email, and password are required',
-      );
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await this.usersService.createInitialSuperAdmin({
-      username,
-      displayName: dto.displayName,
-      jobTitle: dto.jobTitle,
-      email,
-      password: passwordHash,
-    });
-
-    if (!user) {
-      throw new ConflictException('Initial setup has already been completed');
-    }
-
-    return {
-      message: 'Initial SUPER_ADMIN setup completed',
-      user: {
-        id: user.id,
-        username: user.username,
-        displayName: user.displayName,
-        jobTitle: user.jobTitle,
-        email: user.email,
-        role: user.role,
-      },
-    };
+    return this.accountSecurity.bootstrap(dto);
   }
 
   async createAccount(callerRole: UserRole, dto: CreateAccountDto) {
@@ -111,11 +76,9 @@ export class AuthService {
       );
     }
 
-    const username = dto.username.trim().toLowerCase();
     const email = dto.email.trim().toLowerCase();
 
     const user = await this.usersService.create({
-      username,
       displayName: dto.displayName,
       jobTitle: dto.jobTitle,
       email,
@@ -228,8 +191,7 @@ export class AuthService {
   private async issueTokens(
     user: {
       id: number;
-      username: string;
-      displayName?: string | null;
+      displayName: string;
       jobTitle?: string | null;
       email: string;
       role: UserRole;
@@ -259,7 +221,6 @@ export class AuthService {
       refreshToken,
       user: {
         id: user.id,
-        username: user.username,
         displayName: user.displayName,
         jobTitle: user.jobTitle,
         email: user.email,

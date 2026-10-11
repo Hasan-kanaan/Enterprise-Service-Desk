@@ -1,3 +1,4 @@
+import { Avatar } from '@/components/Avatar'
 import { useResource } from '@/hooks/useResource'
 import { getWorkspace } from '@/services/operations.service'
 import {
@@ -6,7 +7,7 @@ import {
   LogOut,
   Menu,
   Settings2,
-  Shield,
+  Settings,
   Ticket,
   Users,
   X,
@@ -51,9 +52,8 @@ const navigation = {
     { label: 'Work', to: '/work/tickets', icon: Ticket },
     { label: 'Subtasks', to: '/work/subtasks', icon: Ticket },
     { label: 'Work History', to: '/work-history', icon: Ticket },
-    { label: 'Profile', to: '/profile', icon: Shield },
   ],
-  EMPLOYEE: [{ label: 'Profile', to: '/profile', icon: Shield }],
+  EMPLOYEE: [],
 } satisfies Record<
   UserRole,
   { label: string; to: string; icon: typeof LayoutDashboard }[]
@@ -111,7 +111,7 @@ export function AppLayout() {
       : userRole === 'ADMIN' || userRole === 'SUPER_ADMIN'
         ? 'Administration'
         : 'Support workspace'
-  const pageLabel = location.pathname.startsWith('/profile')
+  const pageLabel = location.pathname.startsWith('/settings') ? 'Settings' : location.pathname.startsWith('/profile')
     ? 'Profile'
     : ([...userNavigation]
         .reverse()
@@ -130,7 +130,7 @@ export function AppLayout() {
     toast.success('You have been signed out')
   }
 
-  const identity = user?.displayName ?? user?.username ?? 'Account'
+  const identity = user?.displayName?.trim() || 'Account'
   const renderNavigation = (mobile = false) => (
     <>
       <div className="sidebar-brand">
@@ -168,16 +168,14 @@ export function AppLayout() {
       </nav>
       <div className="sidebar-account">
         <NavLink
-          to="/profile"
+          to="/settings"
           onClick={closeNavigation}
-          className="account-link"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Settings"
+          aria-label="Settings"
         >
-          <span className="avatar">{identity.slice(0, 2).toUpperCase()}</span>
-          <span className="account-identity">
-            <strong>{identity}</strong>
-            <small>{userRole.replaceAll('_', ' ').toLowerCase()}</small>
-          </span>
-          <ChevronRight size={15} aria-hidden="true" />
+          <Settings size={17} aria-hidden="true" />
+          <span>Settings</span>
         </NavLink>
         <button
           onClick={() => void handleLogout()}
@@ -252,7 +250,10 @@ export function AppLayout() {
           </div>
           <div className="topbar-account">
             <NotificationBell key={user!.id} role={userRole} />
-            <span>{identity}</span>
+            <NavLink to="/profile" state={{ profileReturnTo: location.pathname + location.search }} className="topbar-profile" aria-label={`Open profile for ${identity}`} title="Open profile">
+              <Avatar displayName={user?.displayName} />
+              <span className="topbar-profile-name">{identity}</span>
+            </NavLink>
           </div>
         </header>
         <main id="main-content" tabIndex={-1} className="app-content">

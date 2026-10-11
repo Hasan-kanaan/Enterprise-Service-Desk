@@ -1,12 +1,22 @@
+import { Avatar } from '@/components/Avatar'
+import { ArrowLeft } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { SessionsPanel } from '@/components/SessionsPanel'
 import { PasswordForm } from '@/components/PasswordForm'
 import { useAppSelector } from '@/hooks/storeHooks'
 
 export function ProfilePage() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const from = (location.state as { profileReturnTo?: unknown } | null)?.profileReturnTo
+  const canGoBack = typeof from === 'string' && /^\/(tickets|work|work-history|admin|dashboard|settings)([/?#]|$)/.test(from) && window.history.state?.idx > 0
   const user = useAppSelector((state) => state.auth.user)
-  const identity = user?.displayName ?? user?.username ?? 'Account'
+  const identity = user?.displayName?.trim() || 'Account'
   return (
     <div className="ticket-workspace profile-page">
+      <button className="back-link" onClick={() => canGoBack ? navigate(-1) : navigate('/dashboard', { replace: true })}>
+        <ArrowLeft size={16} aria-hidden="true" />{canGoBack ? 'Back' : 'Back to workspace'}
+      </button>
       <header className="page-heading">
         <div>
           <p className="eyebrow">Account</p>
@@ -15,7 +25,7 @@ export function ProfilePage() {
       </header>
       <section className="panel detail-body">
         <div className="profile-header">
-          <span className="avatar">{identity.slice(0, 2).toUpperCase()}</span>
+          <Avatar displayName={user?.displayName} />
           <div>
             <h2>{identity}</h2>
             <p className="muted small">
@@ -25,10 +35,6 @@ export function ProfilePage() {
         </div>
         <div className="profile-identity">
           <dl className="metadata-grid">
-            <div>
-              <dt>Username</dt>
-              <dd>{user?.username ?? 'Not set'}</dd>
-            </div>
             <div>
               <dt>Email</dt>
               <dd>{user?.email ?? 'Not set'}</dd>

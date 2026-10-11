@@ -10,7 +10,7 @@ staged changes were preserved; subsequent edits remain in the working tree.
 and initial bootstrap require trimmed, nonblank values. Metadata PATCH can populate
 or update them but rejects null/blank values. Email and role are excluded from
 ordinary metadata editing. Safe auth/directory/person projections include the new
-labels; current display names fall back to usernames. Job title grants no authority.
+labels; the later identity migration makes displayName required without runtime fallbacks. Job title grants no authority.
 
 The migration was applied to `eds_stabilization_test` only. The development and
 production databases still need their normal migration-deploy step before running
@@ -47,7 +47,7 @@ this version. Prisma generation and validation passed; migration status reports
 MANAGER/AGENT/EMPLOYEE among those roles; SUPER_ADMIN may also change to/from ADMIN.
 No caller can target SUPER_ADMIN or create one through this flow. Active, inactive
 and pending targets are supported. Same-role returns `changed: false` without
-revocation. A real change preserves User ID, email, username, directory/home fields,
+revocation. A real change preserves User ID, email, displayName, directory/home fields,
 requester history and historical attribution.
 
 Actor/target User locks use stable ID order, active actor/session/authority are

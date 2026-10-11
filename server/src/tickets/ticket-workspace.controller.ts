@@ -36,7 +36,7 @@ class AssignmentLookupQuery extends ListQuery {
 
 type Request = { user: { sub: number; role: UserRole } };
 const person = {
-  select: { id: true, username: true, displayName: true },
+  select: { id: true, displayName: true },
 } as const;
 const subjectSelect = {
   requesterId: true,
@@ -229,12 +229,12 @@ export class TicketWorkspaceController {
           {
             status: 'ACTIVE',
             activatedAt: { not: null },
-            username: { contains: search, mode: 'insensitive' },
+            displayName: { contains: search, mode: 'insensitive' },
           },
         ],
       },
-      select: { id: true, username: true, displayName: true },
-      orderBy: [{ username: 'asc' }, { id: 'asc' }],
+      select: { id: true, displayName: true },
+      orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
       take: 20,
     });
   }

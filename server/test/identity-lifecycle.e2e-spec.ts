@@ -45,7 +45,7 @@ describe('Universal requester and identity lifecycle (PostgreSQL/HTTP)', () => {
     sessions[name] = randomUUID();
     people[name] = await db.user.create({
       data: {
-        username: `${prefix}-${Object.keys(people).length}`,
+        displayName: `${prefix}-${Object.keys(people).length}`,
         email: `${prefix}-${name}@test.invalid`,
         password: 'fixture',
         activatedAt: new Date(),
@@ -331,11 +331,11 @@ describe('Universal requester and identity lifecycle (PostgreSQL/HTTP)', () => {
     });
   });
 
-  it('requires trimmed metadata on provisioning; legacy values stay NULL and may be populated, never cleared', async () => {
-    expect(people.EMPLOYEE.displayName).toBeNull();
+  it('requires trimmed metadata on provisioning and preserves required display names', async () => {
+    expect(people.EMPLOYEE.displayName).toBeTruthy();
     expect(people.EMPLOYEE.jobTitle).toBeNull();
     const input = {
-      username: `${prefix}-new`,
+      displayName: `${prefix}-new`,
       email: `${prefix}-new@test.invalid`,
       role: 'EMPLOYEE',
     };
@@ -395,7 +395,7 @@ describe('Universal requester and identity lifecycle (PostgreSQL/HTTP)', () => {
           expect(current).toMatchObject({
             id: target.id,
             email: target.email,
-            username: target.username,
+            displayName: target.displayName,
             role: permitted ? destination : source,
             sessionVersion: permitted && source !== destination ? 1 : 0,
           });

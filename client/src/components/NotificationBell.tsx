@@ -1,4 +1,5 @@
-import { Bell } from 'lucide-react'
+import { RefreshSurface } from './RefreshSurface'
+import { Bell, BellRing } from 'lucide-react'
 import '@/notifications.css'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -83,7 +84,7 @@ export function NotificationBell({ role }: { role: UserRole }) {
       </button>
       {open && (
         <Modal title="Notifications" onClose={() => setOpen(false)} busy={busy}>
-          <div className="button-row">
+          <RefreshSurface busy={resource.loading && !!resource.data}><div className="button-row">
             <button
               className="button secondary"
               disabled={busy || resource.loading}
@@ -100,17 +101,19 @@ export function NotificationBell({ role }: { role: UserRole }) {
             </button>
           </div>
           {!!error && <ErrorState error={error} onRetry={refresh} />}
-          {resource.loading ? (
+          {resource.loading && !resource.data ? (
             <LoadingState label="Loading notifications..." />
           ) : resource.error ? (
             <ErrorState error={resource.error} onRetry={refresh} />
           ) : (
             <>
-              <p className="quiet-note">
-                Recent 50 notifications. Links use your current access.
-              </p>
+              {!!resource.data?.records.length && <p className="quiet-note">Recent 50 notifications. Links use your current access.</p>}
               {!resource.data?.records.length && (
-                <p className="muted">No notifications yet.</p>
+                <div className="notification-empty" role="status">
+                  <span className="notification-empty-icon"><BellRing size={28} aria-hidden="true" /></span>
+                  <h3>No notifications yet</h3>
+                  <p>Updates about your requests and work will appear here.</p>
+                </div>
               )}
               <ul className="notification-list">
                 {resource.data?.records.map((record) => (
@@ -150,7 +153,7 @@ export function NotificationBell({ role }: { role: UserRole }) {
               </ul>
             </>
           )}
-        </Modal>
+        </RefreshSurface></Modal>
       )}
     </>
   )

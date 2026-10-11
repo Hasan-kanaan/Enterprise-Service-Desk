@@ -67,7 +67,7 @@ const requests = []
 const mutations = []
 let user = {
   id: 20,
-  username: 'Sara',
+  displayName: 'Sara',
   role: 'MANAGER',
   email: 'sara@example.test',
 }
@@ -84,11 +84,11 @@ const options = {
   tags: [{ id: 7, name: 'VPN' }],
 }
 const people = [
-  { id: 20, username: 'Sara' },
-  { id: 21, username: 'Omar' },
-  { id: 31, username: 'Ali' },
-  { id: 32, username: 'Lead Layla' },
-  { id: 33, username: 'Mohammad' },
+  { id: 20, displayName: 'Sara' },
+  { id: 21, displayName: 'Omar' },
+  { id: 31, displayName: 'Ali' },
+  { id: 32, displayName: 'Lead Layla' },
+  { id: 33, displayName: 'Mohammad' },
 ]
 const teams = [
   {
@@ -253,6 +253,7 @@ function response(request) {
   requests.push(`${request.method} ${path}`)
   if (/^\/tickets\/\d+\/attachments$/.test(path)) return [200, []]
   if (/^\/tickets\/attachments\/\d+\/download$/.test(path)) return [200, { file: 'downloaded' }]
+  if (path === '/auth/setup/status') return [200, { available: false }]
   if (path === '/auth/refresh') {
     refreshCount++
     return loggedIn
@@ -298,7 +299,7 @@ function response(request) {
   if (lookup) {
     const search = (url.searchParams.get('search') ?? '').toLowerCase()
     const candidates = url.searchParams.get('purpose') === 'manager' ? people.filter(p => [20, 21].includes(p.id) && p.id !== user.id) : teams.find(t => t.id === Number(url.searchParams.get('teamId')))?.agents ?? []
-    return [200, search ? candidates.filter(p => p.username.toLowerCase().includes(search)).slice(0, 20) : []]
+    return [200, search ? candidates.filter(p => p.displayName.toLowerCase().includes(search)).slice(0, 20) : []]
   }
   const submatch = path.match(
     /^\/(?:ticket-workspace|tickets)\/subtasks\/(\d+)$/,
@@ -494,16 +495,23 @@ async function click(text) {
   )
   await delay(70)
 }
+let selectionRetentionChecked = false
 async function fill(selector, value) {
   if (value && ['[aria-label="Assignment agent"]', '[aria-label="Responsible manager"]'].includes(selector)) {
     const label = selector.includes('Assignment') ? 'Assignment agent' : 'Responsible manager'
-    await fill(`[aria-label="${label} search"]`, person(Number(value)).username)
+    await fill(`[aria-label="${label} search"]`, person(Number(value)).displayName)
     await until(() => evaluate(`[...document.querySelector(${JSON.stringify(selector)}).options].some(o => o.value === ${JSON.stringify(value)} && !o.disabled)`), 'lookup choice')
   }
   await evaluate(
     `(() => { const el = document.querySelector(${JSON.stringify(selector)}); const prototype = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
   )
   await delay(30)
+  if (!selectionRetentionChecked && value && selector === '[aria-label="Assignment agent"]') {
+    selectionRetentionChecked = true
+    await fill('[aria-label="Assignment agent search"]', '')
+    await until(() => evaluate(`document.querySelector('[aria-label="Assignment agent"]').selectedOptions[0]?.disabled`), 'selected name retained after clearing search')
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Assignment agent"]').selectedOptions[0].textContent.trim()`), person(Number(value)).displayName)
+  }
 }
 async function checkLabel(text) {
   await evaluate(
@@ -732,7 +740,7 @@ try {
   )
   await navigate('/work/tickets/142')
   await waitText('Shared intake.')
-  await waitText('Posting is unavailable')
+  await waitText('This conversation is read-only.')
   assert(!(await button('Send message')))
   assert(!await evaluate(`document.body.textContent.includes('Internal notes — support only')`))
   assert(!(await button('Edit details')))
@@ -800,7 +808,7 @@ try {
   await waitText('Manager public update')
   await until(() => evaluate(`!!document.querySelector('[aria-label="Internal note content"]')`), 'notes loaded')
   assert.equal(await evaluate(`document.querySelector('[aria-label="Internal note content"]').value`), 'Private draft survives public posting')
-  communication.records.push(...Array.from({ length: 61 }, (_, i) => ({ id: 11000 + i, ticketId: 142, kind: 'internal-notes', createdInCycleId: history[142][0].id, author: { id: 99, username: 'Other support' }, content: `Older private ${i}`, createdAt: '2020-01-01T00:00:00.000Z', editedAt: null, deletedAt: null, attachments: [] })))
+  communication.records.push(...Array.from({ length: 61 }, (_, i) => ({ id: 11000 + i, ticketId: 142, kind: 'internal-notes', createdInCycleId: history[142][0].id, author: { id: 99, displayName: 'Other support' }, content: `Older private ${i}`, createdAt: '2020-01-01T00:00:00.000Z', editedAt: null, deletedAt: null, attachments: [] })))
   await click('Refresh notes')
   await waitText('Load older notes')
   await click('Load older notes')
@@ -808,13 +816,13 @@ try {
   assert.equal(await evaluate(`document.querySelector('[aria-label="Internal note content"]').value`), 'Private draft survives public posting')
   await click('Load older notes')
   await waitText('Older private 0')
-  assert.equal(await evaluate(`document.querySelectorAll('.communication:last-of-type .communication-records > li').length`), 61)
+  assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Internal notes \u2014 support only"] .communication-records > li').length`), 61)
   console.log('PASS: long private stream, stable older pages and draft preservation')
   await fill('[aria-label="Internal note content"]', 'Private diagnosis')
-  await selectAttachment('.communication:last-of-type input[type=file]', 'note.txt')
+  await selectAttachment('[aria-label="Internal notes \u2014 support only"] input[type=file]', 'note.txt')
   await click('Add internal note')
   await waitText('Private diagnosis')
-  assert.equal(await evaluate(`document.querySelectorAll('.communication:last-of-type .communication-records > li').length`), 62)
+  assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Internal notes \u2014 support only"] .communication-records > li').length`), 62)
   await click('Edit note')
   await fill('[aria-label="Internal note content"]', 'Private corrected diagnosis')
   await click('Save edit')
@@ -892,7 +900,7 @@ try {
   console.log(
     'PASS: explicit 409 reload without write retry, 403 handling, transfer removes former-owner access',
   )
-  user = { ...user, id: 31, username: 'Ali', role: 'AGENT' }
+  user = { ...user, id: 31, displayName: 'Ali', role: 'AGENT' }
   notifications.add(31, 'SUBTASK_ASSIGNED', 144, 604)
   notifications.add(31, 'PRIMARY_AGENT_ASSIGNED', 145)
   await navigate('/work/tickets')
@@ -967,7 +975,7 @@ try {
   console.log(
     'PASS: agent current assignments, lifecycle work, filtered history, subtask-only work without parent requests',
   )
-  user = { ...user, id: 32, username: 'Lead Layla' }
+  user = { ...user, id: 32, displayName: 'Lead Layla' }
   await navigate('/work/team')
   await waitText('Led-team tickets')
   await waitText('Owned network issue')

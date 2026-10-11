@@ -1,3 +1,4 @@
+import { PhoneField } from './PhoneField'
 import { useState } from 'react'
 import { AdminDialog } from './AdminDialog'
 import { createAccount } from '@/services/users.service'
@@ -15,26 +16,28 @@ export function AccountForm({
   onReload: () => void
 }) {
   const roles = creatableRoles(caller)
-  const [username, setUsername] = useState(''),
-    [email, setEmail] = useState(''),
+  const [email, setEmail] = useState(''),
     [phoneNumber, setPhoneNumber] = useState(''),
     [role, setRole] = useState<UserRole | ''>('')
+  const [phoneValid, setPhoneValid] = useState(true)
   const [displayName, setDisplayName] = useState('')
   const [jobTitle, setJobTitle] = useState('')
   return (
     <AdminDialog
+      presentation="drawer"
       title="Create account"
       onClose={onClose}
       onDone={onDone}
       onReload={onReload}
       valid={
-        username.trim().length >= 3 && !!displayName.trim() && !!jobTitle.trim() &&
+        phoneValid &&
+        !!displayName.trim() && !!jobTitle.trim() &&
         !!email.trim() &&
         roles.includes(role as UserRole)
       }
       submit={() =>
         createAccount({
-          username: username.trim(), displayName: displayName.trim(), jobTitle: jobTitle.trim(),
+          displayName: displayName.trim(), jobTitle: jobTitle.trim(),
           email: email.trim(),
           ...(phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}),
           role: role as UserRole,
@@ -43,18 +46,6 @@ export function AccountForm({
     >
       <label className="field">Display name<input aria-label="Account display name" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
       <label className="field">Job title<input aria-label="Account job title" maxLength={100} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} /></label>
-      <label className="field">
-        Username
-        <input
-          aria-label="Account username"
-          required
-          minLength={3}
-          maxLength={50}
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoComplete="off"
-        />
-      </label>
       <label className="field">
         Email
         <input
@@ -66,11 +57,7 @@ export function AccountForm({
           autoComplete="off"
         />
       </label>
-      <label className="field">
-        Phone number (optional)
-        <input aria-label="Account phone" type="tel" placeholder="+961..." value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
-        <span className="quiet-note">Unverified. Not used for sign-in or password recovery.</span>
-      </label>
+      <PhoneField value={phoneNumber} onChange={setPhoneNumber} onValidityChange={setPhoneValid} />
       <p>The user will receive an activation email to choose their own password.</p>
       <label className="field">
         Role

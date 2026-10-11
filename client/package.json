@@ -8,12 +8,14 @@
     "build": "tsc -b && vite build",
     "lint": "eslint . --max-warnings 0",
     "preview": "vite preview",
-    "test:browser": "node test/employee-flow.mjs && node test/operations-flow.mjs && node test/administration-flow.mjs && node test/session-flow.mjs"
+    "test:phone": "node --test test/phone.test.mjs",
+    "test:browser": "node test/employee-flow.mjs && node test/operations-flow.mjs && node test/administration-flow.mjs && node test/session-flow.mjs && node test/administration-flow.mjs --manual-polish"
   },
   "dependencies": {
     "@hookform/resolvers": "5.9.1",
     "@reduxjs/toolkit": "2.12.0",
     "axios": "1.20.0",
+    "libphonenumber-js": "1.13.15",
     "lucide-react": "1.46.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

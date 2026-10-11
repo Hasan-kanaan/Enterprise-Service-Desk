@@ -31,15 +31,6 @@ export class UpdateUserMetadataDto {
   @MaxLength(100)
   jobTitle?: string;
 
-  @ValidateIf((_object, value: unknown) => value !== undefined)
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim().toLowerCase() : value,
-  )
-  @IsString()
-  @MinLength(3)
-  @MaxLength(50)
-  username?: string;
-
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => normalizePhone(value))
   @Matches(/^\+[1-9]\d{7,14}$/)

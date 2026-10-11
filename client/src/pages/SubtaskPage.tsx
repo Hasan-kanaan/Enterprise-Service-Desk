@@ -1,3 +1,4 @@
+import { RefreshSurface } from '@/components/RefreshSurface'
 import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -26,7 +27,7 @@ function SubtaskContent({ id }: { id: number }) {
     setEditing(false)
     resource.reload()
   }
-  if (resource.loading) return <LoadingState label="Loading subtask..." />
+  if (resource.loading && !resource.data) return <LoadingState label="Loading subtask..." />
   if (resource.error || !resource.data)
     return (
       <ErrorState
@@ -43,7 +44,7 @@ function SubtaskContent({ id }: { id: number }) {
     frozen,
   } = resource.data
   return (
-    <div className="ticket-workspace">
+    <RefreshSurface busy={!!(resource.loading && resource.data)}><div className="ticket-workspace">
       <Link className="back-link" to="/work/subtasks">
         Back to subtasks
       </Link>
@@ -55,7 +56,7 @@ function SubtaskContent({ id }: { id: number }) {
           <h1>{task.title}</h1>
           <p className="muted">{task.status.replaceAll('_', ' ')}</p>
         </div>
-        <button className="button secondary" onClick={reload}>
+        <button className="button secondary" disabled={resource.loading} onClick={reload}>
           Refresh subtask
         </button>
       </header>
@@ -83,7 +84,7 @@ function SubtaskContent({ id }: { id: number }) {
           </div>
           <div>
             <dt>Agent</dt>
-            <dd>{task.assignedAgent?.username ?? 'Unassigned'}</dd>
+            <dd>{task.assignedAgent?.displayName ?? 'Unassigned'}</dd>
           </div>
           <div>
             <dt>Completed at</dt>
@@ -91,7 +92,7 @@ function SubtaskContent({ id }: { id: number }) {
           </div>
           <div>
             <dt>Completed by</dt>
-            <dd>{task.completedBy?.username ?? 'Not recorded'}</dd>
+            <dd>{task.completedBy?.displayName ?? 'Not recorded'}</dd>
           </div>
         </dl>
       </section>
@@ -117,6 +118,6 @@ function SubtaskContent({ id }: { id: number }) {
           }}
         />
       )}
-    </div>
+    </div></RefreshSurface>
   )
 }

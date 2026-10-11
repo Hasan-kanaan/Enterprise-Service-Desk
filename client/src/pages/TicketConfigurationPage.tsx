@@ -1,3 +1,4 @@
+import { RefreshSurface } from '@/components/RefreshSurface'
 import { useState } from 'react'
 import api from '@/services/api'
 import { useResource } from '@/hooks/useResource'
@@ -25,12 +26,12 @@ export function TicketConfigurationPage() {
     setAction(null)
     resource.reload()
   }
-  if (resource.loading)
+  if (resource.loading && !resource.data)
     return <LoadingState label="Loading ticket configuration..." />
   if (resource.error || !resource.data)
     return <ErrorState error={resource.error} onRetry={reload} />
   return (
-    <div className="ticket-workspace">
+    <RefreshSurface busy={!!(resource.loading && resource.data)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
           <p className="eyebrow">Administration</p>
@@ -40,7 +41,7 @@ export function TicketConfigurationPage() {
             reserved.
           </p>
         </div>
-        <button className="button secondary" onClick={reload}>
+        <button className="button secondary" disabled={resource.loading} onClick={reload}>
           Refresh configuration
         </button>
       </header>
@@ -99,7 +100,7 @@ export function TicketConfigurationPage() {
           onReload={reload}
         />
       )}
-    </div>
+    </div></RefreshSurface>
   )
 }
 function ConfigurationDialog({
@@ -116,6 +117,7 @@ function ConfigurationDialog({
   const url = `/ticket-configuration/${action.catalog}`
   return (
     <AdminDialog
+      presentation={naming ? 'drawer' : 'modal'}
       title={`${action.kind[0].toUpperCase() + action.kind.slice(1)} ${action.record?.name ?? (action.catalog === 'categories' ? 'category' : 'tag')}`}
       onClose={onClose}
       onReload={onReload}

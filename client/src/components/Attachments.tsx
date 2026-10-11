@@ -172,7 +172,7 @@ export function AttachmentList({
     </>
   )
 }
-export function TicketAttachments({ ticketId }: { ticketId: number }) {
+export function TicketAttachments({ ticketId, refreshKey = 0 }: { ticketId: number; refreshKey?: number }) {
   const resource = useResource(
     useCallback(
       async (signal: AbortSignal) =>
@@ -183,6 +183,7 @@ export function TicketAttachments({ ticketId }: { ticketId: number }) {
         ).data,
       [ticketId],
     ),
+    refreshKey,
   )
   return (
     <section
@@ -191,7 +192,7 @@ export function TicketAttachments({ ticketId }: { ticketId: number }) {
     >
       <h2>Original request attachments</h2>
       <p className="small muted">Files submitted with this request.</p>
-      {resource.loading ? (
+      {resource.loading && !resource.data ? (
         <LoadingState />
       ) : resource.error ? (
         <ErrorState error={resource.error} onRetry={resource.reload} />

@@ -14,7 +14,9 @@ jest.mock('nodemailer', () => ({
 describe('Account security boundaries', () => {
   it('normalizes phone formatting without claiming verification', async () => {
     const dto = plainToInstance(CreateAccountDto, {
-      username: 'user',
+      displayName: 'Test User',
+      jobTitle: 'Employee',
+
       email: 'user@example.test',
       role: 'EMPLOYEE',
       phoneNumber: '+961 (70) 123-456',

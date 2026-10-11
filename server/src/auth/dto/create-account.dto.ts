@@ -28,12 +28,6 @@ export class CreateAccountDto {
   @MaxLength(100)
   jobTitle!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(3)
-  @MaxLength(50)
-  username!: string;
-
   @IsEmail()
   @IsNotEmpty()
   email!: string;

@@ -1,3 +1,5 @@
+import { Avatar } from '@/components/Avatar'
+import { RefreshSurface } from '@/components/RefreshSurface'
 import { ActionMenu } from '@/components/ActionMenu'
 import { Link } from 'react-router-dom'
 import { ChangeRoleForm } from '@/components/ChangeRoleForm'
@@ -45,7 +47,7 @@ export function UsersPage() {
   }
   const rows = resource.items
   return (
-    <div className="ticket-workspace">
+    <RefreshSurface busy={!!(resource.loading && resource.items.length)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
           <p className="eyebrow">Administration</p>
@@ -86,7 +88,7 @@ export function UsersPage() {
           <label className="search-field">
             <input
               aria-label="Search accounts"
-              placeholder="Search name, username or email"
+              placeholder="Search display name or email"
               value={query}
               maxLength={120}
               onChange={(e) => filters.set('search', e.target.value)}
@@ -114,7 +116,7 @@ export function UsersPage() {
             )}
           </select>
         </div>
-        {resource.loading ? (
+        {resource.loading && !resource.items.length ? (
           <LoadingState label="Loading accounts..." />
         ) : resource.error && !rows.length ? (
           <ErrorState
@@ -130,7 +132,7 @@ export function UsersPage() {
               data-account-id={account.id}
             >
               <div>
-                <h2>{account.displayName ?? account.username}</h2>
+                <h2 className="directory-identity"><Avatar displayName={account.displayName} />{account.displayName}</h2>
                 <p className="quiet-note">
                   {account.jobTitle ?? 'Job title not set'}
                 </p>
@@ -153,7 +155,7 @@ export function UsersPage() {
               </div>
               {manageableRoles(role).includes(account.role) && (
                 <ActionMenu
-                  label={`Actions for ${account.displayName ?? account.username}`}
+                  label={`Actions for ${account.displayName}`}
                 >
                   {manageableRoles(role).includes(account.role) && (
                     <button
@@ -297,7 +299,7 @@ export function UsersPage() {
       )}
       {target && (
         <AdminDialog
-          title={`${target.status === 'ACTIVE' ? 'Deactivate' : 'Activate'} ${target.username}?`}
+          title={`${target.status === 'ACTIVE' ? 'Deactivate' : 'Activate'} ${target.displayName}?`}
           onClose={() => setTarget(null)}
           onReload={reload}
           onDone={() => {
@@ -338,6 +340,6 @@ export function UsersPage() {
           )}
         </AdminDialog>
       )}
-    </div>
+    </div></RefreshSurface>
   )
 }

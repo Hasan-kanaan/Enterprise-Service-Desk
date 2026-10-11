@@ -11,14 +11,17 @@ export function PeopleLookup({
   value,
   onChange,
   compatible = true,
+  selectedName,
 }: {
   url: string | null
   label: string
   value: number | null
   onChange: (id: number | null) => void
   compatible?: boolean
+  selectedName?: string
 }) {
   const [text, setText] = useState('')
+  const [selected, setSelected] = useState<Person | null>(null)
   const search = useDebouncedValue(text)
   const resource = useResource(
     useCallback(
@@ -41,7 +44,7 @@ export function PeopleLookup({
           value={text}
           disabled={!url}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Type a username"
+          placeholder="Type a display name"
         />
       </label>
       <label>
@@ -49,19 +52,23 @@ export function PeopleLookup({
         <select
           aria-label={label}
           value={value ?? ''}
-          onChange={(e) => onChange(Number(e.target.value) || null)}
+          onChange={(e) => {
+            const id = Number(e.target.value) || null
+            setSelected(choices.find((person) => person.id === id) ?? null)
+            onChange(id)
+          }}
         >
           <option value="">Unassigned</option>
           {value !== null && !choices.some((person) => person.id === value) && (
             <option value={value} disabled>
               {compatible
-                ? `Current selection #${value}`
+                ? (selected?.id === value ? selected.displayName : selectedName) ?? 'Current selection'
                 : 'Previous agent - choose an eligible agent or clear'}
             </option>
           )}
           {choices.map((person) => (
             <option key={person.id} value={person.id}>
-              {person.username}
+              {person.displayName}
             </option>
           ))}
         </select>

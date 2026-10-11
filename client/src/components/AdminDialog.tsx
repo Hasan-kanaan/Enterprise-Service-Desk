@@ -9,6 +9,7 @@ export function AdminDialog({
   onClose,
   onDone,
   onReload,
+  presentation = 'modal',
 }: {
   title: string
   children: ReactNode
@@ -17,13 +18,19 @@ export function AdminDialog({
   onClose: () => void
   onDone: () => void
   onReload: () => void
+  presentation?: 'modal' | 'drawer'
 }) {
   const submitting = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
   const stale = [403, 404, 409].includes(getApiStatus(error) ?? 0)
   return (
-    <Modal title={title} onClose={onClose} busy={busy}>
+    <Modal
+      title={title}
+      onClose={onClose}
+      busy={busy}
+      presentation={presentation}
+    >
       <form
         onSubmit={async (event) => {
           event.preventDefault()

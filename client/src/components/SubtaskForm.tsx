@@ -109,6 +109,7 @@ export function SubtaskForm({
           teams={teams}
           teamId={team}
           agentId={agent}
+          agentName={agent === initial?.assignedAgentId ? initial?.assignedAgent?.displayName : undefined}
           setTeam={setTeam}
           setAgent={setAgent}
           changeTeam={canAssignTeam}

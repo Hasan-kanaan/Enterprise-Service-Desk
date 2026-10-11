@@ -9,7 +9,7 @@ export function BrandMark({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <div>
           <p className="text-sm font-semibold tracking-tight text-slate-950 dark:text-slate-50">
-            Northstar Service Desk
+            Kino Service Desk
           </p>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
             Internal operations

@@ -1,4 +1,6 @@
 import { administrationPolish } from './ui-polish.mjs'
+import { accountDirectoryChecks } from './account-directory.mjs'
+import { manualPolish } from './manual-polish.mjs'
 import { pageFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
@@ -29,7 +31,7 @@ const preview = spawn(
   process.execPath,
   [
     join(root, 'node_modules/vite/bin/vite.js'),
-    'preview',
+    ...(process.argv.includes('--dev') ? [] : ['preview']),
     '--host',
     '127.0.0.1',
     '--port',
@@ -59,11 +61,17 @@ let socket
 let serial = 0
 const pending = new Map()
 const browserErrors = []
+const bootstrapMode = process.argv.includes('--bootstrap')
+const directoryMode = process.argv.includes('--account-directory')
+let directoryDelay = 0, creationMailFailure = false
+let securityActionFailure = false
+let bootstrapComplete = false, bootstrapAccount = null, setupChecks = 0
+let requesterDenial = false
 const requests = []
 const mutations = []
 let user = {
   id: 1,
-  username: 'Admin user',
+  displayName: 'Admin user',
   role: 'ADMIN',
   email: 'admin@example.test',
 }
@@ -76,7 +84,7 @@ let catalogDelay = 0
 const accounts = [
   {
     id: 1,
-    username: 'Admin user',
+    displayName: 'Admin user',
     email: 'admin@example.test',
     role: 'ADMIN',
     status: 'ACTIVE',
@@ -85,7 +93,7 @@ const accounts = [
   },
   {
     id: 2,
-    username: 'Root user',
+    displayName: 'Root user',
     email: 'root@example.test',
     role: 'SUPER_ADMIN',
     status: 'ACTIVE',
@@ -94,7 +102,7 @@ const accounts = [
   },
   {
     id: 3,
-    username: 'Employee Eve',
+    displayName: 'Employee Eve',
     email: 'eve@example.test',
     role: 'EMPLOYEE',
     status: 'ACTIVE',
@@ -103,7 +111,7 @@ const accounts = [
   },
   {
     id: 4,
-    username: 'Agent Ali',
+    displayName: 'Agent Ali',
     email: 'ali@example.test',
     role: 'AGENT',
     status: 'ACTIVE',
@@ -112,7 +120,7 @@ const accounts = [
   },
   {
     id: 5,
-    username: 'Agent Maya',
+    displayName: 'Agent Maya',
     email: 'maya@example.test',
     role: 'AGENT',
     status: 'ACTIVE',
@@ -121,7 +129,7 @@ const accounts = [
   },
   {
     id: 6,
-    username: 'Manager Sara',
+    displayName: 'Manager Sara',
     email: 'sara@example.test',
     role: 'MANAGER',
     status: 'ACTIVE',
@@ -130,7 +138,7 @@ const accounts = [
   },
   {
     id: 7,
-    username: 'Inactive agent',
+    displayName: 'Inactive agent',
     email: 'inactive@example.test',
     role: 'AGENT',
     status: 'INACTIVE',
@@ -149,11 +157,11 @@ const teams = []
 const member = (id) => {
   const {
     id: userId,
-    username,
+    displayName,
     role,
     status,
   } = accounts.find((a) => a.id === id)
-  return { userId, user: { id: userId, username, role, status } }
+  return { userId, user: { id: userId, displayName, role, status } }
 }
 const viewTeam = (t) => ({
   ...t,
@@ -187,6 +195,7 @@ function response(request) {
     const type = path.endsWith('activate') ? 'activation' : 'reset'
     const message = securityMail.find(m => m.token === body.token && m.type === type && !m.used)
     if (!message) return [400, { message: 'Invalid, expired or used link' }]
+    if (bootstrapMode) bootstrapComplete = true
     message.used = true
     message.account.activatedAt = new Date().toISOString()
     securityPasswords.set(message.account.email, body.newPassword)
@@ -205,9 +214,20 @@ function response(request) {
     user = account; securitySession = true
     return [201, { accessToken: 'security-session', user }]
   }
-  if (path === '/auth/setup/status') return [200, { available: false }]
+  if (path === '/auth/setup/status') { setupChecks++; return [200, { available: bootstrapMode && !bootstrapComplete }] }
+  if (path === '/auth/setup') {
+    assert(!('password' in body)); assert(!('confirmPassword' in body))
+    if (body.setupSecret !== 'fixture-installation-secret') return [403, { message: 'Invalid setup credentials' }]
+    if (bootstrapComplete || (bootstrapAccount && !body.restart)) return [409, { message: 'Setup could not be started. Check installation state and details.' }]
+    if (!bootstrapAccount) { bootstrapAccount = { id: 900, role: 'SUPER_ADMIN', activatedAt: null }; accounts.push(bootstrapAccount) }
+    Object.assign(bootstrapAccount, body)
+    securityMail.filter(m => m.account.id === bootstrapAccount.id).forEach(m => { m.used = true })
+    sendSecurityMail(bootstrapAccount, 'activation')
+    return [201, { delivery: 'SENT' }]
+  }
   const securityAction = path.match(/^\/auth\/accounts\/(\d+)\/(reset-password|resend-activation)$/)
   if (securityAction) {
+    if (securityActionFailure) { securityActionFailure = false; return [503, { message: 'Email service temporarily unavailable.' }] }
     assert.deepEqual(body, {})
     sendSecurityMail(accounts.find(a => a.id === Number(securityAction[1])), securityAction[2] === 'reset-password' ? 'reset' : 'activation')
     return [201, { delivery: 'SENT' }]
@@ -219,6 +239,7 @@ function response(request) {
     return [201, { accessToken: `token-${refreshCount}`, user }]
   }
   if (path === '/notifications') return [200, []]
+  if (path === '/auth/sessions') return [200, []]
   if (path === '/notifications/unread-count') return [200, { count: 0 }]
   if (expired) {
     expired = false
@@ -238,6 +259,10 @@ function response(request) {
     if (path === '/tickets/42/history') return [200, {ticketId:42,cycles:[],currentCycleId:null,subtasksAccess:'NONE',hasMore:false,nextCursor:null}]
     if (path === '/tickets/42/attachments') return [200, []]
     if (path === '/tickets/42/messages') return [200, {records:[],cycles:[],canPost:true,canReadNotes:false,hasMore:false,nextCursor:null}]
+  }
+  if (requesterDenial && request.method === 'GET') {
+    if (path === '/tickets/142' || path === '/tickets/142/history') return [404, { message: 'Ticket not found' }]
+    if (path === '/ticket-options') return [200, { categories: [], tags: [], regions: [], departments: [] }]
   }
   assert(
     !path.startsWith('/tickets') &&
@@ -285,8 +310,9 @@ function response(request) {
   if (path === '/auth/accounts') {
     assert(body.role !== 'SUPER_ADMIN')
     assert(user.role === 'SUPER_ADMIN' || body.role !== 'ADMIN')
+    if (accounts.some(a => a.email.toLowerCase() === body.email.trim().toLowerCase())) return [409, { message: 'User with this email already exists' }]
     const created = {
-      id: accounts.length + 1,
+      id: Math.max(0, ...accounts.map(a => a.id)) + 1,
       ...body,
       status: 'ACTIVE',
       region: null,
@@ -294,9 +320,9 @@ function response(request) {
     }
     assert(!('password' in body))
     created.activatedAt = null
-    sendSecurityMail(created, 'activation')
+    if (!creationMailFailure) sendSecurityMail(created, 'activation')
     accounts.push(created)
-    return [201, { user: created, delivery: 'SENT' }]
+    return [201, { user: created, delivery: creationMailFailure ? 'FAILED' : 'SENT' }]
   }
   const roleChange = path.match(/^\/users\/(\d+)\/role$/)
   if (roleChange) {
@@ -316,11 +342,10 @@ function response(request) {
   const metadata = path.match(/^\/users\/(\d+)$/)
   if (metadata) {
     assert.equal(request.method, 'PATCH')
-    assert(Object.keys(body).every(key => ['username', 'displayName', 'jobTitle', 'phoneNumber', 'regionId', 'departmentId'].includes(key)))
+    assert(Object.keys(body).every(key => ['displayName', 'jobTitle', 'phoneNumber', 'regionId', 'departmentId'].includes(key)))
     const account = accounts.find(a => a.id === Number(metadata[1]))
-    if (body.username && accounts.some(a => a.id !== account.id && a.username === body.username)) return [409, { message: 'Username already exists' }]
     for (const field of ['displayName', 'jobTitle']) if (body[field] !== undefined) account[field] = body[field]
-    if (body.username !== undefined) account.username = body.username
+    if (body.displayName !== undefined) account.displayName = body.displayName
     if (body.phoneNumber !== undefined) account.phoneNumber = body.phoneNumber
     for (const [field, catalog] of [['region', 'regions'], ['department', 'departments']]) {
       if (body[`${field}Id`] !== undefined) account[field] = body[`${field}Id`] === null ? null : catalogs[catalog].find(r => r.id === body[`${field}Id`])
@@ -370,7 +395,7 @@ function response(request) {
     if (!team) return [404, { message: 'Team not found' }]
     if (lookup[2] === 'members') return [200, pageFixture(team.memberIds.map(id => member(id).user), url, false)]
     const purpose = url.searchParams.get('purpose'), search = (url.searchParams.get('search') ?? '').toLowerCase()
-    return [200, search ? accounts.filter(a => a.status === 'ACTIVE' && a.username.toLowerCase().includes(search) && (purpose === 'manager' ? a.role === 'MANAGER' : a.role === 'AGENT' && (purpose === 'member' ? !team.memberIds.includes(a.id) : team.memberIds.includes(a.id) && !teams.some(t => t.id !== team.id && t.teamLeadId === a.id)))).slice(0, 20).map(({id, username}) => ({id, username})) : []]
+    return [200, search ? accounts.filter(a => a.status === 'ACTIVE' && a.displayName.toLowerCase().includes(search) && (purpose === 'manager' ? a.role === 'MANAGER' : a.role === 'AGENT' && (purpose === 'member' ? !team.memberIds.includes(a.id) : team.memberIds.includes(a.id) && !teams.some(t => t.id !== team.id && t.teamLeadId === a.id)))).slice(0, 20).map(({id, displayName}) => ({id, displayName})) : []]
   }
   if (path === '/organization/teams') {
     if (request.method === 'GET') return [200, teams.map(viewTeam)]
@@ -482,7 +507,7 @@ async function click(text) {
 async function fill(selector, value) {
   await until(() => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`), `input ready: ${selector}`)
   if (value && selector === '[aria-label="Organization assignee"]') {
-    await fill('[aria-label="Organization assignee search"]', accounts.find(a => a.id === Number(value)).username)
+    await fill('[aria-label="Organization assignee search"]', accounts.find(a => a.id === Number(value)).displayName)
     await until(() => evaluate(`[...document.querySelector(${JSON.stringify(selector)}).options].some(o => o.value === ${JSON.stringify(value)} && !o.disabled)`), 'lookup choice')
   }
   await evaluate(
@@ -536,10 +561,17 @@ try {
       browserErrors.push(data.params.exceptionDetails)
     if (data.method === 'Fetch.requestPaused') {
       const { requestId, request } = data.params
+      let delayedDirectoryRequest = false
       try {
         if (catalogDelay && /\/organization\/(regions|departments)$/.test(new URL(request.url).pathname)) await delay(catalogDelay)
         const [status, body] =
           request.method === 'OPTIONS' ? [200, {}] : response(request)
+        if (directoryDelay && request.method === 'GET' && new URL(request.url).pathname === '/users') {
+          delayedDirectoryRequest = true
+          const wait = directoryDelay
+          directoryDelay = 0
+          await delay(wait)
+        }
         await send('Fetch.fulfillRequest', {
           requestId,
           responseCode: status,
@@ -562,6 +594,9 @@ try {
           body: Buffer.from(JSON.stringify(body)).toString('base64'),
         })
       } catch (error) {
+        // Changing filters aborts the deliberately delayed list request. Chrome
+        // may discard its interception before the fixture attempts fulfillment.
+        if (delayedDirectoryRequest && String(error).includes('Invalid InterceptionId')) return
         browserErrors.push(String(error))
         await send('Fetch.failRequest', { requestId, errorReason: 'Failed' })
       }
@@ -572,6 +607,66 @@ try {
   await send('Fetch.enable', {
     patterns: [{ urlPattern: 'http://localhost:8000/*' }],
   })
+  if (directoryMode) {
+    const root = accounts.find(a => a.role === 'SUPER_ADMIN')
+    root.activatedAt = new Date().toISOString()
+    accounts.splice(0, accounts.length, root)
+    securityPasswords.set(root.email, 'ChosenPassword123!')
+    securitySession = false
+    await accountDirectoryChecks({ accounts, root, securityMail, requests, navigate, click, fill, evaluate, waitText, until,
+      delayNextList: () => { directoryDelay = 900 },
+      failMail: () => { creationMailFailure = true },
+    })
+    assert.equal(browserErrors.length, 0, JSON.stringify(browserErrors))
+  } else if (bootstrapMode) {
+    securitySession = false
+    await navigate('/login')
+    await waitText('Create the root administrator.')
+    assert.equal(await evaluate('location.pathname'), '/setup')
+    assert(!/Welcome back|Forgot password|Resend activation/.test(await evaluate('document.body.innerText')))
+    assert.equal(await evaluate('!!document.querySelector("input[name=password]")'), false)
+    assert.equal(await evaluate('!!document.querySelector("input[name=username]")'), false)
+    const checks = setupChecks
+    await delay(700)
+    assert.equal(setupChecks, checks, 'setup does not redirect repeatedly')
+    for (const [name, value] of Object.entries({ displayName: 'Root Operator', jobTitle: 'Administrator',  email: 'typo@example.test', setupSecret: 'wrong' })) await fill(`input[name="${name}"]`, value)
+    await click('Send activation email')
+    await waitText('Invalid setup credentials')
+    assert.equal(bootstrapAccount, null)
+    await fill('input[name="setupSecret"]', 'fixture-installation-secret')
+    await click('Send activation email')
+    await waitText('Activation email sent.')
+    assert.equal(await evaluate('location.pathname'), '/setup')
+    const oldToken = securityMail.at(-1).token
+    await fill('input[name="email"]', 'corrected@example.test')
+    await evaluate('document.querySelector("input[name=restart]").click()')
+    await click('Send activation email')
+    await until(() => securityMail.at(-1).token !== oldToken, 'fresh activation issued')
+    assert(securityMail.find(m => m.token === oldToken).used)
+    await navigate('/login')
+    await waitText('Create the root administrator.')
+    await navigate(`/activate#token=${securityMail.at(-1).token}`)
+    await waitText('Activate account')
+    assert.equal(await evaluate('location.hash'), '')
+    await fill('label:nth-child(1) input', 'ChosenPassword123!')
+    await fill('label:nth-child(2) input', 'ChosenPassword123!')
+    await click('Save password')
+    await waitText('Password saved. Sign in to continue.')
+    assert.equal(securitySession, false)
+    await click('Go to login')
+    await waitText('Welcome back')
+    await waitText('Forgot password?')
+    await navigate('/setup')
+    await waitText('Initial setup is complete')
+    await click('Go to sign in')
+    await waitText('Welcome back')
+    await fill('input[name="email"]', 'corrected@example.test')
+    await fill('input[name="password"]', 'ChosenPassword123!')
+    await click('Sign in')
+    await waitText("Manage your service desk's people and configuration.")
+    console.log('PASS: bootstrap redirect, no loop, pending recovery, activation password ownership, no auto-login and completed setup/login')
+    process.exitCode = 0
+  } else {
   await send('Emulation.setDeviceMetricsOverride', {
     width: 1440,
     height: 1050,
@@ -617,8 +712,9 @@ try {
   }
   const createUser = async (role, prefix) => {
     await action('Create account')
+    assert(!/Username/i.test(await evaluate('document.querySelector("dialog").innerText')))
     await fill(
-      '[aria-label="Account username"]',
+      '[aria-label="Account display name"]',
       `${prefix}-${role.toLowerCase()}`,
     )
     await fill(
@@ -632,7 +728,12 @@ try {
     await confirm()
     await waitText(`${prefix}-${role.toLowerCase()}`)
   }
-  if (process.argv.includes('--ui-polish')) {
+  if (process.argv.includes('--manual-polish')) {
+    await manualPolish({ send, evaluate, navigate, waitText, click, fill, until, requests, mutations, accounts, browserErrors,
+      delayList: () => { directoryDelay = 900 }, delayCatalog: value => { catalogDelay = value },
+      failMailAction: () => { securityActionFailure = true }, setIdentity: value => { user = { ...user, displayName: value } },
+    })
+  } else if (process.argv.includes('--ui-polish')) {
     teams.push({id:1,name:'Regional help',scope:'REGION',regionId:1,managerId:null,teamLeadId:4,memberIds:[4]})
     configuration.categories.push({id:1,name:'Network',archivedAt:null})
     configuration.tags.push({id:1,name:'VPN',archivedAt:null})
@@ -709,13 +810,14 @@ try {
       assert.equal(await evaluate(`document.querySelector('[aria-label="${field}"]').value`), '1')
       assert.deepEqual(await evaluate(`[...document.querySelector('[aria-label="${field}"]').options].map(o=>o.value)`), ['', '1', '2'])
     }
-    await fill('[aria-label="Account username"]', '  renamed.employee  ')
+    assert(!/Username/i.test(await evaluate('document.querySelector("dialog").innerText')))
+    await fill('[aria-label="Account display name"]', '  renamed.employee  ')
     await fill('[aria-label="Account phone"]', '+96170123456')
     const before = mutations.length
     await evaluate(`(() => {const f=document.querySelector('dialog form'); f.requestSubmit(); f.requestSubmit()})()`)
     await until(() => evaluate('!document.querySelector("dialog")'), 'saved')
     assert.equal(mutations.length, before + 1)
-    assert.deepEqual(mutations.at(-1).body, {username: 'renamed.employee', phoneNumber: '+96170123456'})
+    assert.deepEqual(mutations.at(-1).body, {displayName: 'renamed.employee', phoneNumber: '+96170123456'})
     await waitText('renamed.employee'); await waitText('Beirut (ARCHIVED)')
     await rowClick(3, 'Edit account'); await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded')
     await fill('[aria-label="Home Region"]', '2'); await fill('[aria-label="Home Department"]', '2'); await confirm()
@@ -726,13 +828,10 @@ try {
     await fill('[aria-label="Home Region"]', ''); await fill('[aria-label="Home Department"]', ''); await confirm()
     assert.deepEqual(mutations.at(-1).body, {phoneNumber: null, regionId: null, departmentId: null})
     await rowClick(3, 'Edit account'); await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded')
-    await fill('[aria-label="Account username"]', accounts[3].username)
-    // API normalizes usernames; use a lower-case duplicate fixture.
-    accounts[3].username = accounts[3].username.toLowerCase()
-    await click('Confirm'); await waitText('Username already exists')
-    assert(await evaluate(`document.querySelector('dialog button[type=submit]').disabled`))
-    await click('Reload administration'); await waitText('renamed.employee')
-    for (const code of [400,404]) {
+    await fill('[aria-label="Account display name"]', accounts[3].displayName)
+    await confirm()
+    assert.equal(accounts.find(a => a.id === 3).displayName, accounts[3].displayName)
+    for (const code of [400,404,409]) {
       await rowClick(3, 'Edit account'); await until(() => evaluate(`!!document.querySelector('[aria-label="Home Region"]')`), 'home choices loaded')
       await fill('[aria-label="Account phone"]', '+96170123457')
       failureCode = code; rejectMutation = true
@@ -917,8 +1016,8 @@ try {
     console.log('PASS: focused organization rename/archive/reactivate, archived rename/labels, Region 409, confirmation/cancel, duplicate submission, active-only Region selector, retained membership, cleared responsibility, mobile and admin ticket isolation')
   } else {
   await navigate('/admin')
-  await waitText('Administration workspace')
-  await click('Manage accounts')
+  await until(() => evaluate("document.querySelector('h1')?.textContent === 'Administration'"), 'administration heading')
+  await evaluate("document.querySelector('[aria-label=\"Administration areas\"] a[href=\"/admin/accounts\"]').click()")
   await waitText('Employee Eve')
   await waitText('Region: Beirut / Department: Operations')
   assert(
@@ -1108,7 +1207,7 @@ try {
   await navigate('/admin/organization/teams/999')
   await waitText('Team not found')
   console.log('PASS: 403/404/409 reload, missing team, network error and retry')
-  user = { ...user, id: 2, username: 'Root user', role: 'SUPER_ADMIN' }
+  user = { ...user, id: 2, displayName: 'Root user', role: 'SUPER_ADMIN' }
   await navigate('/admin/accounts')
   await waitText('Accounts')
   await action('Create account')
@@ -1141,7 +1240,7 @@ try {
     assert.equal(accounts.find((a) => a.id === id).status, 'ACTIVE')
   }
   const originalAccountsLength = accounts.length
-  for (let i = 0; i < 61; i++) accounts.push({ id: 1000 + i, username: `scale account ${i}`, email: `scale${i}@example.test`, role: i < 30 ? 'AGENT' : 'EMPLOYEE', status: i < 30 ? 'INACTIVE' : 'ACTIVE', region: null, department: null })
+  for (let i = 0; i < 61; i++) accounts.push({ id: 1000 + i, displayName: `scale account ${i}`, email: `scale${i}@example.test`, role: i < 30 ? 'AGENT' : 'EMPLOYEE', status: i < 30 ? 'INACTIVE' : 'ACTIVE', region: null, department: null })
   await navigate('/admin/accounts?search=scale')
   await until(() => evaluate("document.querySelectorAll('[data-account-id]').length === 25"), 'bounded directory')
   await click('Load more')
@@ -1206,7 +1305,6 @@ try {
       '/work/intake',
       '/work/tickets/142',
       '/work/subtasks/1',
-      '/tickets/142',
     ]) {
       const count = requests.length
       await navigate(path)
@@ -1219,6 +1317,14 @@ try {
           ),
       )
     }
+    // Requester routes are open to every role; unrelated data is denied by the API.
+    const beforeUnrelated = requests.length
+    requesterDenial = true
+    await navigate('/tickets/142')
+    await waitText('This ticket could not be found or is no longer available to you.')
+    assert(requests.slice(beforeUnrelated).includes('GET /tickets/142'))
+    assert(!requests.slice(beforeUnrelated).some(r => r.includes('/ticket-workspace') || r.includes('/internal-notes') || r.includes('/subtasks')))
+    requesterDenial = false
   }
   for (const role of ['EMPLOYEE', 'AGENT', 'MANAGER']) {
     user = { ...user, role }
@@ -1244,7 +1350,7 @@ try {
   await waitText('Pending activation')
   const invited = accounts.find(a => a.role === 'ADMIN' && a.activatedAt === null)
   assert(invited)
-  await evaluate(`document.querySelector('[data-account-id="${invited.id}"]').querySelector('button').click()`)
+  await evaluate(`(() => { const row = document.querySelector('[data-account-id="${invited.id}"]'); row.querySelector('button[popovertarget]').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === '${invited.activatedAt ? 'Send password reset' : 'Resend activation'}').click() })()`)
   await waitText('Instructions sent to the account email.')
   const activation = securityMail.filter(m => m.account.id === invited.id && m.type === 'activation').at(-1)
   securitySession = false
@@ -1264,12 +1370,12 @@ try {
   await fill('input[name="email"], input[type="email"]', invited.email)
   await fill('input[type="password"]', 'UserChosenPassword123!')
   await evaluate(`document.querySelector('form').requestSubmit()`)
-  await waitText('Administration workspace')
+  await until(() => evaluate("document.querySelector('h1')?.textContent === 'Administration'"), 'administration heading')
   // Super Admin can send the activated Admin a link.
   user = accounts.find(a => a.role === 'SUPER_ADMIN')
   await navigate('/admin/accounts')
   await waitText('Send password reset')
-  await evaluate(`document.querySelector('[data-account-id="${invited.id}"]').querySelector('button').click()`)
+  await evaluate(`(() => { const row = document.querySelector('[data-account-id="${invited.id}"]'); row.querySelector('button[popovertarget]').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === '${invited.activatedAt ? 'Send password reset' : 'Resend activation'}').click() })()`)
   await waitText('Instructions sent to the account email.')
   assert(securityMail.some(m => m.account.id === invited.id && m.type === 'reset'))
   securitySession = false
@@ -1301,7 +1407,7 @@ try {
   await waitText('Invalid credentials')
   await fill('input[type="password"]', 'NewUserPassword456!')
   await evaluate(`document.querySelector('form').requestSubmit()`)
-  await waitText('Administration workspace')
+  await until(() => evaluate("document.querySelector('h1')?.textContent === 'Administration'"), 'administration heading')
   securitySession = false
   await navigate(`/reset-password#token=${reset.token}`)
   await fill('label:nth-child(1) input', 'AnotherPassword789!')
@@ -1322,9 +1428,10 @@ try {
   }
   assert.deepEqual(browserErrors, [])
   console.log(
-    'PASS: protected administration routes, no administrative ticket requests, no runtime/console errors',
+    'PASS: protected administration routes, unrelated requester ticket denial, no support authority, no runtime/console errors',
   )
   console.log('Administration browser acceptance checks passed.')
+  }
 } catch (error) {
   console.error(
     'Browser failure details:',

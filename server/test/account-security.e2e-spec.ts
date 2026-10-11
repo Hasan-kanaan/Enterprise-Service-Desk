@@ -48,7 +48,7 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
   const seed = async (role: UserRole) =>
     db.user.create({
       data: {
-        username: randomUUID(),
+        displayName: randomUUID(),
         email: `${randomUUID()}@example.test`,
         role,
         password: await bcrypt.hash(password, 10),
@@ -67,6 +67,11 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
           'INSERT INTO "User" (username, email, password, "updatedAt", "passwordChangeRequired") VALUES ($1, $2, $3, NOW(), true)',
           ['legacy', 'legacy@example.test', await bcrypt.hash(password, 10)],
         );
+      if (migration === '20261011120000_remove_username') {
+        await sql.query(`INSERT INTO "User" (username, email, "displayName", "updatedAt") VALUES
+          ('old-valid', 'valid-name@example.test', 'Valid Name', NOW()),
+          ('old-blank', 'blank-name@example.test', '   ', NOW())`);
+      }
       if (migration === '20260927180000_user_sessions')
         await sql.query(
           `INSERT INTO "RefreshToken" ("tokenHash", "userId", "expiresAt") SELECT 'legacy-refresh-digest', id, NOW() + INTERVAL '7 days' FROM "User" WHERE email = 'legacy@example.test'`,
@@ -123,10 +128,27 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
     expect(await db.userSession.count({ where: { userId: legacy.id } })).toBe(
       0,
     );
+    expect(
+      (
+        await db.user.findUniqueOrThrow({
+          where: { email: 'valid-name@example.test' },
+        })
+      ).displayName,
+    ).toBe('Valid Name');
+    expect(
+      (
+        await db.user.findUniqueOrThrow({
+          where: { email: 'blank-name@example.test' },
+        })
+      ).displayName,
+    ).toBe('old-blank');
+    expect(legacy.displayName).toBe('legacy');
+    expect(legacy).not.toHaveProperty('username');
     expect(legacy.activatedAt).toEqual(legacy.createdAt);
     expect(legacy.emailVerifiedAt).toBeNull();
     const session = await login(legacy);
     expect(session.body.user.passwordChangeRequired).toBe(true);
+    expect(session.body.user).not.toHaveProperty('username');
     await request(app.getHttpServer())
       .get('/ticket-options')
       .set('Authorization', `Bearer ${session.token}`)
@@ -169,9 +191,10 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
     const email = `${randomUUID()}@example.test`;
     const response = await post('/auth/accounts', session.token)
       .send({
-        username: randomUUID(),
         email,
         role,
+        displayName: 'Test User',
+        jobTitle: 'Employee',
         phoneNumber: '+961 (70) 123-456',
       })
       .expect(201);
@@ -342,7 +365,13 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
     try {
       const email = `${randomUUID()}@example.test`;
       const created = await post('/auth/accounts', actor.token)
-        .send({ username: randomUUID(), email, role: 'EMPLOYEE' })
+        .send({
+          displayName: 'Test User',
+          jobTitle: 'Employee',
+
+          email,
+          role: 'EMPLOYEE',
+        })
         .expect(201);
       expect((created.body as { delivery: string }).delivery).toBe('FAILED');
       expect(await db.user.findUnique({ where: { email } })).toMatchObject({
@@ -370,7 +399,7 @@ describe('Account activation and recovery (isolated PostgreSQL + fake mail)', ()
     ]) {
       await post('/auth/accounts', actor.token)
         .send({
-          username: randomUUID(),
+          displayName: randomUUID(),
           email: `${randomUUID()}@example.test`,
           role: 'EMPLOYEE',
           ...extra,

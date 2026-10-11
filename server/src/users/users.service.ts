@@ -36,9 +36,8 @@ export type RefreshTokenRecord = {
 
 export type UserRecord = {
   id: number;
-  displayName?: string | null;
+  displayName: string;
   jobTitle?: string | null;
-  username: string;
   email: string;
   password: string | null;
   activatedAt: Date | null;
@@ -63,7 +62,6 @@ export class UsersService {
   ) {
     if (
       ![
-        'username',
         'displayName',
         'jobTitle',
         'phoneNumber',
@@ -126,11 +124,6 @@ export class UsersService {
           data.displayName = change.displayName;
         if (change.jobTitle !== undefined) data.jobTitle = change.jobTitle;
         if (
-          change.username !== undefined &&
-          change.username !== target.username
-        )
-          data.username = change.username;
-        if (
           change.phoneNumber !== undefined &&
           change.phoneNumber !== target.phoneNumber
         ) {
@@ -153,7 +146,6 @@ export class UsersService {
           data.departmentId = change.departmentId;
         const select = {
           id: true,
-          username: true,
           displayName: true,
           jobTitle: true,
           email: true,
@@ -173,7 +165,7 @@ export class UsersService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       )
-        throw new ConflictException('Username already exists');
+        throw new ConflictException('Account metadata conflict');
       throw error;
     }
   }
@@ -501,77 +493,13 @@ export class UsersService {
     });
   }
 
-  async hasSuperAdmin(): Promise<boolean> {
+  async hasActivatedSuperAdmin(): Promise<boolean> {
     const user = await this.prisma.user.findFirst({
-      where: { role: PrismaUserRole.SUPER_ADMIN },
+      where: { role: PrismaUserRole.SUPER_ADMIN, activatedAt: { not: null } },
       select: { id: true },
     });
 
     return user !== null;
-  }
-
-  async createInitialSuperAdmin(data: {
-    displayName: string;
-    jobTitle: string;
-    username: string;
-    email: string;
-    password: string;
-  }): Promise<Omit<UserRecord, 'password'> | null> {
-    const normalizedUsername = data.username.trim().toLowerCase();
-    const normalizedEmail = data.email.trim().toLowerCase();
-
-    return this.prisma.$transaction(async (transaction) => {
-      await transaction.$executeRaw`SELECT pg_advisory_xact_lock(783421)`.then(
-        () => undefined,
-      );
-
-      const existingSuperAdmin = await transaction.user.findFirst({
-        where: { role: PrismaUserRole.SUPER_ADMIN },
-        select: { id: true },
-      });
-
-      if (existingSuperAdmin) {
-        return null;
-      }
-
-      try {
-        const user = await transaction.user.create({
-          data: {
-            username: normalizedUsername,
-            displayName: data.displayName.trim(),
-            jobTitle: data.jobTitle.trim(),
-            email: normalizedEmail,
-            password: data.password,
-            activatedAt: new Date(),
-            role: PrismaUserRole.SUPER_ADMIN,
-          },
-          select: {
-            id: true,
-            username: true,
-            displayName: true,
-            jobTitle: true,
-            email: true,
-            role: true,
-            status: true,
-            sessionVersion: true,
-            activatedAt: true,
-          },
-        });
-
-        return { ...user, role: user.role as UserRole };
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2002'
-        ) {
-          throw new ConflictException(
-            'User with this email or username already exists',
-          );
-        }
-
-        throw error;
-      }
-    });
   }
 
   async findAll(query: ListUsersDto = {}) {
@@ -585,7 +513,6 @@ export class UsersService {
           search
             ? {
                 OR: [
-                  { username: { contains: search, mode: 'insensitive' } },
                   { displayName: { contains: search, mode: 'insensitive' } },
                   { email: { contains: search, mode: 'insensitive' } },
                 ],
@@ -597,7 +524,6 @@ export class UsersService {
       take: limit + 1,
       select: {
         id: true,
-        username: true,
         displayName: true,
         jobTitle: true,
         email: true,
@@ -621,29 +547,6 @@ export class UsersService {
       where: { email: normalized },
       select: {
         id: true,
-        username: true,
-        displayName: true,
-        jobTitle: true,
-        email: true,
-        password: true,
-        role: true,
-        status: true,
-        sessionVersion: true,
-        activatedAt: true,
-      },
-    });
-
-    return user ? { ...user, role: user.role as UserRole } : null;
-  }
-
-  async findByUsername(username: string): Promise<UserRecord | null> {
-    const normalized = username.trim().toLowerCase();
-
-    const user = await this.prisma.user.findUnique({
-      where: { username: normalized },
-      select: {
-        id: true,
-        username: true,
         displayName: true,
         jobTitle: true,
         email: true,
@@ -661,28 +564,20 @@ export class UsersService {
   async create(data: {
     displayName: string;
     jobTitle: string;
-    username: string;
     email: string;
     phoneNumber?: string;
     role: UserRole;
   }): Promise<Omit<UserRecord, 'password'>> {
-    const normalizedUsername = data.username.trim().toLowerCase();
     const normalizedEmail = data.email.trim().toLowerCase();
 
-    if (
-      (await this.findByEmail(normalizedEmail)) ||
-      (await this.findByUsername(normalizedUsername))
-    ) {
-      throw new ConflictException(
-        'User with this email or username already exists',
-      );
+    if (await this.findByEmail(normalizedEmail)) {
+      throw new ConflictException('User with this email already exists');
     }
 
     try {
       return await this.prisma.user
         .create({
           data: {
-            username: normalizedUsername,
             displayName: data.displayName.trim(),
             jobTitle: data.jobTitle.trim(),
             email: normalizedEmail,
@@ -691,7 +586,6 @@ export class UsersService {
           },
           select: {
             id: true,
-            username: true,
             displayName: true,
             jobTitle: true,
             email: true,
@@ -707,9 +601,7 @@ export class UsersService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException(
-          'User with this email or username already exists',
-        );
+        throw new ConflictException('User with this email already exists');
       }
 
       throw error;

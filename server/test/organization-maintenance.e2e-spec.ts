@@ -101,7 +101,7 @@ describe('Organization maintenance (focused PostgreSQL and HTTP)', () => {
       users[name] = await db.user.create({
         data: {
           sessions: { create: { id: sessionIds[name] } },
-          username: `${name}-${prefix}`,
+          displayName: `${name}-${prefix}`,
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused-test-hash',
           activatedAt: new Date(),

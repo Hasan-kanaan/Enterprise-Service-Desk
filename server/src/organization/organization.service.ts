@@ -52,10 +52,10 @@ export class OrganizationService {
       orderBy: { name: 'asc' },
       include: {
         region: true,
-        teamLead: { select: { id: true, username: true, role: true } },
+        teamLead: { select: { id: true, displayName: true, role: true } },
         managers: {
           include: {
-            manager: { select: { id: true, username: true, role: true } },
+            manager: { select: { id: true, displayName: true, role: true } },
           },
         },
         specialties: { include: { specialty: true } },
@@ -71,10 +71,12 @@ export class OrganizationService {
         AND: [
           after(position),
           { teamMemberships: { some: { teamId } } },
-          search ? { username: { contains: search, mode: 'insensitive' } } : {},
+          search
+            ? { displayName: { contains: search, mode: 'insensitive' } }
+            : {},
         ],
       },
-      select: { id: true, username: true, role: true, status: true },
+      select: { id: true, displayName: true, role: true, status: true },
       orderBy: { id: 'desc' },
       take: limit + 1,
     });
@@ -109,12 +111,12 @@ export class OrganizationService {
           {
             status: 'ACTIVE',
             activatedAt: { not: null },
-            username: { contains: search, mode: 'insensitive' },
+            displayName: { contains: search, mode: 'insensitive' },
           },
         ],
       },
-      select: { id: true, username: true },
-      orderBy: [{ username: 'asc' }, { id: 'asc' }],
+      select: { id: true, displayName: true },
+      orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
       take: 20,
     });
   }

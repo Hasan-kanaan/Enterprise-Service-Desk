@@ -1,17 +1,23 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
-import { AccountActionType, UserRole } from '../../generated/prisma/client';
+import {
+  AccountActionType,
+  Prisma,
+  UserRole,
+} from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   lockUser,
   requireActiveActor,
   serializable,
 } from '../prisma/transactions';
+import { SetupDto } from './dto/setup.dto';
 import { assertPassword } from './password';
 import { MailProvider, mailConfig, mailLogger } from './mail.provider';
 
@@ -65,29 +71,97 @@ export class AccountSecurityService {
         },
       });
       if (recent) return null;
-      await db.accountActionToken.updateMany({
-        where: { userId, type, usedAt: null, revokedAt: null },
-        data: { revokedAt: now },
-      });
-      await db.accountActionToken.create({
-        data: {
-          userId,
-          type,
-          tokenHash: actionHash(raw),
-          expiresAt: new Date(
-            now.getTime() +
-              (type === 'ACCOUNT_ACTIVATION' ? 86400000 : 1800000),
-          ),
-        },
-      });
+      await this.replaceActionToken(db, userId, type, raw, now);
       return { email: user.email };
     });
     if (!issued) return 'NOT_SENT' as const;
+    return this.deliver(issued.email, type, raw);
+  }
+
+  private async replaceActionToken(
+    db: Prisma.TransactionClient,
+    userId: number,
+    type: AccountActionType,
+    raw: string,
+    now: Date,
+  ) {
+    await db.accountActionToken.updateMany({
+      where: { userId, type, usedAt: null, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    await db.accountActionToken.create({
+      data: {
+        userId,
+        type,
+        tokenHash: actionHash(raw),
+        expiresAt: new Date(
+          now.getTime() + (type === 'ACCOUNT_ACTIVATION' ? 86400000 : 1800000),
+        ),
+      },
+    });
+  }
+
+  // Called only after AuthService verifies the installation secret.
+  async bootstrap(dto: SetupDto) {
+    const raw = randomBytes(32).toString('base64url');
+    const unavailable = () =>
+      new ConflictException(
+        'Setup could not be started. Check installation state and details.',
+      );
+    const email = dto.email.trim().toLowerCase();
+    try {
+      // Read committed is intentional: after waiting on the advisory lock,
+      // read the committed winner. User locking also serializes with activation.
+      await this.prisma.$transaction(
+        async (db) => {
+          await db.$executeRaw`SELECT pg_advisory_xact_lock(783421)`;
+          const root = await db.user.findFirst({
+            where: { role: 'SUPER_ADMIN' },
+          });
+          const current = root ? await lockUser(db, root.id) : null;
+          if (
+            current &&
+            (current.activatedAt || current.password || !dto.restart)
+          )
+            throw unavailable();
+          const data = {
+            email,
+            displayName: dto.displayName.trim(),
+            jobTitle: dto.jobTitle.trim(),
+          };
+          const user = current
+            ? await db.user.update({ where: { id: current.id }, data })
+            : await db.user.create({ data: { ...data, role: 'SUPER_ADMIN' } });
+          await this.replaceActionToken(
+            db,
+            user.id,
+            'ACCOUNT_ACTIVATION',
+            raw,
+            new Date(),
+          );
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      )
+        throw unavailable();
+      throw error;
+    }
+    return {
+      message: 'Super Admin pending email activation',
+      delivery: await this.deliver(email, 'ACCOUNT_ACTIVATION', raw),
+    };
+  }
+
+  private async deliver(email: string, type: AccountActionType, raw: string) {
     try {
       const link = `${mailConfig().url}/${type === 'ACCOUNT_ACTIVATION' ? 'activate' : 'reset-password'}#token=${raw}`;
       if (type === 'ACCOUNT_ACTIVATION')
-        await this.mail.sendAccountActivation(issued.email, link);
-      else await this.mail.sendPasswordReset(issued.email, link);
+        await this.mail.sendAccountActivation(email, link);
+      else await this.mail.sendPasswordReset(email, link);
       return 'SENT' as const;
     } catch {
       mailLogger.warn(`Account mail delivery failed (${type})`);

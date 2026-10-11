@@ -47,7 +47,7 @@ const clients = []
 const errors = []
 const user = {
   id: 10,
-  username: 'Maya',
+  displayName: 'Maya',
   email: 'maya@example.test',
   role: 'EMPLOYEE',
 }
@@ -206,6 +206,8 @@ async function page(source = '', contextId = null) {
             refreshCookie = `refresh=opaque-${token}`
             cookie = `${refreshCookie}; HttpOnly; Path=/; SameSite=Lax`
           }
+        } else if (path === '/auth/setup/status') {
+          body = { available: false }
         } else if (path === '/auth/login') {
           loginCount++
           if (throttled) {

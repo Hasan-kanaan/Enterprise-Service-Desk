@@ -25,8 +25,7 @@ describe('AuthService', () => {
           provide: UsersService,
           useValue: {
             findByEmail: jest.fn(),
-            hasSuperAdmin: jest.fn(),
-            createInitialSuperAdmin: jest.fn(),
+            hasActivatedSuperAdmin: jest.fn(),
             create: jest.fn(),
             createRefreshToken: jest.fn(),
             findRefreshToken: jest.fn(),
@@ -55,7 +54,7 @@ describe('AuthService', () => {
         id: 1,
         displayName: 'Test Person',
         jobTitle: 'Test Job',
-        username: 'adminuser',
+
         email: 'admin@company.com',
         password: passwordHash,
         status: 'ACTIVE',
@@ -68,7 +67,7 @@ describe('AuthService', () => {
         id: 1,
         displayName: 'Test Person',
         jobTitle: 'Test Job',
-        username: 'adminuser',
+
         email: 'admin@company.com',
         role: UserRole.ADMIN,
         status: 'ACTIVE',
@@ -97,7 +96,7 @@ describe('AuthService', () => {
       sessionVersion: 0,
     });
     expect(result.user.role).toBe(UserRole.ADMIN);
-    expect(result.user.username).toBe('adminuser');
+    expect(result.user.displayName).toBe('Test Person');
   });
 
   it('rejects login when the password is wrong', async () => {
@@ -107,7 +106,7 @@ describe('AuthService', () => {
         id: 1,
         displayName: 'Test Person',
         jobTitle: 'Test Job',
-        username: 'employee',
+
         email: 'employee@company.com',
         password: passwordHash,
         status: 'ACTIVE',
@@ -120,7 +119,7 @@ describe('AuthService', () => {
         id: 1,
         displayName: 'Test Person',
         jobTitle: 'Test Job',
-        username: 'adminuser',
+
         email: 'admin@company.com',
         role: UserRole.ADMIN,
         status: 'ACTIVE',
@@ -150,79 +149,44 @@ describe('AuthService', () => {
     ]);
   });
 
-  it('reports setup as available when no SUPER_ADMIN exists', async () => {
-    const usersService = {
-      hasSuperAdmin: jest.fn().mockResolvedValue(false),
-    };
+  it.each([false, true])(
+    'reports setup availability from activated root existence: %s',
+    async (exists) => {
+      const usersService = {
+        hasActivatedSuperAdmin: jest.fn().mockResolvedValue(exists),
+      };
+      const auth = new AuthService(
+        usersService as unknown as UsersService,
+        {} as unknown as JwtService,
+        accountSecurity,
+      );
+
+      await expect(auth.getSetupStatus()).resolves.toEqual({
+        available: !exists,
+      });
+    },
+  );
+
+  it('requires the secret before delegating pending setup to account security', async () => {
+    const bootstrap = jest.fn().mockResolvedValue({ delivery: 'SENT' });
     const auth = new AuthService(
-      usersService as unknown as UsersService,
-      {} as unknown as JwtService,
-      accountSecurity,
+      {} as UsersService,
+      {} as JwtService,
+      { bootstrap } as unknown as AccountSecurityService,
     );
+    const input = {
+      setupSecret: 'wrong',
+      displayName: 'Root',
+      jobTitle: 'Operator',
 
-    await expect(auth.getSetupStatus()).resolves.toEqual({ available: true });
-  });
-
-  it('creates the initial SUPER_ADMIN through the provisioning service', async () => {
-    const usersService = {
-      createInitialSuperAdmin: jest.fn().mockResolvedValue({
-        id: 1,
-        displayName: 'Test Person',
-        jobTitle: 'Test Job',
-        username: 'rootadmin',
-        email: 'root@company.com',
-        role: UserRole.SUPER_ADMIN,
-      }),
+      email: 'root@example.test',
     };
-    const auth = new AuthService(
-      usersService as unknown as UsersService,
-      {} as unknown as JwtService,
-      accountSecurity,
-    );
-
+    await expect(auth.setup(input)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(bootstrap).not.toHaveBeenCalled();
     await expect(
-      auth.setup({
-        setupSecret: process.env.INITIAL_SETUP_SECRET!,
-        displayName: 'Test Person',
-        jobTitle: 'Test Job',
-        username: 'RootAdmin',
-        email: 'root@company.com',
-        password: 'StrongPass123!',
-      }),
-    ).resolves.toMatchObject({
-      user: { username: 'rootadmin', role: UserRole.SUPER_ADMIN },
-    });
-
-    expect(usersService.createInitialSuperAdmin).toHaveBeenCalledWith(
-      expect.objectContaining({
-        displayName: 'Test Person',
-        jobTitle: 'Test Job',
-        username: 'rootadmin',
-        email: 'root@company.com',
-      }),
-    );
-  });
-
-  it('rejects setup after a SUPER_ADMIN already exists', async () => {
-    const usersService = {
-      createInitialSuperAdmin: jest.fn().mockResolvedValue(null),
-    };
-    const auth = new AuthService(
-      usersService as unknown as UsersService,
-      {} as unknown as JwtService,
-      accountSecurity,
-    );
-
-    await expect(
-      auth.setup({
-        setupSecret: process.env.INITIAL_SETUP_SECRET!,
-        displayName: 'Test Person',
-        jobTitle: 'Test Job',
-        username: 'anotheradmin',
-        email: 'another@company.com',
-        password: 'StrongPass123!',
-      }),
-    ).rejects.toThrow('Initial setup has already been completed');
+      auth.setup({ ...input, setupSecret: process.env.INITIAL_SETUP_SECRET! }),
+    ).resolves.toEqual({ delivery: 'SENT' });
+    expect(bootstrap).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -250,13 +214,13 @@ describe('AuthService', () => {
     const result = await auth.createAccount(UserRole.SUPER_ADMIN, {
       displayName: 'Test Person',
       jobTitle: 'Test Job',
-      username: 'NewUser',
+
       email: 'new@company.test',
       role,
     });
     expect(result.user.role).toBe(role);
     expect(users.create).toHaveBeenCalledWith(
-      expect.objectContaining({ username: 'newuser', role }),
+      expect.objectContaining({ displayName: 'Test Person', role }),
     );
     expect(users.create.mock.calls[0][0]).not.toHaveProperty('password');
     expect(result.delivery).toBe('SENT');
@@ -280,7 +244,7 @@ describe('AuthService', () => {
         auth.createAccount(caller, {
           displayName: 'Test Person',
           jobTitle: 'Test Job',
-          username: 'someone',
+
           email: 'someone@test.invalid',
           role,
         }),
@@ -298,7 +262,7 @@ describe('AuthService', () => {
             id: 2,
             displayName: 'Test Person',
             jobTitle: 'Test Job',
-            username: data.username,
+
             email: data.email,
             role: data.role,
           }),
@@ -315,7 +279,7 @@ describe('AuthService', () => {
         auth.createAccount(UserRole.ADMIN, {
           displayName: 'Test Person',
           jobTitle: 'Test Job',
-          username: `new${role.toLowerCase()}`,
+
           email: `${role.toLowerCase()}@company.com`,
           role,
         }),
@@ -334,7 +298,7 @@ describe('AuthService', () => {
       auth.createAccount(UserRole.ADMIN, {
         displayName: 'Test Person',
         jobTitle: 'Test Job',
-        username: 'root2',
+
         email: 'root2@company.com',
         role: UserRole.SUPER_ADMIN,
       }),
@@ -352,7 +316,7 @@ describe('AuthService', () => {
           id: 1,
           displayName: 'Test Person',
           jobTitle: 'Test Job',
-          username: 'adminuser',
+
           email: 'admin@company.com',
           password: 'hash',
           status: 'ACTIVE',
@@ -367,7 +331,7 @@ describe('AuthService', () => {
         id: 1,
         displayName: 'Test Person',
         jobTitle: 'Test Job',
-        username: 'adminuser',
+
         email: 'admin@company.com',
         role: UserRole.ADMIN,
         status: 'ACTIVE',

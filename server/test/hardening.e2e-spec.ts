@@ -1,6 +1,7 @@
 import { MailProvider } from '../src/auth/mail.provider';
 import { FakeMailProvider } from './fake-mail.provider';
 import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from '@nestjs/common';
 import request from 'supertest';
@@ -48,7 +49,7 @@ describe('Pre-AI hardening (isolated PostgreSQL schema and HTTP)', () => {
   const seed = async (role: UserRole) =>
     db.user.create({
       data: {
-        username: randomUUID(),
+        displayName: randomUUID(),
         email: `${randomUUID()}@example.test`,
         role,
         password: await bcrypt.hash(password, 10),
@@ -105,16 +106,22 @@ describe('Pre-AI hardening (isolated PostgreSQL schema and HTTP)', () => {
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);
     try {
-      const input = { username: 'root', email: 'root@example.test', password };
+      const input = {
+        displayName: 'Root Operator',
+        jobTitle: 'Administrator',
+
+        email: 'root@example.test',
+      };
       await post('/auth/setup').send(input).expect(400);
       await post('/auth/setup')
         .send({ ...input, setupSecret: 'wrong' })
         .expect(403);
+      expect(await db.user.count()).toBe(0);
       const attempts = await Promise.all(
         [0, 1].map((i) =>
           post('/auth/setup').send({
             ...input,
-            username: `root${i}`,
+            displayName: `root${i}`,
             email: `root${i}@example.test`,
             setupSecret: secret,
           }),
@@ -122,6 +129,47 @@ describe('Pre-AI hardening (isolated PostgreSQL schema and HTTP)', () => {
       );
       expect(attempts.map((r) => r.status).sort()).toEqual([201, 409]);
       expect(await db.user.count({ where: { role: 'SUPER_ADMIN' } })).toBe(1);
+      const root = await db.user.findFirstOrThrow({
+        where: { role: 'SUPER_ADMIN' },
+      });
+      expect(root.password).toBeNull();
+      expect(root.activatedAt).toBeNull();
+      expect(root.emailVerifiedAt).toBeNull();
+      const session = await db.userSession.create({
+        data: { userId: root.id },
+      });
+      const forged = app.get(JwtService).sign({
+        sub: root.id,
+        sid: session.id,
+        sessionVersion: root.sessionVersion,
+      });
+      await request(app.getHttpServer())
+        .get('/users/profile')
+        .set('Authorization', `Bearer ${forged}`)
+        .expect(401);
+      await post('/auth/accounts', forged)
+        .send({
+          displayName: 'Other Root',
+          jobTitle: 'Admin',
+
+          email: 'otherroot@example.test',
+          role: 'SUPER_ADMIN',
+        })
+        .expect(401);
+
+      expect(mail.messages.filter((m) => m.type === 'activation')).toHaveLength(
+        1,
+      );
+      expect(
+        attempts.find((r) => r.status === 201)?.headers['set-cookie'],
+      ).toBeUndefined();
+      await post('/auth/login')
+        .send({ email: root.email, password })
+        .expect(401);
+      await request(app.getHttpServer())
+        .get('/auth/setup/status')
+        .expect(200, { available: true });
+
       await post('/auth/setup')
         .send({ ...input, setupSecret: secret })
         .expect(409);
@@ -133,6 +181,124 @@ describe('Pre-AI hardening (isolated PostgreSQL schema and HTTP)', () => {
       log.mockRestore();
     }
   });
+  it('recovers pending setup with the secret, revokes old links and closes permanently on activation', async () => {
+    const root = await db.user.findFirstOrThrow({
+      where: { role: 'SUPER_ADMIN' },
+    });
+    const oldToken = mail.token(root.email, 'activation');
+    const input = {
+      displayName: 'Corrected Root',
+      jobTitle: 'Administrator',
+
+      email: 'corrected@example.test',
+      setupSecret: secret,
+      restart: true,
+    };
+    await post('/auth/setup')
+      .send({ ...input, setupSecret: 'wrong' })
+      .expect(403);
+    expect(
+      (await db.user.findUniqueOrThrow({ where: { id: root.id } })).email,
+    ).toBe(root.email);
+    await post('/auth/setup').send(input).expect(201);
+    expect(await db.user.count({ where: { role: 'SUPER_ADMIN' } })).toBe(1);
+    await post('/auth/activate')
+      .send({ token: oldToken, newPassword: password })
+      .expect(400);
+    const unrelated = await seed('EMPLOYEE');
+    const collision = await post('/auth/setup')
+      .send({ ...input, email: unrelated.email })
+      .expect(409);
+    const existing = await post('/auth/setup')
+      .send({ ...input, restart: false })
+      .expect(409);
+    expect(collision.body as unknown).toEqual(existing.body as unknown);
+    expect(JSON.stringify(collision.body as unknown)).not.toContain(
+      unrelated.email,
+    );
+    expect(
+      (await db.user.findUniqueOrThrow({ where: { id: root.id } })).email,
+    ).toBe(input.email);
+    const expiredToken = mail.token(input.email, 'activation');
+    await db.accountActionToken.updateMany({
+      where: { userId: root.id },
+      data: { expiresAt: new Date(0) },
+    });
+    await post('/auth/activate')
+      .send({ token: expiredToken, newPassword: password })
+      .expect(400);
+    // Mail failure does not strand the reserved identity; a secret-authorized restart has no cooldown.
+    mail.fail = true;
+    const failed = await post('/auth/setup').send(input).expect(201);
+    expect(failed.body as unknown).toMatchObject({ delivery: 'FAILED' });
+    mail.fail = false;
+    await post('/auth/setup').send(input).expect(201);
+    const restarts = await Promise.all(
+      [0, 1].map((i) =>
+        post('/auth/setup').send({
+          ...input,
+          email: `restart${i}@example.test`,
+        }),
+      ),
+    );
+    expect(restarts.map((r) => r.status)).toEqual([201, 201]);
+    expect(await db.user.count({ where: { role: 'SUPER_ADMIN' } })).toBe(1);
+    expect(
+      await db.accountActionToken.count({
+        where: { userId: root.id, usedAt: null, revokedAt: null },
+      }),
+    ).toBe(1);
+    input.email = (
+      await db.user.findUniqueOrThrow({ where: { id: root.id } })
+    ).email;
+    let token = mail.token(input.email, 'activation');
+    await post('/auth/activate')
+      .send({ token: expiredToken, newPassword: password })
+      .expect(400);
+    const raceEmail = 'activation-race@example.test';
+    const [consume, restart] = await Promise.all([
+      post('/auth/activate').send({ token, newPassword: nextPassword }),
+      post('/auth/setup').send({ ...input, email: raceEmail }),
+    ]);
+    let activated = consume;
+    if (consume.status === 201) {
+      expect(restart.status).toBe(409);
+    } else {
+      expect([400, 409]).toContain(consume.status);
+      expect(restart.status).toBe(201);
+      await post('/auth/activate')
+        .send({ token, newPassword: password })
+        .expect(400);
+      input.email = raceEmail;
+      token = mail.token(input.email, 'activation');
+      activated = await post('/auth/activate')
+        .send({ token, newPassword: nextPassword })
+        .expect(201);
+    }
+    expect(await db.user.count({ where: { role: 'SUPER_ADMIN' } })).toBe(1);
+    expect(activated.headers['set-cookie']).toBeUndefined();
+    expect(activated.body as unknown).toEqual({
+      message: 'Password saved. Sign in to continue.',
+    });
+    await post('/auth/activate')
+      .send({ token, newPassword: password })
+      .expect(400);
+    const current = await db.user.findUniqueOrThrow({ where: { id: root.id } });
+    expect(current.activatedAt).not.toBeNull();
+    expect(current.emailVerifiedAt).not.toBeNull();
+    await login(current, nextPassword);
+    await request(app.getHttpServer())
+      .get('/auth/setup/status')
+      .expect(200, { available: false });
+    await post('/auth/setup').send(input).expect(409);
+    await post('/auth/setup')
+      .send({ ...input, restart: false })
+      .expect(409);
+    expect(
+      (await db.user.findUniqueOrThrow({ where: { id: root.id } })).email,
+    ).toBe(input.email);
+  });
+
   it('creates one ticket, cycle and attachment across concurrent retries; keys never cross requester boundaries', async () => {
     const employee = await seed('EMPLOYEE'),
       other = await seed('EMPLOYEE');
@@ -188,7 +354,7 @@ describe('Pre-AI hardening (isolated PostgreSQL schema and HTTP)', () => {
     for (const value of ['a'.repeat(73), 'é'.repeat(37), '😀'.repeat(19)]) {
       await post('/auth/setup')
         .send({
-          username: 'large',
+          displayName: 'large',
           email: 'large@example.test',
           setupSecret: secret,
           password: value,
@@ -196,7 +362,7 @@ describe('Pre-AI hardening (isolated PostgreSQL schema and HTTP)', () => {
         .expect(400);
       await post('/auth/accounts', a.token)
         .send({
-          username: 'large',
+          displayName: 'large',
           email: 'large@example.test',
           password: value,
           role: 'EMPLOYEE',

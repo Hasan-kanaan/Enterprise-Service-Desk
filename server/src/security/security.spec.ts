@@ -62,7 +62,7 @@ describe('Application HTTP security baseline', () => {
   const hash = bcrypt.hashSync('CorrectPass123!', 10);
   const user = {
     id: 1,
-    username: 'fixture',
+    displayName: 'fixture',
     email: 'known@example.test',
     password: hash,
     status: 'ACTIVE',
@@ -83,7 +83,7 @@ describe('Application HTTP security baseline', () => {
     issueSession: jest.fn(() => Promise.resolve(user)),
     findRefreshToken: jest.fn(() => Promise.resolve(null)),
     revokeRefreshToken: jest.fn(() => Promise.resolve(undefined)),
-    hasSuperAdmin: jest.fn(() => Promise.resolve(true)),
+    hasActivatedSuperAdmin: jest.fn(() => Promise.resolve(true)),
     createInitialSuperAdmin: jest.fn(() => Promise.resolve(null)),
   };
   const post = (path: string) =>
@@ -202,7 +202,7 @@ describe('Application HTTP security baseline', () => {
     expect(Object.keys(body).sort()).toEqual(['accessToken', 'user']);
     expect(body.user).toEqual({
       id: 1,
-      username: user.username,
+      displayName: user.displayName,
       email: user.email,
       role: user.role,
     });

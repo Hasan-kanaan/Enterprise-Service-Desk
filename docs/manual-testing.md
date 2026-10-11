@@ -1,5 +1,24 @@
 # Local manual browser testing
 
+## Identity and navigation (2026-10-11)
+
+Username has been removed from the Enterprise Service Desk identity model.
+Email is the unique immutable login, activation and recovery identity.
+displayName is the required human-readable identity shown throughout the product.
+User.id remains the stable relational identity. Duplicate display names are allowed.
+The UI may render a generated avatar using the first initial of displayName.
+User-uploaded profile pictures are not implemented in the current phase.
+The topbar identity control opens Profile.
+The sidebar bottom navigation uses Settings rather than a Profile/avatar control.
+
+The migration preserves valid names and fills only missing/blank legacy names once
+from the former username (or neutral Account if that too is blank), then enforces
+NOT NULL/nonblank displayName and removes the old column/index. Historical IDs,
+email, sessions, roles and lifecycle remain unchanged. No runtime fallback remains.
+See [identity verification](identity-model-verification.md) for the migration,
+contract changes, checks and retest list. ISS-012/ISS-013 still await manual Network
+evidence; their pagination/stale-response implementation was not changed.
+
 This opt-in utility is separate from startup, migrations and automated tests. It
 uses **only `MANUAL_TEST_DATABASE_URL`**, never `DATABASE_URL`, `TEST_DATABASE_URL`
 or `.env`. Both seed and reset require a loopback PostgreSQL URL with credentials,
@@ -66,10 +85,11 @@ Backend: <http://localhost:8000>. Frontend: <http://localhost:3000>.
 Existing Mailpit inbox: <http://localhost:8025> (SMTP port 1025).
 No alternate mail product or mail container changes are needed.
 
-Open <http://localhost:3000/setup> in a fresh browser session. Create your first
-SUPER_ADMIN with your own username, synthetic email, display name, job title,
-password and the setup secret. Reserve the `manual-*` usernames/emails below for
-fixtures. Confirm `/setup` is locked afterward, including in a signed-out browser.
+Open <http://localhost:3000/login> in a fresh browser session and confirm it directs you to `/setup`. Create your first
+SUPER_ADMIN with your synthetic email, display name, job title,
+and the setup secret (no password yet). Reserve the `manual-*` emails below for
+fixtures. Open the activation email in Mailpit, choose your password through the link,
+and sign in normally. Confirm `/setup` is locked after activation, including in a signed-out browser.
 **Do not seed before this check.** Seed refuses a database without exactly one
 active, activated, password-bearing SUPER_ADMIN. It never creates SUPER_ADMIN
 and has no bypass mode. The utility cannot verify your visual browser check.
@@ -94,26 +114,26 @@ restore the original scenario; seed is not a fixture repair command.
 
 ### Credentials
 
-Login uses **email**, not username. Every password-bearing fixture starts with
+Login uses **email**. Every password-bearing fixture starts with
 **`ManualDesk!2026`**. These are public, local-only test credentials. Passwords
 are stored as bcrypt hashes. Email verification remains unset; no fake activation
 tokens, sessions, notifications or emails are created by the seed. Ordinary
 application provisioning still sends activation links for user-owned passwords.
 
-| Username | Login email | Initial role/state | Home Region / Department |
+| Display name | Login email | Initial role/state | Home Region / Department |
 | --- | --- | --- | --- |
-| manual-admin | manual-admin@example.test | ADMIN, active/activated | North / IT |
-| manual-manager-a | manual-manager-a@example.test | MANAGER, active/activated | North / IT |
-| manual-manager-b | manual-manager-b@example.test | MANAGER, active/activated | South / IT |
-| manual-agent-a | manual-agent-a@example.test | AGENT, active/activated; North Team Lead | North / IT |
-| manual-agent-b | manual-agent-b@example.test | AGENT, active/activated | North / IT |
-| manual-agent-c | manual-agent-c@example.test | AGENT, active/activated | South / IT |
-| manual-employee-a | manual-employee-a@example.test | EMPLOYEE, active/activated | North / Finance |
-| manual-employee-b | manual-employee-b@example.test | EMPLOYEE, active/activated | South / People |
-| manual-pending | manual-pending@example.test | AGENT, active but unactivated; **no password** | South / IT |
-| manual-inactive | manual-inactive@example.test | AGENT, activated but INACTIVE; login refused | North / IT |
+| Manual admin | manual-admin@example.test | ADMIN, active/activated | North / IT |
+| Manual manager-a | manual-manager-a@example.test | MANAGER, active/activated | North / IT |
+| Manual manager-b | manual-manager-b@example.test | MANAGER, active/activated | South / IT |
+| Manual agent-a | manual-agent-a@example.test | AGENT, active/activated; North Team Lead | North / IT |
+| Manual agent-b | manual-agent-b@example.test | AGENT, active/activated | North / IT |
+| Manual agent-c | manual-agent-c@example.test | AGENT, active/activated | South / IT |
+| Manual employee-a | manual-employee-a@example.test | EMPLOYEE, active/activated | North / Finance |
+| Manual employee-b | manual-employee-b@example.test | EMPLOYEE, active/activated | South / People |
+| Manual pending | manual-pending@example.test | AGENT, active but unactivated; **no password** | South / IT |
+| Manual inactive | manual-inactive@example.test | AGENT, activated but INACTIVE; login refused | North / IT |
 
-SUPER_ADMIN credentials are the ones you chose through `/setup`, not seeded.
+SUPER_ADMIN credentials are the ones you chose through the emailed activation link after `/setup`, not seeded.
 Use Accounts → Resend activation for `manual-pending`, open its Mailpit email,
 choose a password and test login. The inactive account has the fixture password
 but cannot log in until you reactivate it through the UI. Neither has operational
@@ -133,7 +153,7 @@ Laptop, Onboarding.
 | Manual Global Applications | GLOBAL; region NULL | None | agent-b, agent-c | None | Applications |
 
 User specialties: agent-a = Hardware + Network; agent-b = Network + Applications;
-agent-c = Hardware + Applications. Usernames in this table omit `manual-` for brevity.
+agent-c = Hardware + Applications. Persona names here omit the display-name prefix `Manual ` for brevity.
 
 **No tickets, subtasks or lifecycle history are seeded.** Create requests as the
 two employees and perform all assignment/status/history actions yourself:

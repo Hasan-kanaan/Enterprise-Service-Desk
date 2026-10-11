@@ -2,7 +2,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { autoCloseAt } from './auto-close.config';
 
 const person = {
-  select: { id: true, username: true, displayName: true },
+  select: { id: true, displayName: true },
 } as const;
 export const cycleInclude = {
   startedBy: person,
@@ -15,8 +15,8 @@ export const cycleInclude = {
 
 type Cycle = Prisma.TicketWorkCycleGetPayload<{ include: typeof cycleInclude }>;
 type Owners = {
-  assignedManager: { id: number; username: string } | null;
-  assignedAgent: { id: number; username: string } | null;
+  assignedManager: { id: number; displayName: string } | null;
+  assignedAgent: { id: number; displayName: string } | null;
   assignedTeam: { id: number; name: string } | null;
 };
 
@@ -54,10 +54,10 @@ export function mapTicket(
     include: {
       workCycles: { include: typeof cycleInclude };
       assignedManager: {
-        select: { id: true; username: true; displayName: true; status: true };
+        select: { id: true; displayName: true; status: true };
       };
       assignedAgent: {
-        select: { id: true; username: true; displayName: true; status: true };
+        select: { id: true; displayName: true; status: true };
       };
       assignedTeam: { select: { id: true; name: true } };
       category: { select: { id: true; name: true } };

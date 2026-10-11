@@ -101,7 +101,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       users[name] = await db.user.create({
         data: {
           sessions: { create: { id: sessionIds[name] } },
-          username: `${name}-${prefix}`,
+          displayName: `${name}-${prefix}`,
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused-test-hash',
           activatedAt: new Date(),
@@ -430,8 +430,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       ).body.records[0];
       expect(preserved.author).toEqual({
         id: users.otherAgent.id,
-        username: users.otherAgent.username,
-        displayName: null,
+        displayName: users.otherAgent.displayName,
       });
       await get(`/tickets/${owned.id}/${kind}`, 'otherAgent').expect(401);
     },
@@ -774,14 +773,13 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     for (const team of own.teams) expect(team).not.toHaveProperty('agents');
     const agents = (
       await get(
-        `/ticket-workspace/tickets/${owned.id}/people?purpose=primary&teamId=${teamA.id}&search=${users.agent.username}`,
+        `/ticket-workspace/tickets/${owned.id}/people?purpose=primary&teamId=${teamA.id}&search=${users.agent.displayName}`,
         'manager',
       ).expect(200)
     ).body;
     expect(agents).toContainEqual({
       id: users.agent.id,
-      username: users.agent.username,
-      displayName: null,
+      displayName: users.agent.displayName,
     });
     expect(agents).not.toEqual(
       expect.arrayContaining([
@@ -789,11 +787,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       ]),
     );
     for (const person of agents)
-      expect(Object.keys(person).sort()).toEqual([
-        'displayName',
-        'id',
-        'username',
-      ]);
+      expect(Object.keys(person).sort()).toEqual(['displayName', 'id']);
     const queue = (
       await get(`/ticket-workspace/tickets/${intake.id}`, 'manager').expect(200)
     ).body;
@@ -876,8 +870,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     });
     expect(delegated.subtask.assignedAgent).toEqual({
       id: users.otherAgent.id,
-      username: users.otherAgent.username,
-      displayName: null,
+      displayName: users.otherAgent.displayName,
     });
     await get(`/ticket-workspace/tickets/${owned.id}`, 'otherAgent').expect(
       200,
@@ -921,8 +914,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     ).body;
     expect(complete.subtask.completedBy).toEqual({
       id: users.otherAgent.id,
-      username: users.otherAgent.username,
-      displayName: null,
+      displayName: users.otherAgent.displayName,
     });
     expect(complete.subtask.completedAt).not.toBeNull();
     await patch(`/tickets/${owned.id}/status`, 'manager', {
@@ -993,7 +985,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         const response = await post('/auth/accounts', caller, {
           displayName: 'New Person',
           jobTitle: 'Analyst',
-          username: `new-${suffix}`,
+
           email: `${suffix}@test.invalid`,
           role,
         }).expect(allowed.includes(role) ? 201 : 403);
@@ -1016,7 +1008,9 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
   it('adds only safe account organization labels and member identity projections for administration', async () => {
     for (const caller of ['admin', 'superAdmin']) {
       const directory = (
-        await get(`/users?search=${users.agent.username}`, caller).expect(200)
+        await get(`/users?search=${users.agent.displayName}`, caller).expect(
+          200,
+        )
       ).body;
       const account = directory.items.find(
         (row: { id: number }) => row.id === users.agent.id,
@@ -1044,10 +1038,10 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       );
       for (const member of members)
         expect(Object.keys(member).sort()).toEqual([
+          'displayName',
           'id',
           'role',
           'status',
-          'username',
         ]);
       expect(team).not.toHaveProperty('tickets');
     }
@@ -1055,7 +1049,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       await get('/users', caller).expect(403);
       await get('/organization/teams', caller).expect(403);
       await post('/auth/accounts', caller, {
-        username: 'unauthorized',
+        displayName: 'unauthorized',
         email: 'not-allowed@test.invalid',
         password: 'StrongPass123!',
         role: UserRole.EMPLOYEE,
@@ -2393,7 +2387,10 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         .set('Origin', 'http://localhost:3000')
         .send({ email: users.employee.email, password: 'StrongPass123!' })
         .expect(201);
-    const [laptop, phone] = await Promise.all([login(), login()]);
+    // Establish independent sessions before the concurrent rotation under test.
+    // Simultaneous logins may legitimately conflict under Serializable isolation.
+    const laptop = await login();
+    const phone = await login();
     const contenders = await Promise.all(
       [1, 2].map(() =>
         request(app.getHttpServer())

@@ -6,6 +6,7 @@ export function AssignmentFields({
   teams,
   teamId,
   agentId,
+  agentName,
   setTeam,
   setAgent,
   changeTeam,
@@ -16,6 +17,7 @@ export function AssignmentFields({
   teams: AssignmentTeam[]
   teamId: number | null
   agentId: number | null
+  agentName?: string
   setTeam: (value: number | null) => void
   setAgent: (value: number | null) => void
   changeTeam: boolean
@@ -47,6 +49,7 @@ export function AssignmentFields({
         key={teamId ?? 'none'}
         label="Assignment agent"
         value={agentId}
+        selectedName={agentName}
         onChange={setAgent}
         compatible={compatible}
         url={teamId === null ? null : `${lookupUrl}&teamId=${teamId}`}

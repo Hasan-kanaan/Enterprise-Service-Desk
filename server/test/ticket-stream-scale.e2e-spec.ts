@@ -80,7 +80,7 @@ describe('Ticket stream scale (isolated PostgreSQL)', () => {
       users[name] = await db.user.create({
         data: {
           sessions: { create: { id: sessionIds[name] } },
-          username: `${name}-${prefix}`.slice(0, 50),
+          displayName: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',
           activatedAt: new Date(),
@@ -301,7 +301,8 @@ describe('Ticket stream scale (isolated PostgreSQL)', () => {
   it('preserves employee, collaborator and operational exclusion boundaries on every page', async () => {
     await get(`/tickets/${ticketId}/messages`, 'other').expect(404);
     await get(`/tickets/${ticketId}/internal-notes`, 'employee').expect(403);
-    await get(`/tickets/${ticketId}/messages`, 'admin').expect(403);
+    await get(`/tickets/${ticketId}/messages`, 'admin').expect(404);
+    await get(`/tickets/${ticketId}/internal-notes`, 'admin').expect(403);
     await get(`/tickets/${ticketId}/internal-notes`, 'collaborator').expect(
       200,
     );

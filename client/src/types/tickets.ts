@@ -14,8 +14,7 @@ export type TicketPriority = (typeof ticketPriorities)[number]
 export type NamedOption = { id: number; name: string }
 export type Person = {
   id: number
-  username: string
-  displayName?: string | null
+  displayName: string
   status?: 'ACTIVE' | 'INACTIVE'
 }
 export type Ownership = {

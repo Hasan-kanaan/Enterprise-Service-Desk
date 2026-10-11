@@ -1,5 +1,5 @@
 import api, { sessionCoordinator, getApiStatus } from '@/services/api'
-import type { AuthResponse, AuthUser } from '@/types/auth'
+import type { AuthResponse } from '@/types/auth'
 
 export type LoginInput = {
   email: string
@@ -10,9 +10,8 @@ export type SetupInput = {
   setupSecret: string
   displayName: string
   jobTitle: string
-  username: string
   email: string
-  password: string
+  restart?: boolean
 }
 
 export async function login(input: LoginInput) {
@@ -22,7 +21,7 @@ export async function login(input: LoginInput) {
 }
 
 export async function setupInitialAdmin(input: SetupInput) {
-  const { data } = await api.post<{ user: AuthUser }>('/auth/setup', input)
+  const { data } = await api.post<{ message: string; delivery: 'SENT' | 'FAILED' }>('/auth/setup', input)
   return data
 }
 

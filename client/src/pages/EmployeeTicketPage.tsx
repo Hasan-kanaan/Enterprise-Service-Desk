@@ -1,3 +1,4 @@
+import { RefreshSurface } from '@/components/RefreshSurface'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { TicketAttachments } from '@/components/Attachments'
 import { useCallback, useState } from 'react'
@@ -111,7 +112,7 @@ function TicketContent({ id }: { id: number }) {
       setBusy(false)
     }
   }
-  if (ticketResource.loading)
+  if (ticketResource.loading && !ticketResource.data)
     return <LoadingState label="Loading your ticket..." />
   if (ticketResource.error || !ticket)
     return (
@@ -158,7 +159,7 @@ function TicketContent({ id }: { id: number }) {
   const routingConflict =
     conflict && getApiErrorMessage(actionError, '').includes('returnToIntake')
   return (
-    <div className="ticket-workspace">
+    <RefreshSurface busy={!!(ticketResource.loading && ticketResource.data)}><div className="ticket-workspace">
       <Link className="back-link" to="/tickets">
         <ArrowLeft size={16} />
         My Requests
@@ -178,7 +179,7 @@ function TicketContent({ id }: { id: number }) {
               : 'History unavailable'}
           </p>
         </div>
-        <button className="button secondary" disabled={busy} onClick={reload}>
+        <button className="button secondary" disabled={busy || ticketResource.loading} onClick={reload}>
           <RefreshCw size={16} />
           Refresh
         </button>
@@ -277,18 +278,19 @@ function TicketContent({ id }: { id: number }) {
           </section>
           {history.data && (
             <TicketCommunication
+              refreshKey={ticketResource.revision}
               ticketId={id}
               requesterId={ticket.requesterId}
               cycles={history.data.cycles}
               onChanged={() => void ticketResource.refresh()}
             />
           )}
-          <TicketAttachments ticketId={id} />
+          <TicketAttachments ticketId={id} refreshKey={ticketResource.revision} />
           <section className="panel">
             <div className="list-heading">
               <h2>Work history</h2>
             </div>
-            {history.loading ? (
+            {history.loading && !history.data ? (
               <LoadingState label="Loading history..." />
             ) : history.error ? (
               <ErrorState error={history.error} onRetry={history.reload} />
@@ -354,7 +356,6 @@ function TicketContent({ id }: { id: number }) {
                 <dt>Responsible manager</dt>
                 <dd>
                   {ticket.ownership.manager?.displayName ??
-                    ticket.ownership.manager?.username ??
                     'Awaiting assignment'}
                 </dd>
               </div>
@@ -366,7 +367,6 @@ function TicketContent({ id }: { id: number }) {
                 <dt>Primary agent</dt>
                 <dd>
                   {ticket.ownership.agent?.displayName ??
-                    ticket.ownership.agent?.username ??
                     'Not assigned'}
                 </dd>
               </div>
@@ -519,6 +519,6 @@ function TicketContent({ id }: { id: number }) {
           </form>
         </Modal>
       )}
-    </div>
+    </div></RefreshSurface>
   )
 }

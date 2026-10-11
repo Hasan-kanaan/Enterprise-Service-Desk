@@ -38,7 +38,7 @@ export function ChangeRoleForm({
       }}
     >
       <p>
-        {account.displayName ?? account.username} — current role: {account.role}
+        {account.displayName} — current role: {account.role}
       </p>
       <label className="field">
         New role

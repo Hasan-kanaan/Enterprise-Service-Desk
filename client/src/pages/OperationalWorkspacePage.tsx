@@ -1,3 +1,4 @@
+import { RefreshSurface } from '@/components/RefreshSurface'
 import { useCallback } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAppSelector } from '@/hooks/storeHooks'
@@ -88,7 +89,7 @@ export function OperationalWorkspacePage({
     summary.reload()
   }
   return (
-    <div className="ticket-workspace">
+    <RefreshSurface busy={!!(loading && resource.items.length)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
           <p className="eyebrow">
@@ -190,7 +191,7 @@ export function OperationalWorkspacePage({
             <option value="collaboration">Collaboration</option>
           </select>
         )}
-        {loading ? (
+        {loading && !resource.items.length ? (
           <LoadingState />
         ) : error && !resource.items.length ? (
           <ErrorState error={error} onRetry={reload} />
@@ -225,6 +226,6 @@ export function OperationalWorkspacePage({
           membership alone does not grant ticket access.
         </p>
       )}
-    </div>
+    </div></RefreshSurface>
   )
 }

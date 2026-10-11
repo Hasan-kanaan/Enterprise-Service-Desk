@@ -1,11 +1,11 @@
 import { Eye, EyeOff, LockKeyhole, MoveRight } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { login } from '@/services/auth.service'
+import { getSetupStatus, login } from '@/services/auth.service'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { getApiErrorMessage } from '@/services/api'
 
@@ -13,6 +13,13 @@ const loginSchema = z.object({ email: z.string().email('Enter a valid company em
 type LoginForm = z.infer<typeof loginSchema>
 
 export function LoginPage() {
+  const [setupAvailable, setSetupAvailable] = useState<boolean | null>(null)
+  const [statusError, setStatusError] = useState(false)
+  useEffect(() => {
+    let active = true
+    getSetupStatus().then(({ available }) => { if (active) setSetupAvailable(available) }).catch(() => { if (active) setStatusError(true) })
+    return () => { active = false }
+  }, [])
   const [showPassword, setShowPassword] = useState(false)
   const user = useAppSelector((state) => state.auth.user)
   const navigate = useNavigate()
@@ -29,6 +36,10 @@ export function LoginPage() {
   }
 
   if (user) return <Navigate to={(location.state as { from?: string } | null)?.from ?? '/dashboard'} replace />
+
+  if (statusError) return <section role="alert">Setup status unavailable. <button onClick={() => window.location.reload()}>Retry</button></section>
+  if (setupAvailable === null) return <p role="status">Checking setup availability...</p>
+  if (setupAvailable) return <Navigate to="/setup" replace />
 
   return (
     <section className="grid w-full items-center gap-16 lg:grid-cols-[1.05fr_0.95fr]">
@@ -47,7 +58,6 @@ export function LoginPage() {
         <p><Link to="/forgot-password">Forgot password?</Link></p>
           <p><Link to="/resend-activation">Resend activation email</Link></p>
           </form>
-        <p className="mt-6 text-center text-xs leading-5 text-slate-500 dark:text-slate-400">Need to initialize a new deployment? <Link className="font-semibold text-cyan-700 hover:underline dark:text-cyan-300" to="/setup">Open initial setup</Link></p>
       </div>
     </section>
   )

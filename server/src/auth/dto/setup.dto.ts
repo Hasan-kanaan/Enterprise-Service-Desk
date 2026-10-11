@@ -1,7 +1,8 @@
 import { Transform } from 'class-transformer';
-import { Password } from '../password';
 import {
   IsEmail,
+  IsBoolean,
+  IsOptional,
   IsNotEmpty,
   IsString,
   MaxLength,
@@ -29,19 +30,15 @@ export class SetupDto {
   @IsNotEmpty()
   @MaxLength(512)
   setupSecret!: string;
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(3)
-  @MaxLength(50)
-  username!: string;
 
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   @IsEmail()
   @IsNotEmpty()
   email!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(8)
-  @Password()
-  password!: string;
+  @IsOptional()
+  @IsBoolean()
+  restart?: boolean;
 }

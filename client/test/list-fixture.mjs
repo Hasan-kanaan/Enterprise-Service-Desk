@@ -3,7 +3,7 @@ export function pageFixture(rows, url, dated = true) {
   const p = url.searchParams
   const search = (p.get('search') ?? '').trim().toLowerCase()
   let matches = rows.filter(row => {
-    if (search && !(row.title ? row.title.toLowerCase().includes(search) || String(row.id) === search.replace(/^#/, '') : `${row.username} ${row.email ?? ''}`.toLowerCase().includes(search))) return false
+    if (search && !(row.title ? row.title.toLowerCase().includes(search) || String(row.id) === search.replace(/^#/, '') : `${row.displayName} ${row.email ?? ''}`.toLowerCase().includes(search))) return false
     if (p.get('status') && row.status !== p.get('status')) return false
     if (p.get('role') && row.role !== p.get('role')) return false
     if (p.has('active') && (p.get('active') === 'true') === ['RESOLVED', 'CLOSED', 'CANCELLED'].includes(row.status)) return false

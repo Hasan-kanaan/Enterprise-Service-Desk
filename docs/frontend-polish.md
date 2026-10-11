@@ -1,5 +1,28 @@
 # Frontend UI/UX polish — 2026-10-04
 
+## Identity and navigation (2026-10-11)
+
+Username has been removed from the Enterprise Service Desk identity model.
+Email is the unique immutable login, activation and recovery identity.
+displayName is the required human-readable identity shown throughout the product.
+User.id remains the stable relational identity. Duplicate display names are allowed.
+The UI may render a generated avatar using the first initial of displayName.
+User-uploaded profile pictures are not implemented in the current phase.
+The topbar identity control opens Profile.
+The sidebar bottom navigation uses Settings rather than a Profile/avatar control.
+
+The migration preserves valid names and fills only missing/blank legacy names once
+from the former username (or neutral Account if that too is blank), then enforces
+NOT NULL/nonblank displayName and removes the old column/index. Historical IDs,
+email, sessions, roles and lifecycle remain unchanged. No runtime fallback remains.
+See [identity verification](identity-model-verification.md) for the migration,
+contract changes, checks and retest list. ISS-012/ISS-013 still await manual Network
+evidence; their pagination/stale-response implementation was not changed.
+
+The [2026-10-11 manual-testing follow-up](manual-ui-verification.md) records Kino
+branding, notification/profile/refresh/select/toast fixes, administration drawers,
+the international phone field, exact verification and remaining manual checks.
+
 ## Design and scope
 
 The authenticated application uses neutral surfaces, one teal accent, 6px default
@@ -13,7 +36,7 @@ and attachments nested under Work history. These are addressed as follows:
 
 - A 244px persistent sidebar, 56px top bar and wide content area. My Requests is
   present for every role and visually separate from support/administration.
-  Identity prefers displayName. The mobile drawer uses a modal dialog with focus
+  Identity uses required displayName; the topbar opens Profile and sidebar bottom opens Settings. The mobile drawer uses a modal dialog with focus
   containment, Escape/backdrop dismissal, focus restoration and scroll locking.
 - Shared buttons, fields, panels, notices, status badges and list rows are denser.
   `workspace.css` contains shell and page layout styles; `tickets.css` remains the
@@ -49,7 +72,7 @@ The working tree was clean at the start.
 
 Category names come from the existing small active options catalog, once per list
 screen, with an ID fallback for unavailable/archived names. Operational summaries
-contain owner IDs, not person projections: rows show those IDs or collaboration
+contain owner IDs, not person projections: rows show assignment/collaboration
 context, while detail retains names. There are no per-row requests or new counts.
 
 ## Verification performed
@@ -92,7 +115,7 @@ Firefox/Safari run, or external accessibility audit is claimed.
 ## Remaining boundaries
 
 - Owner names are not available in the existing paginated summary projection;
-  rows use truthful IDs and detail provides names. Archived category names can
+  rows use assignment context and detail provides names. Archived category names can
   similarly fall back to IDs in lists.
 - Team membership counts and home Region/Department on Profile were not invented;
   the existing respective catalog/auth projections do not provide them.

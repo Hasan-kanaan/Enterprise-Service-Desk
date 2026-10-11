@@ -45,8 +45,13 @@ export function ActionMenu({
         style={position}
         aria-label={label}
         onClick={(event) => {
-          if ((event.target as HTMLElement).closest('button:not(:disabled), a'))
+          if ((event.target as HTMLElement).closest('button:not(:disabled), a')) {
             popover.current?.hidePopover()
+            // A form may open from this menu. Restore to its visible trigger,
+            // rather than leaving the dialog to remember a hidden menu item.
+            const trigger = popover.current?.previousElementSibling
+            if (trigger instanceof HTMLElement) trigger.focus()
+          }
         }}
       >
         {children}

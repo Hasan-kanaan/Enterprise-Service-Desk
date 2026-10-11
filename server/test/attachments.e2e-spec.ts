@@ -104,7 +104,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       users[name] = await db.user.create({
         data: {
           sessions: { create: { id: sessionIds[name] } },
-          username: `${name}-${prefix}`.slice(0, 50),
+          displayName: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',
           activatedAt: new Date(),
@@ -283,9 +283,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     expect(file).not.toHaveProperty('storageKey');
     expect((await download(file.id).expect(200)).text).toBe('original');
     for (const who of ['outsider', 'agent', 'admin', 'superAdmin'])
-      expect((await download(file.id, who)).status).toBe(
-        who.includes('Admin') || who === 'admin' ? 403 : 404,
-      );
+      await download(file.id, who).expect(404);
     await download(file.id, 'manager').expect(200); // Existing shared NEW intake visibility.
     for (const method of ['delete', 'patch', 'post'] as const)
       await request(app.getHttpServer())
@@ -325,7 +323,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     for (const who of ['second', 'historical', 'outsider', 'nextManager'])
       await download(file.id, who).expect(404);
     for (const who of ['admin', 'superAdmin'])
-      await download(file.id, who).expect(403);
+      await download(file.id, who).expect(404);
     await db.subtask.update({
       where: { id: subtaskId },
       data: { status: 'COMPLETED' },
@@ -352,7 +350,9 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       for (const who of ['manager', 'lead', 'collaborator'])
         await remove(record.id, who, kind, file.id).expect(403);
       for (const who of ['admin', 'superAdmin'])
-        await remove(record.id, who, kind, file.id).expect(403);
+        await remove(record.id, who, kind, file.id).expect(
+          kind === 'messages' ? 404 : 403,
+        );
       if (kind === 'internal-notes') {
         await download(file.id, 'employee').expect(404);
         await remove(record.id, 'employee', kind, file.id).expect(403);
@@ -397,7 +397,11 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
         'admin',
         'superAdmin',
       ])
-        await remove(record.id, who, kind).expect(403);
+        await remove(record.id, who, kind).expect(
+          kind === 'messages' && ['admin', 'superAdmin'].includes(who)
+            ? 404
+            : 403,
+        );
       const first = await remove(record.id, 'agent', kind).expect(200);
       expect(first.body.content).toBeNull();
       expect(first.body.author.id).toBe(users.agent.id);

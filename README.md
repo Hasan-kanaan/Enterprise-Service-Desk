@@ -1,8 +1,37 @@
 # Enterprise Service Desk
 
+## Identity and navigation (2026-10-11)
+
+Username has been removed from the Enterprise Service Desk identity model.
+Email is the unique immutable login, activation and recovery identity.
+displayName is the required human-readable identity shown throughout the product.
+User.id remains the stable relational identity. Duplicate display names are allowed.
+The UI may render a generated avatar using the first initial of displayName.
+User-uploaded profile pictures are not implemented in the current phase.
+The topbar identity control opens Profile.
+The sidebar bottom navigation uses Settings rather than a Profile/avatar control.
+
+The migration preserves valid names and fills only missing/blank legacy names once
+from the former username (or neutral Account if that too is blank), then enforces
+NOT NULL/nonblank displayName and removes the old column/index. Historical IDs,
+email, sessions, roles and lifecycle remain unchanged. No runtime fallback remains.
+See [identity verification](docs/identity-model-verification.md) for the migration,
+contract changes, checks and retest list. ISS-012/ISS-013 still await manual Network
+evidence; their pagination/stale-response implementation was not changed.
+
 For isolated human browser testing, follow [the manual database guide](docs/manual-testing.md).
 It uses `enterprise_service_desk_manual`, preserves the real `/setup` bootstrap,
 and provides explicitly guarded seed/reset commands separate from startup and tests.
+
+## Verified first-run bootstrap (2026-10-11)
+
+Fresh deployments direct `/login` to `/setup`. The installation secret authorizes
+reserving exactly one pending Super Admin; it does not establish a password or
+session. The existing emailed activation link verifies the mailbox and lets the
+user choose a password. Activation closes bootstrap permanently and requires
+normal sign-in. Before activation, the setup secret permits an explicit restart
+with corrected identity/email, invalidating previous links. See
+[account security](docs/account-security.md#verified-bootstrap-2026-10-11).
 
 ## Universal requester identity and role lifecycle (2026-10-03)
 
@@ -11,8 +40,8 @@ System administration grants no service-desk support authority or other-user tic
 visibility. ADMIN/SUPER_ADMIN may still create and access their own requests through
 requester authority. My Requests is separate from Work and Administration.
 
-New accounts, including initial setup, require displayName and jobTitle; legacy
-NULL values are preserved with username/Not set fallbacks. Job title grants no
+Accounts, including initial setup, require displayName and jobTitle. Legacy
+missing display names are backfilled once by the identity migration; absent job titles show Not set. Job title grants no
 authorization, email is immutable, and ordinary metadata editing cannot change role.
 Dedicated role changes preserve identity/history, atomically reconcile old work and
 organization responsibilities, and invalidate sessions and unused action tokens.
@@ -482,7 +511,7 @@ ADMIN creates EMPLOYEE, AGENT, and MANAGER accounts
 Users log in normally
 ```
 
-The initial setup is available only while no `SUPER_ADMIN` exists. It becomes unavailable after the first `SUPER_ADMIN` is created. The bootstrap flow is not normal user registration.
+Initial setup remains available until the sole `SUPER_ADMIN` is activated. A pending identity can only be corrected/restarted with the installation secret; another Super Admin cannot be created. The bootstrap flow is not normal user registration.
 
 Authentication will be implemented gradually during Phase 1.
 
@@ -979,7 +1008,7 @@ Messages remain grouped with their original work cycle. Plain text is trimmed an
 
 Only a NEW requester message while WAITING_FOR_EMPLOYEE atomically resumes IN_PROGRESS. Edits, support messages, internal notes and duplicate retries never change status. RESOLVED/CLOSED require explicit reopening before further communication; CANCELLED never reopens. New public messages create the in-app notifications documented above in the same transaction. Real-time transport remains deferred.
 
-POST requires `{ content, expectedCycleId, clientRequestId }`, with a UUID request key. PATCH requires `{ content, expectedCycleId }`. The server assigns author and cycle. GET returns the current cycle ID, lightweight cycle summaries, posting permissions, and ordered records with author ID/username, createdAt, editedAt and canEdit. Current support can read authorized communication from older cycles. No internal notes are embedded in public conversation or history responses.
+POST requires `{ content, expectedCycleId, clientRequestId }`, with a UUID request key. PATCH requires `{ content, expectedCycleId }`. The server assigns author and cycle. GET returns the current cycle ID, lightweight cycle summaries, posting permissions, and ordered records with author ID/displayName, createdAt, editedAt and canEdit. Current support can read authorized communication from older cycles. No internal notes are embedded in public conversation or history responses.
 
 Transactions reuse ticket/user locks, active-account checks and serializable conflict handling. Relationship-row locks also protect collaborator/Team Lead writes against concurrent loss of authority. Creation keys deduplicate retries; a private original-request fingerprint permits recovery even after editing without storing a revision stream. Conflicts require explicit reload/review, and stale drafts never silently move into another cycle. The frontend preserves recoverable drafts and separates public and internal composers.
 
@@ -1335,7 +1364,7 @@ The existing administrative organization/user APIs are not called for operationa
 | `GET /ticket-workspace/tickets/:ticketId` | Actions/statuses from existing policies and eligible team names for an authorized ticket |
 | `GET /ticket-workspace/subtasks/:subtaskId` | Authorized subtask fields/display names, historical/frozen flags, actions, and eligible assignment choices; no parent content |
 
-These reads and their `/people` lookup routes require MANAGER or AGENT authentication. Resource projections reuse existing visibility predicates and authorization methods. Ticket/subtask context reads use a consistent database snapshot. Context options contain only team IDs/names; bounded people lookups contain active eligible user IDs/usernames; ordinary agents get no assignee directory and Team Leads get only the authorized team. Terminal work returns no assignment choices. These are current presentation hints, not grants: existing transactional mutation checks remain authoritative after any concurrent change.
+These reads and their `/people` lookup routes require MANAGER or AGENT authentication. Resource projections reuse existing visibility predicates and authorization methods. Ticket/subtask context reads use a consistent database snapshot. Context options contain only team IDs/names; bounded people lookups contain active eligible user IDs/display names; ordinary agents get no assignee directory and Team Leads get only the authorized team. Terminal work returns no assignment choices. These are current presentation hints, not grants: existing transactional mutation checks remain authoritative after any concurrent change.
 
 `pnpm test:browser` runs Employee, operational and administration suites. Communication coverage includes requester/support posting, own editing, internal-note separation, collaborator controls, frozen history, waiting replies and draft recovery across failures/reopening. Existing lifecycle, organization, mobile, session and error flows remain covered. Browser tests use isolated API fixtures; PostgreSQL e2e separately exercises actual authorization and atomicity. No browser-to-live-database coverage is claimed.
 
@@ -1347,7 +1376,7 @@ ADMIN/SUPER_ADMIN account and supported organization management are implemented 
 
 ADMIN and SUPER_ADMIN use a dedicated administration navigation with `/admin`, `/admin/accounts`, `/admin/organization`, `/admin/organization/teams/:teamId`, and `/admin/ticket-configuration`. Their dashboard opens `/admin`; the old `/users` URL redirects to the protected accounts route. EMPLOYEE/AGENT/MANAGER cannot enter these routes. Administration never loads ticket queues, details, history, or support subtasks.
 
-The account directory displays username, email, role, ACTIVE/INACTIVE status, and existing nullable region/department labels. Search and status filtering operate on the authorized directory. Creation requires a username, email and an explicitly chosen permitted role, with an optional international phone number. It provisions a pending account and sends activation email; users choose their passwords. Status and activation are shown separately. SUPER_ADMIN can create ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN can create MANAGER/AGENT/EMPLOYEE. No normal workflow creates SUPER_ADMIN or offers public registration. The backend SUPER_ADMIN creation matrix was explicitly expanded to these four roles in this phase and is covered by unit/HTTP tests.
+The account directory displays displayName, email, role, ACTIVE/INACTIVE status, and existing nullable region/department labels. Search and status filtering operate on the authorized directory. Creation requires displayName, jobTitle, email and an explicitly chosen permitted role, with an optional international phone number. It provisions a pending account and sends activation email; users choose their passwords. Status and activation are shown separately. SUPER_ADMIN can create ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN can create MANAGER/AGENT/EMPLOYEE. No normal workflow creates SUPER_ADMIN or offers public registration. The backend SUPER_ADMIN creation matrix was explicitly expanded to these four roles in this phase and is covered by unit/HTTP tests.
 
 Activation/deactivation uses the existing lifecycle API and authority matrix. Confirmation explains administrative offboarding of current responsibilities, preservation of historical attribution, and that no replacements are selected. Reactivation explicitly requires fresh sign-in and does not restore previous sessions or responsibilities. The resulting account status is refreshed from the directory. There is no delete-user control, operational preview, or replacement-person picker. Account creation also participates in existing access-token renewal; only session/bootstrap endpoints bypass the ordinary 401 retry mechanism.
 
@@ -1364,15 +1393,15 @@ Organization controls:
 
 GLOBAL creation omits regionId; REGION creation requires one actual region. No organization records or relationships are invented. Agents can join multiple teams and managers can manage multiple teams. TeamManager remains organizational only, with no ticket authority. Ordinary member removal atomically clears only that Agent from current operational primary assignments and actionable subtasks in the latest unfinished cycle for that Team. Team/Manager/status remain; no replacement is chosen. Terminal tickets, ended cycles, completed/cancelled subtasks and completion attribution are preserved. Making completed/cancelled work actionable revalidates retained Agent membership and eligibility. Team Lead responsibility must be removed first.
 
-PATCH `/users/:userId` and **Edit account** support only optional `username`, `displayName`, `jobTitle`, `phoneNumber`, `regionId` and `departmentId`. Omission preserves values; null clears phone/home organization, but username cannot be null. Empty/unknown-field patches return 400. SUPER_ADMIN edits ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN edits MANAGER/AGENT/EMPLOYEE, including inactive or pending accounts. SUPER_ADMIN accounts cannot be edited through this flow. Email is the immutable login/recovery identity and is not admin-editable. Role editing uses the dedicated lifecycle endpoint;  this endpoint preserves role unchanged. Dedicated activation, status, password and session workflows remain separate.
+PATCH `/users/:userId` and **Edit account** support only optional `displayName`, `jobTitle`, `phoneNumber`, `regionId` and `departmentId`. Omission preserves values; null clears phone/home organization, but displayName cannot be null. Empty/unknown-field patches return 400. SUPER_ADMIN edits ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN edits MANAGER/AGENT/EMPLOYEE, including inactive or pending accounts. SUPER_ADMIN accounts cannot be edited through this flow. Email is the immutable login/recovery identity and is not admin-editable. Role editing uses the dedicated lifecycle endpoint;  this endpoint preserves role unchanged. Dedicated activation, status, password and session workflows remain separate.
 
-Username trims/lowercases, requires 3–50 characters and remains database-unique (duplicate -> 409). Username updates preserve sessions, sessionVersion and refresh/action tokens. Historical records keep stable User IDs and display the current username; no history is rewritten. Optional phone uses the existing international normalization/validation, remains unverified/non-auth, and clears phoneVerifiedAt on change or explicit null.
+Display names are trimmed, required and bounded to 100 characters; duplicates are allowed. Display name updates preserve sessions, sessionVersion and refresh/action tokens. Historical records keep stable User IDs and display the current displayName; no history is rewritten. Optional phone uses the existing international normalization/validation, remains unverified/non-auth, and clears phoneVerifiedAt on change or explicit null.
 
 Home Region/Department are descriptive only and grant no ticket visibility, routing, membership or responsibility authority. New destinations must exist and be active (404/409 otherwise). Existing archived home references may remain, including during unrelated edits, or be explicitly cleared/replaced. The dialog loads the two admin catalogs on open, labels retained archived references, and offers active new destinations. Stable User locks, transactional actor/session/authority checks and organization row locks serialize safely with archival; conflicts return 409 without retries. No operational reconciliation, session invalidation or migration occurs.
 
 Focused account checks: run only `test/account-metadata.e2e-spec.ts` with the server e2e Jest configuration and isolated `TEST_DATABASE_URL`; after the client build, run `node test/administration-flow.mjs --account-metadata`.
 
-GET /users retains nullable region/department ID/name/archivedAt labels in its paginated directory projection. GET /organization/teams returns configuration without member expansion; GET /organization/teams/:teamId/members paginates user ID/username/role/status for membership display. Purpose-specific bounded people lookups serve organization selectors. Existing administrative guards remain and no operational data is exposed.
+GET /users retains nullable region/department ID/name/archivedAt labels in its paginated directory projection. GET /organization/teams returns configuration without member expansion; GET /organization/teams/:teamId/members paginates user ID/displayName/role/status for membership display. Purpose-specific bounded people lookups serve organization selectors. Existing administrative guards remain and no operational data is exposed.
 
 Organization maintenance uses nullable `archivedAt` (NULL = active), with no physical deletion. PATCH `/organization/{regions|departments|specialties|teams}/:id` renames via `{ name }`; POST `/:id/archive` and `/:id/reactivate` change eligibility. Names retain their existing length limits and stable IDs; archived records can be renamed. Administration lists include ACTIVE/ARCHIVED records, while new operational/configuration selections require active entities. Existing references and current display names remain readable.
 
@@ -1386,7 +1415,7 @@ Serializable transactions revalidate the active actor and session, lock the Team
 
 Focused coverage checks: run `test/team-coverage.e2e-spec.ts` alone with the server e2e Jest configuration and isolated `TEST_DATABASE_URL`; after the client build, run `node test/administration-flow.mjs --team-coverage`.
 
-POST/DELETE `/organization/{agents|teams}/:id/specialties/:specialtyId` manage existing many-to-many specialty relations. New links require active entities and an activated AGENT; duplicate links return 409 and missing removal returns 404. Links survive deactivation/archival, remain explicitly removable, and grant no ticket/routing authority. Team coverage editing is implemented; account username/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing uses the dedicated lifecycle endpoint described above. Focused maintenance checks: from `server`, run the `test/organization-maintenance.e2e-spec.ts` Jest path against the isolated test database; from `client`, build then run `node test/administration-flow.mjs --organization-maintenance`. For service-desk configuration use `test/ticket-configuration.e2e-spec.ts` and `node test/administration-flow.mjs --ticket-configuration`; `node test/employee-flow.mjs --ticket-configuration` runs only active-choice and archived-reference form checks. These focused modes skip unrelated suites.
+POST/DELETE `/organization/{agents|teams}/:id/specialties/:specialtyId` manage existing many-to-many specialty relations. New links require active entities and an activated AGENT; duplicate links return 409 and missing removal returns 404. Links survive deactivation/archival, remain explicitly removable, and grant no ticket/routing authority. Team coverage editing is implemented; account displayName/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing uses the dedicated lifecycle endpoint described above. Focused maintenance checks: from `server`, run the `test/organization-maintenance.e2e-spec.ts` Jest path against the isolated test database; from `client`, build then run `node test/administration-flow.mjs --organization-maintenance`. For service-desk configuration use `test/ticket-configuration.e2e-spec.ts` and `node test/administration-flow.mjs --ticket-configuration`; `node test/employee-flow.mjs --ticket-configuration` runs only active-choice and archived-reference form checks. These focused modes skip unrelated suites.
 
 Administration uses shared loading/error states and native confirmation dialogs, explicit 403/404/409 reload, disabled pending controls, validation, empty states, and responsive layouts. `pnpm test:browser` now runs Employee, operational, and administration suites sequentially. Administration acceptance covers both creation/lifecycle matrices, every organization operation exposed above, relationship restrictions, route isolation, token renewal, error recovery, and mobile layout. Browser fixtures remain isolated from actual application data; PostgreSQL tests separately verify real backend contracts and authorization.
 
@@ -1838,8 +1867,8 @@ collections from configuration catalogs and existing bounded reads.
 | --- | --- |
 | `GET /tickets` | Employee own requests; Manager `queue=intake` or `mine`; Agent `mine`, `primary`, `collaboration`; Team Lead `team`. Optional `search`, `status`, `active=true/false`, `categoryId`. No queue means all currently visible tickets. |
 | `GET /tickets/subtasks`, `/tickets/:ticketId/subtasks` | Independently authorized subtasks; optional literal title `search` and `currentWork=true`. No parent ticket expansion. |
-| `GET /users` | Existing ADMIN/SUPER_ADMIN directory projection, with username/email `search`, `role`, and `status`. |
-| `GET /organization/teams/:teamId/members` | ADMIN/SUPER_ADMIN membership display, with username `search`. Team catalogs no longer embed members. |
+| `GET /users` | Existing ADMIN/SUPER_ADMIN directory projection, with displayName/email `search`, `role`, and `status`. |
+| `GET /organization/teams/:teamId/members` | ADMIN/SUPER_ADMIN membership display, with displayName `search`. Team catalogs no longer embed members. |
 
 These APIs return `{ items, nextCursor, hasMore }`. `limit` defaults to 25; values
 outside 1–100 are rejected. Ticket/subtask continuation uses immutable
@@ -1869,7 +1898,7 @@ parameters; small people and membership searches remain local. Mobile layouts
 are retained. No new data-fetching dependency is needed.
 
 Assignment payloads retain eligible team names, but no longer contain every Agent
-or Manager. Type a username in the selector; at most 20 eligible `{ id, username }`
+or Manager. Type a displayName in the selector; at most 20 eligible `{ id, displayName }`
 matches are returned. Blank search returns no people. Refine the search if needed.
 
 - `/ticket-workspace/tickets/:ticketId/people?purpose=primary&teamId=...&search=...`

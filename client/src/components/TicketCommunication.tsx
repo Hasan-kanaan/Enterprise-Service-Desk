@@ -1,3 +1,4 @@
+import { RefreshSurface } from './RefreshSurface'
 import { useOlderPages, uniqueById } from '@/hooks/useOlderPages'
 import { AttachmentList, AttachmentPicker } from './Attachments'
 import {
@@ -14,7 +15,7 @@ import type { WorkCycle } from '@/types/tickets'
 type Entry = {
   id: number
   createdInCycleId: number
-  author: { id: number; username: string; displayName?: string | null }
+  author: { id: number; displayName: string }
   content: string | null
   deletedAt: string | null
   canDelete: boolean
@@ -38,17 +39,20 @@ export function TicketCommunication({
   requesterId,
   cycles,
   onChanged,
+  refreshKey = 0,
 }: {
   ticketId: number
   requesterId: number
   cycles: WorkCycle[]
   onChanged: () => void
+  refreshKey?: number
 }) {
   const [notesAllowed, setNotesAllowed] = useState(false)
   return (
     <>
       <CommunicationStream
         ticketId={ticketId}
+        refreshKey={refreshKey}
         requesterId={requesterId}
         cycles={cycles}
         onChanged={onChanged}
@@ -58,6 +62,7 @@ export function TicketCommunication({
       {notesAllowed && (
         <CommunicationStream
           ticketId={ticketId}
+          refreshKey={refreshKey}
           requesterId={requesterId}
           cycles={cycles}
           onChanged={onChanged}
@@ -74,6 +79,7 @@ function CommunicationStream({
   cycles,
   kind,
   onChanged,
+  refreshKey = 0,
   onAccess,
 }: {
   ticketId: number
@@ -81,6 +87,7 @@ function CommunicationStream({
   cycles: WorkCycle[]
   kind: 'messages' | 'internal-notes'
   onChanged: () => void
+  refreshKey?: number
   onAccess?: (allowed: boolean) => void
 }) {
   const path = `/tickets/${ticketId}/${kind}`
@@ -102,6 +109,7 @@ function CommunicationStream({
       },
       [path, onAccess],
     ),
+    refreshKey,
   )
   const [draft, setDraft] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -264,7 +272,7 @@ function CommunicationStream({
   }
   return (
     <>
-      <section
+      <RefreshSurface busy={resource.loading && !!resource.data}><section
         id={notes ? undefined : 'ticket-conversation'}
         className={`panel communication ${notes ? 'internal-notes' : 'public-thread'}`}
         aria-label={title}
@@ -284,7 +292,7 @@ function CommunicationStream({
             ? 'Internal notes are visible to authorized support only.'
             : 'Shared with the requester and support team.'}
         </p>
-        {resource.loading ? (
+        {resource.loading && !resource.data ? (
           <LoadingState label={`Loading ${title.toLowerCase()}...`} />
         ) : resource.error ? (
           <ErrorState error={resource.error} onRetry={reload} />
@@ -338,8 +346,7 @@ function CommunicationStream({
                         <li key={record.id}>
                           <p className="small">
                             <strong>
-                              {record.author.displayName ??
-                                record.author.username}
+                              {record.author.displayName}
                             </strong>
                             <span className="thread-role">
                               {record.author.id === requesterId
@@ -511,7 +518,7 @@ function CommunicationStream({
             </>
           )
         )}
-      </section>
+      </section></RefreshSurface>
     </>
   )
 }

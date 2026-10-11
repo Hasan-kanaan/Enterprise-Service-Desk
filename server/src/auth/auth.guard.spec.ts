@@ -46,6 +46,12 @@ describe('Database-backed authentication', () => {
   it.each([
     null,
     { status: 'INACTIVE', sessionVersion: 0 },
+    {
+      status: 'ACTIVE',
+      role: 'SUPER_ADMIN',
+      activatedAt: null,
+      sessionVersion: 0,
+    },
     { status: 'ACTIVE', sessionVersion: 1 },
   ])('rejects missing, inactive, and invalidated sessions', async (user) => {
     findUnique.mockResolvedValue(user);

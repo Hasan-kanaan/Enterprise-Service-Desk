@@ -100,6 +100,7 @@ export function TicketOperationForm({
           <PeopleLookup
             label="Responsible manager"
             value={manager}
+            selectedName={manager === ticket.assignedManagerId ? ticket.ownership.manager?.displayName : undefined}
             onChange={setManager}
             url={`/ticket-workspace/tickets/${ticket.id}/people?purpose=manager`}
           />
@@ -119,6 +120,7 @@ export function TicketOperationForm({
             teams={operations.teams}
             teamId={team}
             agentId={agent}
+            agentName={agent === ticket.assignedAgentId ? ticket.ownership.agent?.displayName : undefined}
             setTeam={setTeam}
             setAgent={setAgent}
             changeTeam={operations.permissions.assignTeam}

@@ -96,7 +96,7 @@ export function communicationFixture() {
         ticketId: ticket.id,
         kind,
         createdInCycleId: cycle.id,
-        author: { id: user.id, username: user.username },
+        author: { id: user.id, displayName: user.displayName },
         createdAt: new Date().toISOString(),
         editedAt: null,
         deletedAt: null,

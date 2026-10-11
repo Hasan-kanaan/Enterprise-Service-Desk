@@ -1,3 +1,4 @@
+import { RefreshSurface } from '@/components/RefreshSurface'
 import { Plus, Search, RefreshCw, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAppSelector } from '@/hooks/storeHooks'
@@ -56,13 +57,13 @@ export function EmployeeTicketsPage({
   const counts = summary.data?.counts
   const searching = !!(query || status || filter !== 'all')
   return (
-    <div className="ticket-workspace">
+    <RefreshSurface busy={!!(loading && tickets.length)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
           <p className="eyebrow">Requester workspace</p>
           <h1>
             {overview
-              ? `Hello, ${user?.displayName ?? user?.username ?? 'there'}.`
+              ? `Hello, ${user?.displayName ?? 'there'}.`
               : 'My Requests'}
           </h1>
           <p className="muted">
@@ -144,7 +145,7 @@ export function EmployeeTicketsPage({
             </div>
           </>
         )}
-        {loading ? (
+        {loading && !tickets.length ? (
           <LoadingState />
         ) : error && !tickets.length ? (
           <ErrorState error={error} onRetry={reload} />
@@ -176,6 +177,6 @@ export function EmployeeTicketsPage({
       <p className="quiet-note">
         Only tickets you requested appear in this workspace.
       </p>
-    </div>
+    </div></RefreshSurface>
   )
 }

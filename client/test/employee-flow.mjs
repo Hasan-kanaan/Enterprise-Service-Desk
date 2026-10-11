@@ -82,9 +82,9 @@ const options = {
 }
 const now = '2026-09-22T08:00:00.000Z'
 const ownership = {
-  manager: { id: 20, username: 'Sara' },
+  manager: { id: 20, displayName: 'Sara' },
   team: { id: 8, name: 'Network support' },
-  agent: { id: 31, username: 'Ali' },
+  agent: { id: 31, displayName: 'Ali' },
 }
 let tickets = []
 let cycles = []
@@ -95,7 +95,7 @@ const original = (id) => ({
   isCurrent: true,
   isEnded: false,
   startedAt: now,
-  startedBy: { id: 10, username: 'Maya' },
+  startedBy: { id: 10, displayName: 'Maya' },
   startReason: null,
   startDisposition: null,
   outcome: null,
@@ -173,6 +173,7 @@ function response(request) {
   const body = submission(request).body
   if (/^\/tickets\/\d+\/attachments$/.test(path)) return [200, tickets.find(t => t.id === Number(path.split('/')[2]))?.attachments ?? []]
   if (/^\/tickets\/attachments\/\d+\/download$/.test(path)) return [200, { file: 'downloaded' }]
+  if (path === '/auth/setup/status') return [200, { available: false }]
   if (path === '/auth/refresh') {
     refreshCount++
     return loggedIn
@@ -182,7 +183,7 @@ function response(request) {
             accessToken: `token-${refreshCount}`,
             user: {
               id: 10,
-              username: 'Maya',
+              displayName: 'Maya',
               email: 'maya@example.test',
               role,
             },
@@ -243,7 +244,7 @@ function response(request) {
   }
   const communicationTicket = tickets.find(item => item.id === Number(path.split('/')[2]))
   if (communicationTicket && /\/(messages|internal-notes)/.test(path))
-    return communication.respond(request, communicationTicket, cycles[0], { id: 10, username: 'Maya', role: 'EMPLOYEE' }, true, false)
+    return communication.respond(request, communicationTicket, cycles[0], { id: 10, displayName: 'Maya', role: 'EMPLOYEE' }, true, false)
   const match = path.match(
     /^\/tickets\/(\d+)(?:\/(history|cancel|status|reopen))?$/,
   )
@@ -419,7 +420,7 @@ try {
   assert.equal(refreshCount, 1)
   console.log('PASS: restored employee session and empty list')
   await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
-  await waitText('No notifications yet.')
+  await waitText('No notifications yet')
   await evaluate(`document.querySelector('[aria-label="Close dialog"]').click()`)
   await click('New request')
   await waitText('New request')
@@ -513,7 +514,7 @@ try {
   await click('Send message')
   await waitText('Employee context')
   await until(() => evaluate(`!![...document.querySelectorAll('button')].find(el => el.textContent === 'Edit message')`), 'message posted')
-  communication.records.push(...Array.from({ length: 61 }, (_, i) => ({ id: 10000 + i, ticketId: 142, kind: 'messages', createdInCycleId: cycles[0].id, author: { id: 20, username: 'Sara' }, content: `Older public ${i}`, createdAt: '2020-01-01T00:00:00.000Z', editedAt: null, deletedAt: null, attachments: [] })))
+  communication.records.push(...Array.from({ length: 61 }, (_, i) => ({ id: 10000 + i, ticketId: 142, kind: 'messages', createdInCycleId: cycles[0].id, author: { id: 20, displayName: 'Sara' }, content: `Older public ${i}`, createdAt: '2020-01-01T00:00:00.000Z', editedAt: null, deletedAt: null, attachments: [] })))
   await click('Refresh conversation')
   await waitText('Load older messages')
   assert.equal(await evaluate(`document.querySelectorAll('.communication-records > li').length`), 25)
@@ -563,7 +564,7 @@ try {
   assert(!await evaluate(`document.body.textContent.includes('Employee corrected context')`))
   assert.equal(tickets[0].status, 'IN_PROGRESS')
   console.log('PASS: preserved file draft after upload failure and confirmed own attachment/message tombstones')
-  communication.records.push({ id: 9000, ticketId: 142, kind: 'messages', createdInCycleId: cycles[0].id, author: { id: 20, username: 'Sara' }, content: 'Support file reply', createdAt: now, editedAt: null, deletedAt: null, attachments: [{ id: 9001, filename: 'support.txt', byteSize: 12, createdAt: now, deletedAt: null }] })
+  communication.records.push({ id: 9000, ticketId: 142, kind: 'messages', createdInCycleId: cycles[0].id, author: { id: 20, displayName: 'Sara' }, content: 'Support file reply', createdAt: now, editedAt: null, deletedAt: null, attachments: [{ id: 9001, filename: 'support.txt', byteSize: 12, createdAt: now, deletedAt: null }] })
   await click('Refresh conversation')
   await waitText('Download support.txt')
   assert(!await evaluate(`[...document.querySelectorAll('.communication-records > li')].find(el => el.textContent.includes('Support file reply')).textContent.includes('Delete')`))
@@ -797,6 +798,7 @@ try {
     `document.querySelector('[aria-label="Refresh tickets"]').click()`,
   )
   await waitText('VPN disconnects repeatedly')
+  await until(() => evaluate(`!document.querySelector('[aria-label="Refresh tickets"]').disabled`), 'refresh completed before token assertion')
   assert.equal(refreshCount, before + 1)
   loggedIn = false
   retryUnauthorized = true
@@ -805,18 +807,25 @@ try {
   )
   await waitText('Welcome back')
   console.log('PASS: token renewal and deactivated session redirects to login')
-  role = 'ADMIN'
   loggedIn = true
   retryUnauthorized = false
-  const count = requests.filter((item) => item.includes('/tickets')).length
-  await navigate('/tickets')
-  await waitText('This page is not available for your account')
-  assert.equal(
-    requests.filter((item) => item.includes('/tickets')).length,
-    count,
-  )
+  for (const adminRole of ['ADMIN', 'SUPER_ADMIN']) {
+    role = adminRole
+    await navigate('/tickets')
+    await waitText('My Requests')
+    await waitText('VPN disconnects repeatedly')
+    await navigate('/tickets/142')
+    await waitText('VPN disconnects repeatedly')
+    assert(!await evaluate("!!document.querySelector('a[href=\"/work/intake\"]')"))
+    const before = requests.length
+    await navigate('/work/intake')
+    await waitText('This page is not available for your account')
+    assert(!requests.slice(before).some(path => path.includes('/tickets') || path.includes('/ticket-workspace')))
+    await navigate('/tickets/999999')
+    await waitText('This ticket could not be found or is no longer available to you.')
+  }
   assert.deepEqual(browserErrors, [])
-  console.log('PASS: admin route exclusion; no browser runtime errors')
+  console.log('PASS: administrative roles retain own requests, unrelated tickets stay unavailable and support routes remain excluded')
   console.log(
     'Browser acceptance checks passed. Screenshots: ' +
       join(tmpdir(), 'eds-employee-{desktop,mobile}.png'),

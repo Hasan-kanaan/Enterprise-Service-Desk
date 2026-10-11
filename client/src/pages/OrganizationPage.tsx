@@ -1,3 +1,4 @@
+import { RefreshSurface } from '@/components/RefreshSurface'
 import { ActionMenu } from '@/components/ActionMenu'
 import { SpecialtyLinks } from '@/components/SpecialtyLinks'
 import { useState } from 'react'
@@ -46,7 +47,7 @@ export function OrganizationPage() {
     toast.success('Organization updated')
     reload()
   }
-  if (resource.loading) return <LoadingState label="Loading organization..." />
+  if (resource.loading && !resource.data) return <LoadingState label="Loading organization..." />
   if (resource.error || !resource.data)
     return (
       <ErrorState
@@ -79,7 +80,7 @@ export function OrganizationPage() {
       </div>
     )
   return (
-    <div className="ticket-workspace">
+    <RefreshSurface busy={!!(resource.loading && resource.data)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
           <p className="eyebrow">Administration</p>
@@ -90,7 +91,7 @@ export function OrganizationPage() {
               : 'Regions, departments, specialties and team coverage.'}
           </p>
         </div>
-        <button className="button secondary" onClick={reload}>
+        <button className="button secondary" disabled={resource.loading} onClick={reload}>
           Refresh organization
         </button>
       </header>
@@ -148,7 +149,7 @@ export function OrganizationPage() {
           <div className="form-columns">
             <section className="panel detail-body">
               <h2>Team Lead</h2>
-              <p className="muted">{team.teamLead?.username ?? 'Unassigned'}</p>
+              <p className="muted">{team.teamLead?.displayName ?? 'Unassigned'}</p>
               <div className="button-row">
                 <button
                   className="button secondary"
@@ -170,7 +171,7 @@ export function OrganizationPage() {
             <section className="panel detail-body">
               <h2>Manager</h2>
               <p className="muted">
-                {team.managers[0]?.manager.username ?? 'Unassigned'}
+                {team.managers[0]?.manager.displayName ?? 'Unassigned'}
               </p>
               <p className="quiet-note">
                 Organizational responsibility only; no ticket authority.
@@ -220,7 +221,7 @@ export function OrganizationPage() {
               members.items.map((member) => (
                 <article className="admin-row" key={member.id}>
                   <div>
-                    <h3>{member.displayName ?? member.username}</h3>
+                    <h3>{member.displayName}</h3>
                     <p className="muted">
                       {member.role} / {member.status}
                     </p>
@@ -236,7 +237,7 @@ export function OrganizationPage() {
                     disabled={member.id === team.teamLeadId}
                     onClick={() =>
                       setAction({
-                        kind: 'remove-member',
+                        kind: 'remove-member', displayName: member.displayName,
                         userId: member.id,
                       })
                     }
@@ -332,7 +333,7 @@ export function OrganizationPage() {
                       <span>
                         Manager:{' '}
                         <strong>
-                          {item.managers[0]?.manager.username ??
+                          {item.managers[0]?.manager.displayName ??
                             (item.scope === 'REGION' && !item.archivedAt
                               ? 'Needs Manager'
                               : 'Unassigned')}
@@ -341,7 +342,7 @@ export function OrganizationPage() {
                       <span>
                         Team Lead:{' '}
                         <strong>
-                          {item.teamLead?.username ?? 'Unassigned'}
+                          {item.teamLead?.displayName ?? 'Unassigned'}
                         </strong>
                       </span>
                     </div>
@@ -404,6 +405,6 @@ export function OrganizationPage() {
           onDone={done}
         />
       )}
-    </div>
+    </div></RefreshSurface>
   )
 }

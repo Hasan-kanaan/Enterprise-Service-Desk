@@ -41,7 +41,7 @@ const projection = {
   editedAt: true,
   deletedAt: true,
   attachments: { select: attachmentSelect, orderBy: { id: 'asc' as const } },
-  author: { select: { id: true, username: true, displayName: true } },
+  author: { select: { id: true, displayName: true } },
 } as const;
 function publicRecord<
   T extends {

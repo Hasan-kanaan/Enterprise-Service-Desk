@@ -1,5 +1,54 @@
 # Project Status
 
+## Identity and navigation (2026-10-11)
+
+Username has been removed from the Enterprise Service Desk identity model.
+Email is the unique immutable login, activation and recovery identity.
+displayName is the required human-readable identity shown throughout the product.
+User.id remains the stable relational identity. Duplicate display names are allowed.
+The UI may render a generated avatar using the first initial of displayName.
+User-uploaded profile pictures are not implemented in the current phase.
+The topbar identity control opens Profile.
+The sidebar bottom navigation uses Settings rather than a Profile/avatar control.
+
+The migration preserves valid names and fills only missing/blank legacy names once
+from the former username (or neutral Account if that too is blank), then enforces
+NOT NULL/nonblank displayName and removes the old column/index. Historical IDs,
+email, sessions, roles and lifecycle remain unchanged. No runtime fallback remains.
+See [identity verification](docs/identity-model-verification.md) for the migration,
+contract changes, checks and retest list. ISS-012/ISS-013 still await manual Network
+evidence; their pagination/stale-response implementation was not changed.
+
+Current identity-phase verification: server lint/typecheck/build, 244 unit tests,
+363 PostgreSQL tests (17 suites), client lint/build, all browser suites, focused
+bootstrap/UI/session modes, 8 phone tests, 5 seed checks and 2 dependency compatibility
+checks pass. The test database has 25 migrations and zero drift. The server runtime
+audit reports critical proxy-addr advisory GHSA-jqcg-44mw-7w3h in the unchanged lockfile;
+client runtime audit passes. Development/manual migration and real Mailpit retest
+remain installation/manual steps. Full results and file map are in the linked report.
+
+## Verified bootstrap: ISS-002 / ISS-003 / ISS-004 (2026-10-11)
+
+Implemented one pending root, secret-protected correction/restart, existing emailed
+activation/password selection, and automatic fresh/pending login-to-setup routing.
+Activation closes bootstrap without auto-login. Advisory and User row locks preserve
+one identity and invalidate prior links atomically. Existing authorization, sessions,
+ordinary account lifecycle and ticket authority remain unchanged. No schema/migration,
+dependency, provider, commit or push.
+
+Bootstrap unit tests (19 suites / 244 tests), account-security/hardening HTTP tests
+(24), dependency checks and builds passed. Regression alignment on 2026-10-11
+corrected nine stale PostgreSQL expectations and three browser suites using tests
+and documentation only. The four previously failing PostgreSQL suites pass 66 tests;
+the full final run passes **16 suites / 357 tests**. All four browser suites plus
+bootstrap acceptance pass. No production changes in the alignment follow-up.
+A stopped local Docker engine caused one invalid connection-failure run; restarting
+it restored the existing test container without reset/seed/migration. No remaining
+regression failures. See [each failure's classification, exact changes, commands
+and results](docs/bootstrap-verification.md). Bootstrap remains accepted pending
+real Mailpit/manual retest.
+
+
 ## Frontend UI/UX polish (2026-10-04)
 
 Unified authenticated navigation, shared controls, requester/support detail,
@@ -33,7 +82,7 @@ browser run, migration, commit or push was performed for this correction.
 ## Universal requester identity and role lifecycle (2026-10-03)
 
 Implemented both slices: required new-account displayName/jobTitle with truthful
-legacy NULLs; all-role My Requests with relationship-based actions and notifications;
+the later migration now backfilling legacy names; all-role My Requests with relationship-based actions and notifications;
 isolated support queues/notes/subtasks; inactive-requester warning; dedicated atomic
 role transitions with session/action-token invalidation, old-role cleanup, retained
 specialties and compatible reopen recovery. Deactivation now revokes unused action
@@ -57,7 +106,7 @@ were not run. See the [complete file list, commands and limitations](docs/identi
 
 ## Account metadata and home organization editing (2026-09-28)
 
-Implemented admin-only PATCH `/users/:userId` and **Edit account** for username, optional phone and nullable home Region/Department, with the existing lifecycle target-authority matrix. Email remains immutable/not admin-editable; role editing uses the dedicated lifecycle endpoint described above. Normalized username changes preserve sessions/sessionVersion and stable historical attribution IDs. Phone remains unverified/non-auth. Home organization is descriptive only, grants no ticket authority, requires active new destinations and retains existing archived references. No operational reconciliation or migration.
+Implemented admin-only PATCH `/users/:userId` and **Edit account** for displayName, optional phone and nullable home Region/Department, with the existing lifecycle target-authority matrix. Email remains immutable/not admin-editable; role editing uses the dedicated lifecycle endpoint described above. Normalized displayName changes preserve sessions/sessionVersion and stable historical attribution IDs. Phone remains unverified/non-auth. Home organization is descriptive only, grants no ticket authority, requires active new destinations and retains existing archived references. No operational reconciliation or migration.
 
 Targeted verification: nine focused PostgreSQL/HTTP tests and account administration Chromium checks pass. Backend/frontend typechecks/builds, affected backend lint, frontend lint and `git diff --check` pass. Checks cover authority, validation, session preservation, archival races, isolated responses, retained archived choices, field clearing, conflict/error recovery and mobile layout. Browser startup failed in the sandbox; the focused permitted run passed outside it. Full regression suites, Mailpit/GCS smoke, AI and deployment were not run. No commit or push.
 
@@ -275,8 +324,8 @@ Files changed:
 
 - [Audit and measured query plans](docs/list-scale-audit.md) recorded before implementation: `/tickets`, global/per-ticket subtask reads, `/users`, embedded organization members and assignment-user collections were unbounded. Configuration catalogs remain small; notifications and My Work History already had bounds. Subject history/communication/note streams were deferred in this phase and subsequently paginated in the ticket stream phase below; attachment metadata remains parent-bounded.
 - Ticket/subtask queues now apply unchanged authorization AND queue/search/filter/cursor predicates in the database, ordered by immutable `createdAt DESC, id DESC`, taking at most page size + 1. Accounts and membership use immutable `id DESC`. Versioned base64url cursor payloads have strict structure, ID/date/length validation and no dependency on an existing boundary record. Default 25, maximum 100, `{ items, nextCursor, hasMore }`; no per-page total. Dashboard cards use scoped COUNT queries.
-- Employee own requests, Manager intake/owned, Agent primary/collaboration, Team Lead led-team, subtask workspace, account directory and member display consume server pages. Search is trimmed, capped at 120, parameterized and literal for LIKE wildcard characters. Ticket title/reference, status, active/finished, category and queue filters combine with visibility; directory username/email, role and status filters preserve the existing projection/matrix.
-- Primary Agent, transfer Manager, new/existing subtask Agent, organization member/lead/manager selectors now use purpose-specific authorized username lookup, at most 20 matches, without embedded user expansions. Existing active-role, membership, Team Lead, primary managed-regional/GLOBAL and subtask-specific policies remain authoritative. No unrestricted employee API or user deletion.
+- Employee own requests, Manager intake/owned, Agent primary/collaboration, Team Lead led-team, subtask workspace, account directory and member display consume server pages. Search is trimmed, capped at 120, parameterized and literal for LIKE wildcard characters. Ticket title/reference, status, active/finished, category and queue filters combine with visibility; directory displayName/email, role and status filters preserve the existing projection/matrix.
+- Primary Agent, transfer Manager, new/existing subtask Agent, organization member/lead/manager selectors now use purpose-specific authorized displayName lookup, at most 20 matches, without embedded user expansions. Existing active-role, membership, Team Lead, primary managed-regional/GLOBAL and subtask-specific policies remain authoritative. No unrestricted employee API or user deletion.
 - Frontend: 300 ms debounce, initial/loading-more/end/empty/search-empty/error/retry states, retention of rows on continuation failure, cancelled/ignored stale requests, and URL filters on ticket/queue/account lists. Search/filter/back/forward changes reset cursor state; repeated records are deduplicated defensively. Existing React/service conventions and mobile layouts retained, without a fetching dependency.
 - Migration `20260926120000_list_keyset_indexes` replaces five equivalent-prefix Ticket indexes with ordered composites, adds general ticket-order and User(role,status,id) indexes, and reuses existing membership/subtask/cycle keys. No data migration. Development and isolated test databases each have **16 migrations**, up to date with **zero schema drift**.
 - Default test-only fixture: **128 users / 343 tickets / 57 subtasks**. Optional large fixture: **2,071 users / 12,001 tickets / 2,000 subtasks**, cleaned afterward. Actual parameterized Prisma SQL plans after ANALYZE showed direct list pages around **0.025–0.527 ms**, collaboration **12.222 ms** locally. No timing assertions or production-capacity claim; substring filtering and complex collaboration still require database work.
@@ -382,8 +431,8 @@ Email is out of scope for ordinary ticket notifications. Email is used only for 
 - Directory identity/email/role/status plus existing nullable region/department labels, search/status filters, validated account creation, and confirmed activation/deactivation. SUPER_ADMIN creation supports ADMIN/MANAGER/AGENT/EMPLOYEE after the user's explicit approval of the small backend matrix change; ADMIN supports MANAGER/AGENT/EMPLOYEE. No SUPER_ADMIN creation/deactivation or delete-user control.
 - Deactivation confirmation explains existing offboarding without operational previews or replacement choices. Reactivation does not restore sessions/responsibilities. Successful mutations reload account status. Protected account creation participates in shared 401 recovery.
 - List/create regions, departments and specialties; list/create REGION/GLOBAL teams; view team details; add/remove AGENT membership; assign/replace/remove Team Lead; assign/remove organizational TeamManager. Team/Agent specialty links can be added and removed in the configuration phase above. Active eligibility, one-led-team restriction, member/lead removal ordering, and nullable assignments are respected.
-- Minimal backend read additions: GET /users includes region/department id/name; GET /organization/teams includes member userId and user id/username/role/status. Existing administrative guards retained. No new endpoints, schema, migrations, dependencies, or organization mutation rules.
-- Loading/empty/validation/error states, native confirmations, pending controls, explicit 403/404/409 reload, and responsive layouts. Rename/archive/reactivate is now implemented in the organization maintenance phase above; physical deletion is unsupported. Team coverage updates are implemented; account username/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing uses the dedicated lifecycle endpoint described above; specialty-link mutations are implemented.
+- Minimal backend read additions: GET /users includes region/department id/name; GET /organization/teams includes member userId and user id/displayName/role/status. Existing administrative guards retained. No new endpoints, schema, migrations, dependencies, or organization mutation rules.
+- Loading/empty/validation/error states, native confirmations, pending controls, explicit 403/404/409 reload, and responsive layouts. Rename/archive/reactivate is now implemented in the organization maintenance phase above; physical deletion is unsupported. Team coverage updates are implemented; account displayName/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing uses the dedicated lifecycle endpoint described above; specialty-link mutations are implemented.
 
 ## Implemented
 
@@ -482,7 +531,7 @@ Attachments, author-controlled communication soft deletion, My Work History and 
 
 - Browser notifications, polling/realtime transport, generic audit infrastructure, SSO/SCIM and other optional enterprise features remain deferred. Notification history pagination, preferences, deletion and retention jobs are not implemented.
 - Communication/history use database keyset pagination and explicit REST refresh; read receipts and revision history remain unimplemented. Edits retain original authorship/time and only the latest editedAt/content. Names are current display labels for stable author IDs. Drafts are in-memory and are not promised across navigation, sign-out or a full browser reload.
-- Organization rename/archive/reactivate is implemented above; physical deletion is unsupported. Team coverage updates are implemented; account username/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing uses the dedicated lifecycle endpoint described above. Specialty-link changes and ordinary membership-removal reconciliation are implemented: removal clears the Agent from current operational work for that Team, preserving Team/Manager/status and historical evidence without choosing a replacement.
+- Organization rename/archive/reactivate is implemented above; physical deletion is unsupported. Team coverage updates are implemented; account displayName/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing uses the dedicated lifecycle endpoint described above. Specialty-link changes and ordinary membership-removal reconciliation are implemented: removal clears the Agent from current operational work for that Team, preserving Team/Manager/status and historical evidence without choosing a replacement.
 - Operational lists, accounts, memberships, communication and ticket history use keyset pagination; My Work History uses offset pagination. Small configuration catalogs remain unpaginated. Employee catalogs and operational assignment choices retain their scoped read-only endpoints.
 - Work-cycle snapshots capture ending responsibility, not every within-cycle assignment. Legacy unknown facts remain NULL; names are current display labels for stable user IDs.
 - Subtask statuses retain their existing within-cycle transition behavior; earlier-cycle work is permanently frozen.

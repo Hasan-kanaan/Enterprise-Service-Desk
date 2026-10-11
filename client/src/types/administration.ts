@@ -17,10 +17,10 @@ export type Team = Reference & {
   regionId: number | null
   region: Reference | null
   teamLeadId: number | null
-  teamLead: Pick<AuthUser, 'id' | 'username' | 'role'> | null
+  teamLead: Pick<AuthUser, 'id' | 'displayName' | 'role'> | null
   managers: {
     managerId: number
-    manager: Pick<AuthUser, 'id' | 'username' | 'role'>
+    manager: Pick<AuthUser, 'id' | 'displayName' | 'role'>
   }[]
   specialties: { specialty: Reference }[]
 }

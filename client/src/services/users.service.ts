@@ -6,7 +6,6 @@ import type { UserRole } from '@/types/auth'
 export type CreateAccountInput = {
   displayName: string
   jobTitle: string
-  username: string
   email: string
   phoneNumber?: string
   role: UserRole
@@ -15,7 +14,6 @@ export type CreateAccountInput = {
 export type UpdateAccountInput = {
   displayName?: string
   jobTitle?: string
-  username?: string
   phoneNumber?: string | null
   regionId?: number | null
   departmentId?: number | null

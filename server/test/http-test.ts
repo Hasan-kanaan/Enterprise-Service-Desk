@@ -28,7 +28,7 @@ export type Attachment = Message['attachments'][number];
 type GetBody<P extends string> = P extends
   | `/ticket-workspace/tickets/${string}/people${string}`
   | `/ticket-workspace/subtasks/${string}/people${string}`
-  ? { id: number; username: string }[]
+  ? { id: number; displayName: string }[]
   : P extends `/organization/teams/${string}/members${string}`
     ? Result<
         import('../src/organization/organization.service').OrganizationService['listMembers']

@@ -762,3 +762,61 @@ textarea:disabled {
     margin: 16px;
   }
 }
+
+/* Manual-testing polish: shared controls and contained overlays. */
+select:not([multiple]) {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23566575' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-inline: 12px 40px !important;
+  min-height: 40px;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+select:focus-visible, .topbar-profile:focus-visible, .back-link:focus-visible,
+.notification-bell:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+select:disabled { cursor: not-allowed; }
+.topbar-profile { display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: var(--radius); min-width: 0; }
+.topbar-profile:hover { background: var(--muted); }
+.topbar-profile-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-profile .avatar { flex-shrink: 0; width: 32px; height: 32px; }
+.back-link { cursor: pointer; width: fit-content; }
+.notification-empty { min-height: 200px; padding: 32px 20px; display: grid; justify-items: center; align-content: center; gap: 10px; text-align: center; }
+.notification-empty-icon { color: var(--primary); background: var(--muted); border-radius: 50%; padding: 16px; }
+.notification-empty h3 { font-weight: 600; }
+.notification-empty p { max-width: 32ch; color: var(--muted-foreground); }
+.refresh-surface { position: relative; min-width: 0; }
+.refresh-status { position: absolute; z-index: 5; top: 4px; right: 8px; margin: 0; padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--muted-foreground); box-shadow: 0 2px 8px #0001; }
+.refresh-surface[aria-busy=true] > [inert] { opacity: .72; }
+html:has(dialog[open]) { overflow: hidden; }
+.modal.form-drawer { inset: 0 0 0 auto; margin: 0; width: min(560px, 100%); max-width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 0; overflow: hidden; }
+.form-drawer[open] { display: flex; flex-direction: column; }
+.form-drawer > .modal-header { flex: none; padding: 20px 24px; border-bottom: 1px solid var(--border); margin: 0; }
+.form-drawer > form { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px 24px; scrollbar-gutter: stable; }
+.form-drawer fieldset { min-width: 0; }
+.form-drawer .form-footer { position: sticky; bottom: -20px; background: var(--card); border-top: 1px solid var(--border); padding: 16px 0; margin-top: 20px; }
+[data-sonner-toaster] [data-sonner-toast][data-type=error] { background: #fff1f0; color: #8f1c13; border: 1px solid #d8736a; }
+[data-sonner-toaster] [data-sonner-toast][data-type=success] { background: #f0fdf4; color: #166534; border: 1px solid #80ba93; }
+@media (prefers-color-scheme: dark) {
+  select:not([multiple]) { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a1b2bb' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+  [data-sonner-toaster] [data-sonner-toast][data-type=error] { background: #401e23; color: #ffb4b4; border-color: #ab5565; }
+  [data-sonner-toaster] [data-sonner-toast][data-type=success] { background: #163728; color: #86efac; border-color: #40875d; }
+}
+@media (max-width: 600px) {
+  .topbar-profile-name { display: none; }
+  .form-drawer > .modal-header { padding: 16px; }
+  .form-drawer > form { padding: 16px; }
+  .form-drawer .form-footer { bottom: -16px; }
+}
+
+.phone-control { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); min-width: 0; }
+.phone-control:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+.phone-control select { flex: 0 1 42%; width: 42%; min-width: 0; border: 0; border-right: 1px solid var(--border); border-radius: var(--radius) 0 0 var(--radius); }
+.phone-code { align-self: center; flex: none; padding-left: 10px; color: var(--muted-foreground); font-weight: 500; }
+.phone-control input { flex: 1; min-width: 0; width: 0; border: 0; background: transparent; }
+.phone-error { color: var(--danger); font-size: 12px; }
+
+.directory-identity { display: flex; align-items: center; gap: 0.5rem; }
+.directory-identity .avatar { width: 26px; height: 26px; font-size: 0.8rem; flex-shrink: 0; }

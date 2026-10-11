@@ -1,5 +1,24 @@
 # Account activation and password recovery
 
+## Identity and navigation (2026-10-11)
+
+Username has been removed from the Enterprise Service Desk identity model.
+Email is the unique immutable login, activation and recovery identity.
+displayName is the required human-readable identity shown throughout the product.
+User.id remains the stable relational identity. Duplicate display names are allowed.
+The UI may render a generated avatar using the first initial of displayName.
+User-uploaded profile pictures are not implemented in the current phase.
+The topbar identity control opens Profile.
+The sidebar bottom navigation uses Settings rather than a Profile/avatar control.
+
+The migration preserves valid names and fills only missing/blank legacy names once
+from the former username (or neutral Account if that too is blank), then enforces
+NOT NULL/nonblank displayName and removes the old column/index. Historical IDs,
+email, sessions, roles and lifecycle remain unchanged. No runtime fallback remains.
+See [identity verification](identity-model-verification.md) for the migration,
+contract changes, checks and retest list. ISS-012/ISS-013 still await manual Network
+evidence; their pagination/stale-response implementation was not changed.
+
 Implemented 2026-09-27. Administrators manage accounts; users own their passwords. No administrator chooses, receives, retrieves or emails another user's password.
 
 Email is out of scope for ordinary ticket notifications. Email is used only for account activation, password recovery, and security notices. Ticket, assignment, message, subtask and resolution notifications remain in-app only.
@@ -10,17 +29,54 @@ Role changes are outside the metadata-editing phase. The metadata-editing endpoi
 
 A future dedicated role-transition phase will allow an existing account to change role while preserving the same account identity and email. Changing job function must not require a new account or email. That phase must explicitly define reconciliation for AGENT Team memberships, Agent specialties, Team Lead responsibility, MANAGER TeamManager responsibility, current ticket ownership, current subtask assignments, sessions/authorization after role changes, and historical attribution. Those reconciliation rules are neither designed nor implemented in the metadata-editing phase.
 
+## Verified bootstrap (2026-10-11)
+
+ISS-002/003/004 use the same AccountActionToken, activation page, password policy,
+MailProvider and Mailpit SMTP settings as other account activation. No migration,
+new provider, verification code or dependencies. Existing activated roots remain
+complete; their email verification is not backfilled.
+
+- `GET /auth/setup/status`: `{ available: boolean }` is true until the sole root
+  has activatedAt. It discloses no pending identity.
+- `POST /auth/setup`: `{ displayName, jobTitle, email, setupSecret,
+  restart?: boolean }`. Password and role fields are rejected. Success is
+  `{ message: "Super Admin pending email activation", delivery: "SENT" | "FAILED" }`,
+  without identity, credentials, cookies or raw tokens.
+- Default submission reserves exactly one pending root. An existing pending root
+  rejects another creation (409). Explicit `restart: true` with the correct secret
+  updates the same pending identity/email and atomically replaces unused activation
+  links. Completed bootstrap rejects both forms (409). Invalid secret returns 403;
+  malformed input returns 400. Conflicts use the same generic message and never
+  identify an unrelated conflicting account.
+- Activation lasts 24 hours and is single-use. `/auth/activate` verifies email and
+  saves the user's chosen password without logging in. Existing ACTIVE/activated
+  session and operational eligibility checks exclude the pending root.
+- Setup remains recoverable after typo, expiry or SMTP failure. Restart deliberately
+  bypasses the ordinary 60-second resend cooldown because it requires installation
+  authority and retains the setup/IP limits. SMTP runs after commit; mail can arrive
+  out of order, but only the latest committed unused token is valid.
+- Bootstrap's advisory lock prevents multiple identities; locking the pending User
+  row prevents email correction racing successful activation. Completion remains
+  permanent under supported account lifecycle operations. The setup secret cannot
+  change an activated root or recover its password.
+
+The fresh/pending `/login` entry redirects to `/setup` without displaying normal
+recovery links. Setup explains automatic role assignment, email verification,
+password selection and explicit restart. After activation, sign-in is normal;
+direct `/setup` shows the safe completed state. No public registration or
+administrator-granted ticket authority is introduced.
+
 ## State and migration
 
 `User.status` remains administrative `ACTIVE` / `INACTIVE`. `activatedAt` is independent: a newly provisioned ACTIVE account has null activation and null credentials. The existing `password` column stores only a bcrypt hash; it is now nullable (the column was retained rather than renamed to avoid needless migration churn). `emailVerifiedAt`, `phoneNumber` and `phoneVerifiedAt` are nullable.
 
-Migration `20260927180000_account_activation` backfills `activatedAt = createdAt` only for existing password-bearing users. It never backfills email verification. Existing development users keep access. Initial `/auth/setup` remains secret-protected, rate-limited and serialized by the existing PostgreSQL advisory lock; its first SUPER_ADMIN chooses a password and is immediately activated, without claiming email verification or requiring email. No ordinary endpoint creates SUPER_ADMIN.
+Migration `20260927180000_account_activation` backfills `activatedAt = createdAt` only for existing password-bearing users. It never backfills email verification. Existing development users keep access. Initial `/auth/setup` is secret-protected, rate-limited and serialized by the existing PostgreSQL advisory lock; it reserves a pending SUPER_ADMIN for email activation as described above. No ordinary endpoint creates SUPER_ADMIN.
 
 Legacy `passwordChangeRequired` is retained and enforced so previously forced accounts are not stranded. New flows never set it. Successful self-change or recovery clears it. No users or historical relationships are deleted.
 
 ## Flows and authority
 
-- `POST /auth/accounts`: username, email, permitted role, optional phone; no password field. Existing organization management remains available separately. SUPER_ADMIN creates ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN creates MANAGER/AGENT/EMPLOYEE. The response contains safe identity and delivery status, never a token/hash/password.
+- `POST /auth/accounts`: displayName, jobTitle, email, permitted role, optional phone; no password field. Existing organization management remains available separately. SUPER_ADMIN creates ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN creates MANAGER/AGENT/EMPLOYEE. The response contains safe identity and delivery status, never a token/hash/password.
 - `POST /auth/accounts/:id/resend-activation`: authorized resend for pending accounts. `POST /auth/accounts/:id/reset-password`: send a link to an activated account; rejects password fields. Hierarchy is unchanged and neither action can target SUPER_ADMIN. Sending a reset link does not itself invalidate sessions.
 - `POST /auth/resend-activation` and `POST /auth/forgot-password`: normalized email, generic responses for missing, inactive, pending/ineligible, cooldown and delivery failure cases. SUPER_ADMIN can use their configured email for self-service recovery.
 - `POST /auth/activate`: token plus newPassword. Atomically sets the bcrypt hash, activation and email verification, consumes the token and revokes any prior sessions/action tokens.

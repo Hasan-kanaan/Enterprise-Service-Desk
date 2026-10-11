@@ -98,7 +98,7 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
       users[name] = await db.user.create({
         data: {
           sessions: { create: { id: sessionIds[name] } },
-          username: `${name}-${prefix}`,
+          displayName: `${name}-${prefix}`,
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused-test-hash',
           activatedAt: new Date(),
@@ -299,13 +299,13 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
     await edit('employee', { phoneNumber: null }).expect(401);
   });
 
-  it('validates only the four accepted fields and normalized username length', async () => {
+  it('validates only the accepted fields and trimmed displayName length', async () => {
     for (const body of [
       {},
-      { username: null },
-      { username: '  ab  ' },
-      { username: 'a'.repeat(51) },
-      { username: 123 },
+      { displayName: null },
+      { displayName: '   ' },
+      { displayName: 'a'.repeat(101) },
+      { displayName: 123 },
       { phoneNumber: '' },
       { phoneNumber: '70123456' },
       { phoneNumber: 123 },
@@ -313,6 +313,7 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
       await edit('employee', body).expect(400);
     for (const field of [
       'email',
+      'username',
       'role',
       'password',
       'status',
@@ -330,10 +331,10 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
         await edit('employee', { [field]: value }).expect(400);
       await edit('employee', { [field]: 2147483647 }).expect(404);
     }
-    await edit('employee', { username: ` ${'a'.repeat(50)} ` }).expect(200);
+    await edit('employee', { displayName: ` ${'a'.repeat(50)} ` }).expect(200);
   });
 
-  it('normalizes username, handles uniqueness and preserves identity, sessions and tokens', async () => {
+  it('trims displayName, permits duplicate names and preserves identity, sessions and tokens', async () => {
     const before = await current();
     await db.ticketWorkCycle.updateMany({
       where: { ticketId: owned.id },
@@ -355,15 +356,14 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
         expiresAt: new Date(Date.now() + 60000),
       },
     });
-    const username = `renamed-${randomUUID().slice(0, 8)}`;
+    const displayName = `renamed-${randomUUID().slice(0, 8)}`;
     const response = await edit('employee', {
-      username: `  ${username.toUpperCase()}  `,
+      displayName: `  ${displayName}  `,
     }).expect(200);
-    expect(response.body.username).toBe(username);
+    expect(response.body.displayName).toBe(displayName);
     expect(Object.keys(response.body).sort()).toEqual(
       [
         'id',
-        'username',
         'displayName',
         'jobTitle',
         'email',
@@ -375,14 +375,11 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
         'department',
       ].sort(),
     );
-    const renamed = await current();
-    await edit('employee', { username: username.toUpperCase() }).expect(200);
-    expect(await current()).toEqual(renamed);
-    await edit('employee', { username: users.agent.username }).expect(409);
+    await edit('employee', { displayName: displayName }).expect(200);
     expect(await current()).toEqual({
       ...before,
-      username,
-      updatedAt: renamed.updatedAt,
+      displayName,
+      updatedAt: (await current()).updatedAt,
     });
     expect(
       await db.refreshToken.findUnique({ where: { id: refresh.id } }),
@@ -394,7 +391,12 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
     const ticket = await get(`/tickets/${owned.id}/history`, 'employee').expect(
       200,
     );
-    expect(JSON.stringify(ticket.body)).toContain(username);
+    expect(JSON.stringify(ticket.body)).toContain(displayName);
+    await edit('employee', { displayName: users.agent.displayName }).expect(
+      200,
+    );
+    expect((await current()).displayName).toBe(users.agent.displayName);
+    expect((await current()).id).toBe(before.id);
   });
 
   it('normalizes phone, clears verification only on actual changes or explicit clearing, with no session side effects', async () => {
@@ -438,7 +440,7 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
     expect(retained.body.region?.archivedAt).toBeTruthy();
     expect(retained.body.department?.archivedAt).toBeTruthy();
     const directory = await get(
-      `/users?search=${users.employee.username}`,
+      `/users?search=${users.employee.displayName}`,
       'admin',
     ).expect(200);
     expect(directory.body.items[0].region?.archivedAt).toBeTruthy();
@@ -478,7 +480,7 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
       expect((await current()).regionId).toBe(replacementRegion.id);
       expect((await current()).departmentId).toBe(replacementDepartment.id);
       const before = await current();
-      await edit('employee', { username: 'must-not-save', regionId }).expect(
+      await edit('employee', { displayName: 'must-not-save', regionId }).expect(
         409,
       );
       expect(await current()).toEqual(before);
@@ -541,7 +543,7 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
       const before = await snapshot();
       for (const name of ['employee', 'manager', 'agent', 'lead', 'otherAgent'])
         await edit(name, {
-          username: `new-${users[name].username}`,
+          displayName: `new-${users[name].displayName}`,
           regionId: null,
           departmentId: null,
           phoneNumber: '+96170123456',
@@ -552,7 +554,7 @@ describe('Account metadata (focused PostgreSQL and HTTP)', () => {
         'manager',
       ).expect(200);
       expect(JSON.stringify(history.body)).toContain(
-        `new-${users.agent.username}`,
+        `new-${users.agent.displayName}`,
       );
     } finally {
       await db.specialty.delete({ where: { id: specialty.id } });

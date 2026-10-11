@@ -1,3 +1,4 @@
+import { PhoneField } from './PhoneField'
 import { useState } from 'react'
 import { AdminDialog } from './AdminDialog'
 import { ErrorState, LoadingState } from './TicketUI'
@@ -37,35 +38,33 @@ export function EditAccountForm({
   onReload: () => void
 }) {
   const catalogs = useResource(loadChoices)
-  const [username, setUsername] = useState(account.username)
   const [phone, setPhone] = useState(account.phoneNumber ?? '')
   const [region, setRegion] = useState(account.region?.id.toString() ?? '')
   const [department, setDepartment] = useState(
     account.department?.id.toString() ?? '',
   )
   const change: UpdateAccountInput = {}
-  if (username !== account.username)
-    change.username = username.trim().toLowerCase()
   if (phone !== (account.phoneNumber ?? ''))
     change.phoneNumber = phone.trim() || null
   if (region !== (account.region?.id.toString() ?? ''))
     change.regionId = region ? Number(region) : null
   if (department !== (account.department?.id.toString() ?? ''))
     change.departmentId = department ? Number(department) : null
+  const [phoneValid, setPhoneValid] = useState(true)
   const [displayName, setDisplayName] = useState(account.displayName ?? '')
   const [jobTitle, setJobTitle] = useState(account.jobTitle ?? '')
   if (displayName !== (account.displayName ?? '')) change.displayName = displayName.trim()
   if (jobTitle !== (account.jobTitle ?? '')) change.jobTitle = jobTitle.trim()
   return (
     <AdminDialog
+      presentation="drawer"
       title="Edit account"
       onClose={onClose}
       onDone={onDone}
       onReload={onReload}
       valid={
+        phoneValid &&
         !!catalogs.data &&
-        username.trim().length >= 3 &&
-        username.trim().length <= 50 &&
         Object.keys(change).length > 0 && (change.displayName === undefined || !!change.displayName) && (change.jobTitle === undefined || !!change.jobTitle)
       }
       submit={() => updateAccount(account.id, change)}
@@ -74,32 +73,7 @@ export function EditAccountForm({
       <p>Current role: {account.role}. This dialog does not edit roles.</p>
       <label className="field">Display name<input aria-label="Account display name" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
       <label className="field">Job title<input aria-label="Account job title" maxLength={100} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} /></label>
-      <label className="field">
-        Username
-        <input
-          aria-label="Account username"
-          required
-          minLength={3}
-          maxLength={50}
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoComplete="off"
-        />
-      </label>
-      <label className="field">
-        Phone number (optional)
-        <input
-          aria-label="Account phone"
-          type="tel"
-          placeholder="+961..."
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-        />
-        <span className="quiet-note">
-          Unverified. Not used for sign-in or password recovery. Leave blank to
-          clear.
-        </span>
-      </label>
+      <PhoneField value={phone} onChange={setPhone} onValidityChange={setPhoneValid} />
       {catalogs.loading ? (
         <LoadingState label="Loading home organization choices..." />
       ) : catalogs.error ? (

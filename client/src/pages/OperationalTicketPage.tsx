@@ -1,3 +1,4 @@
+import { RefreshSurface } from '@/components/RefreshSurface'
 import { ActionMenu } from '@/components/ActionMenu'
 import { TicketAttachments } from '@/components/Attachments'
 import { useCallback, useState } from 'react'
@@ -63,7 +64,7 @@ function OperationalTicket({ id }: { id: number }) {
     setError(undefined)
     resource.reload()
   }
-  if (resource.loading)
+  if (resource.loading && !resource.data)
     return <LoadingState label="Loading ticket workspace..." />
   if (resource.error || !resource.data)
     return (
@@ -85,7 +86,7 @@ function OperationalTicket({ id }: { id: number }) {
       )
       .join(', ') || 'None selected'
   return (
-    <div className="ticket-workspace">
+    <RefreshSurface busy={!!(resource.loading && resource.data)}><div className="ticket-workspace">
       <Link className="back-link" to="/work/tickets">
         Back to work
       </Link>
@@ -108,7 +109,7 @@ function OperationalTicket({ id }: { id: number }) {
             </span>
           </div>
         </div>
-        <button className="button secondary" disabled={busy} onClick={reload}>
+        <button className="button secondary" disabled={busy || resource.loading} onClick={reload}>
           Refresh ticket
         </button>
       </header>
@@ -222,12 +223,13 @@ function OperationalTicket({ id }: { id: number }) {
             )}
           </section>
           <TicketCommunication
+              refreshKey={resource.revision}
             ticketId={id}
             requesterId={ticket.requesterId}
             cycles={history.cycles}
             onChanged={reload}
           />
-          <TicketAttachments ticketId={id} />
+          <TicketAttachments ticketId={id} refreshKey={resource.revision} />
           <section className="panel">
             <div className="list-heading">
               <h2>Work history</h2>
@@ -293,7 +295,6 @@ function OperationalTicket({ id }: { id: number }) {
                 <dt>Responsible manager</dt>
                 <dd>
                   {ticket.ownership.manager?.displayName ??
-                    ticket.ownership.manager?.username ??
                     'Unassigned'}
                 </dd>
               </div>
@@ -305,7 +306,6 @@ function OperationalTicket({ id }: { id: number }) {
                 <dt>Primary agent</dt>
                 <dd>
                   {ticket.ownership.agent?.displayName ??
-                    ticket.ownership.agent?.username ??
                     'Unassigned'}
                 </dd>
               </div>
@@ -410,6 +410,6 @@ function OperationalTicket({ id }: { id: number }) {
           }}
         />
       )}
-    </div>
+    </div></RefreshSurface>
   )
 }

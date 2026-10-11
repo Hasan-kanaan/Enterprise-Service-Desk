@@ -139,7 +139,6 @@ async function seed(db) {
   const users = {};
   for (const [name, role, region, department] of personas) {
     users[name] = await insert(db, 'User', {
-      username: `manual-${name}`,
       email: `manual-${name}@example.test`,
       displayName: `Manual ${name}`,
       jobTitle: `Synthetic ${role.toLowerCase()}`,

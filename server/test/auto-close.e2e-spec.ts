@@ -38,7 +38,7 @@ describe('Automatic closure (PostgreSQL)', () => {
     const prefix = randomUUID();
     employee = await db.user.create({
       data: {
-        username: prefix,
+        displayName: prefix,
         email: `${prefix}@test.invalid`,
         password: 'unused',
         activatedAt: new Date(),
@@ -47,7 +47,7 @@ describe('Automatic closure (PostgreSQL)', () => {
     });
     manager = await db.user.create({
       data: {
-        username: `m${prefix}`,
+        displayName: `m${prefix}`,
         email: `m${prefix}@test.invalid`,
         password: 'unused',
         activatedAt: new Date(),

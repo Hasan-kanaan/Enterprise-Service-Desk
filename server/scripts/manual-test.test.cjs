@@ -132,15 +132,15 @@ test('seed creates the intended personas and relationships without lifecycle fix
     3,
   );
   assert.equal(
-    accounts.find((u) => u.username === 'manual-pending').password,
+    accounts.find((u) => u.email === 'manual-pending@example.test').password,
     null,
   );
   assert.equal(
-    accounts.find((u) => u.username === 'manual-pending').activatedAt,
+    accounts.find((u) => u.email === 'manual-pending@example.test').activatedAt,
     null,
   );
   assert.equal(
-    accounts.find((u) => u.username === 'manual-inactive').status,
+    accounts.find((u) => u.email === 'manual-inactive@example.test').status,
     'INACTIVE',
   );
   assert.ok(await require('bcryptjs').compare(PASSWORD, accounts[0].password));

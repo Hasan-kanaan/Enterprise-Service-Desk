@@ -99,7 +99,7 @@ describe('Persistent notifications (PostgreSQL and HTTP)', () => {
       users[name] = await db.user.create({
         data: {
           sessions: { create: { id: sessionIds[name] } },
-          username: `${name}-${prefix}`.slice(0, 50),
+          displayName: `${name}-${prefix}`.slice(0, 50),
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused',
           activatedAt: new Date(),

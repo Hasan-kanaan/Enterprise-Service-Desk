@@ -251,7 +251,6 @@ export class TicketVisibilityService {
             assignedManager: {
               select: {
                 id: true,
-                username: true,
                 displayName: true,
                 status: true,
               },
@@ -259,7 +258,6 @@ export class TicketVisibilityService {
             assignedAgent: {
               select: {
                 id: true,
-                username: true,
                 displayName: true,
                 status: true,
               },
@@ -321,7 +319,6 @@ export class TicketVisibilityService {
             assignedManager: {
               select: {
                 id: true,
-                username: true,
                 displayName: true,
                 status: true,
               },
@@ -329,7 +326,6 @@ export class TicketVisibilityService {
             assignedAgent: {
               select: {
                 id: true,
-                username: true,
                 displayName: true,
                 status: true,
               },
@@ -377,10 +373,10 @@ export class TicketVisibilityService {
                 orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
                 include: {
                   assignedAgent: {
-                    select: { id: true, username: true, displayName: true },
+                    select: { id: true, displayName: true },
                   },
                   completedBy: {
-                    select: { id: true, username: true, displayName: true },
+                    select: { id: true, displayName: true },
                   },
                 },
               });
@@ -446,10 +442,10 @@ export class TicketVisibilityService {
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           include: {
             assignedAgent: {
-              select: { id: true, username: true, displayName: true },
+              select: { id: true, displayName: true },
             },
             completedBy: {
-              select: { id: true, username: true, displayName: true },
+              select: { id: true, displayName: true },
             },
           },
         });

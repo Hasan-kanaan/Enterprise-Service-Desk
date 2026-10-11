@@ -31,18 +31,18 @@ export function SubtaskRows({
                     ? 'Unassigned'
                     : `#${task.assignedTeamId}`)}{' '}
                 / Agent:{' '}
-                {task.assignedAgent?.username ??
+                {task.assignedAgent?.displayName ??
                   (task.assignedAgentId === null
                     ? 'Unassigned'
-                    : `#${task.assignedAgentId}`)}
+                    : 'Agent unavailable')}
               </p>
               {task.status === 'COMPLETED' && (
                 <p>
                   Completed {formatDate(task.completedAt, true)} by{' '}
-                  {task.completedBy?.username ??
+                  {task.completedBy?.displayName ??
                     (task.completedById === null
                       ? 'Not recorded'
-                      : `#${task.completedById}`)}
+                      : 'Person unavailable')}
                 </p>
               )}
             </div>

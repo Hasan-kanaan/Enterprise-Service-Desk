@@ -1,5 +1,63 @@
 # Project Decisions
 
+## Identity and navigation (2026-10-11)
+
+Username has been removed from the Enterprise Service Desk identity model.
+Email is the unique immutable login, activation and recovery identity.
+displayName is the required human-readable identity shown throughout the product.
+User.id remains the stable relational identity. Duplicate display names are allowed.
+The UI may render a generated avatar using the first initial of displayName.
+User-uploaded profile pictures are not implemented in the current phase.
+The topbar identity control opens Profile.
+The sidebar bottom navigation uses Settings rather than a Profile/avatar control.
+
+The migration preserves valid names and fills only missing/blank legacy names once
+from the former username (or neutral Account if that too is blank), then enforces
+NOT NULL/nonblank displayName and removes the old column/index. Historical IDs,
+email, sessions, roles and lifecycle remain unchanged. No runtime fallback remains.
+See [identity verification](identity-model-verification.md) for the migration,
+contract changes, checks and retest list. ISS-012/ISS-013 still await manual Network
+evidence; their pagination/stale-response implementation was not changed.
+
+## Verified bootstrap (2026-10-11; ISS-002/003/004)
+
+This supersedes immediate password-bearing bootstrap. INITIAL_SETUP_SECRET proves
+installation authority; the existing account-activation link proves mailbox control.
+Setup creates one ACTIVE but unactivated SUPER_ADMIN with NULL password and
+verification timestamps. No session or operational responsibility is available.
+The existing 24-hour single-use activation flow sets the user's chosen password
+and verified/activated timestamps, then requires normal login.
+
+POST /auth/setup accepts identity plus setupSecret, with optional restart=true.
+Without restart, an existing pending root rejects further creation. With restart,
+the same pending User ID is corrected and its unused activation links revoked in
+the same transaction as fresh token issuance. No ordinary account email editing
+is added. The PostgreSQL advisory bootstrap lock serializes creation/restarts;
+the User row lock serializes correction against activation. Activation winning
+first makes restart fail; correction winning first invalidates the old link.
+The existing activation Serializable transaction can safely return 409 on a race.
+No automatic mutation retry is introduced.
+
+A generic setup conflict does not identify unrelated accounts. Only availability,
+not pending identity/email, is public. Setup retains timing-safe hashed secret
+comparison, Origin checks and setup/IP throttling. Secret-authorized restart can
+replace a link immediately (ordinary public resend retains its cooldown).
+SMTP failure preserves the pending reservation; the operator can correct
+configuration and restart. No raw token/secret appears in API responses or logs.
+
+GET /auth/setup/status reports available until an activated root exists, regardless
+of its administrative status. Completion is represented by existing activatedAt on
+the protected root identity; no migration or separate completion record is needed.
+Legacy activated roots remain complete without fabricated email verification.
+Setup/restart never becomes a post-bootstrap recovery mechanism. Ordinary password
+recovery remains email-based. Role, session, provisioning and ticket rules are unchanged.
+
+Unauthenticated /login checks status before rendering: pending/fresh installations
+replace navigation with /setup, which stays there for delivery/restart instructions.
+After activation, /login is normal and direct /setup shows completion. Status
+failures show a retry/error state rather than assuming setup is complete.
+
+
 ## Universal requester identity and role lifecycle (2026-10-03)
 
 Every authenticated company User may act as requester for their own tickets.
@@ -9,8 +67,8 @@ through requester authority. This section supersedes older role-only requester
 and administration-only access statements in the dated phase notes below.
 
 `displayName` and `jobTitle` are trimmed, nonblank, bounded to 100 characters, and
-required for new accounts including initial setup. Legacy NULL values are not
-backfilled: labels fall back to username and job title to ?Not set?. Job title
+required for new accounts including initial setup. Missing legacy display names are
+backfilled once by the identity migration; absent job titles show Not set. Job title
 never grants authorization. Email stays immutable. Metadata PATCH cannot edit role
 or clear a supplied name/title to NULL.
 
@@ -65,9 +123,9 @@ history remains deferred; this does not record every historical role transition.
 
 ## Account metadata and home organization editing (2026-09-28)
 
-ADMIN/SUPER_ADMIN use PATCH `/users/:userId` and **Edit account** in `/admin/accounts` for username, displayName, jobTitle, phoneNumber, regionId and departmentId only. SUPER_ADMIN may edit ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN may edit MANAGER/AGENT/EMPLOYEE. No target SUPER_ADMIN is editable. ACTIVE, INACTIVE and pending targets are supported. Empty patches and unknown fields return 400; omitted fields remain unchanged; explicit null clears phone/home organization, while username rejects null.
+ADMIN/SUPER_ADMIN use PATCH `/users/:userId` and **Edit account** in `/admin/accounts` for displayName, jobTitle, phoneNumber, regionId and departmentId only. SUPER_ADMIN may edit ADMIN/MANAGER/AGENT/EMPLOYEE; ADMIN may edit MANAGER/AGENT/EMPLOYEE. No target SUPER_ADMIN is editable. ACTIVE, INACTIVE and pending targets are supported. Empty patches and unknown fields return 400; omitted fields remain unchanged; explicit null clears phone/home organization, while displayName rejects null.
 
-Username trims/lowercases with the existing 3–50 character uniqueness model; duplicates return safe 409 and unchanged normalized values are no-ops. Email remains the immutable login/recovery identity after provisioning and is not admin-editable. Role changes remain deferred to a dedicated future phase preserving account identity/email; this endpoint never accepts or changes role. Password, status, activation and sessions retain their dedicated workflows. Metadata updates do not revoke sessions, refresh/action tokens or increment sessionVersion; normal application reads expose the current username. Historical attribution retains stable User IDs and displays current usernames, without snapshots or rewritten history.
+Display names are trimmed, required and bounded to 100 characters; duplicates are allowed. Email remains the immutable login/recovery identity after provisioning and is not admin-editable. Role changes use the dedicated lifecycle workflow preserving account identity/email; this endpoint never accepts or changes role. Password, status, activation and sessions retain their dedicated workflows. Metadata updates do not revoke sessions, refresh/action tokens or increment sessionVersion; normal application reads expose the current displayName. Historical attribution retains stable User IDs and displays current display names, without snapshots or rewritten history.
 
 Phone uses the existing international normalization/validation, remains unverified non-auth metadata, and clears phoneVerifiedAt only when changed or explicitly cleared. Home Region/Department are nullable descriptive metadata with no ticket visibility, routing, membership or responsibility authority. Different destinations must exist and be active (404/409 otherwise); existing archived references can be retained, explicitly cleared or replaced. The directory labels archived references, and the dialog loads the two admin catalogs on open, offering active destinations plus the account's retained reference.
 
@@ -185,7 +243,7 @@ No SUPER_ADMIN exists
 	↓
 Initial setup
 	↓
-Create first SUPER_ADMIN
+Reserve pending SUPER_ADMIN, verify email and choose password
 	↓
 Setup completed
 	↓
@@ -206,9 +264,9 @@ ADMIN
       └── creates MANAGER accounts
 ```
 
-The initial setup endpoint must become unavailable after the first `SUPER_ADMIN` exists. Account-creation endpoints must require authentication and server-side RBAC. The client is never trusted to select a privileged role.
+The initial setup endpoint becomes unavailable after the sole `SUPER_ADMIN` is activated. Account-creation endpoints must require authentication and server-side RBAC. The client is never trusted to select a privileged role.
 
-Initial setup uses a PostgreSQL advisory transaction lock and password hashing. Setup is unavailable while a SUPER_ADMIN exists; there is no separate permanent setup-completed record.
+Initial setup uses a PostgreSQL advisory transaction lock and the existing email activation flow. A pending SUPER_ADMIN can be corrected with the setup secret until activation; there is no separate permanent setup-completed record.
 
 ### Decision Rationale
 
@@ -357,7 +415,7 @@ Changing team with an incompatible retained agent is rejected unless the request
 
 ## Active Accounts and Administrative Offboarding
 
-Users have ACTIVE/INACTIVE status. No application endpoint physically deletes users or tickets. SUPER_ADMIN may activate/deactivate ADMIN, MANAGER, AGENT, and EMPLOYEE. ADMIN may activate/deactivate MANAGER, AGENT, and EMPLOYEE. Operational roles have no lifecycle authority. SUPER_ADMIN deactivation is excluded; bootstrap remains unavailable while any SUPER_ADMIN exists.
+Users have ACTIVE/INACTIVE status. No application endpoint physically deletes users or tickets. SUPER_ADMIN may activate/deactivate ADMIN, MANAGER, AGENT, and EMPLOYEE. ADMIN may activate/deactivate MANAGER, AGENT, and EMPLOYEE. Operational roles have no lifecycle authority. SUPER_ADMIN deactivation is excluded; bootstrap remains unavailable once SUPER_ADMIN is activated.
 
 Deactivation is atomic offboarding, not a blocker-based transfer workflow. For active tickets (NEW, ASSIGNED, IN_PROGRESS, WAITING_FOR_EMPLOYEE, BLOCKED) owned by the target manager, reset status to NEW and manager/team/agent to NULL. For active primary-agent assignments, clear only that agent. Clear the agent only on target-assigned TODO/IN_PROGRESS subtasks in the current operational cycle. Remove the target's Team Lead and TeamManager responsibilities. Do not select replacements. Ordinary membership, requester identity, terminal ownership, completed/cancelled subtasks, and previous-cycle work remain unchanged.
 
@@ -427,7 +485,7 @@ The operational frontend uses existing write endpoints unchanged. Available tick
 
 The existing organization APIs are administrative and the raw operational reads lacked Team Lead context, eligible choices, and safe standalone subtask lifecycle information. Add only TicketWorkspaceController with GET /ticket-workspace, /ticket-workspace/tickets/:ticketId, and /ticket-workspace/subtasks/:subtaskId. Require MANAGER/AGENT guards, reuse TicketVisibilityService predicates, and compute permissions from existing policies. Resource reads use RepeatableRead for consistent relationships/options. Existing schemas, mutation services, locks, and role rules are unchanged.
 
-The context endpoint returns only the caller's led teams. The initial ticket pickers returned active MANAGER IDs/usernames only for owned transferable tickets, and real teams with active AGENT member IDs/usernames only for permitted assignment/creation. The enterprise-list phase below replaces embedded people with bounded purpose-specific lookups; team choices and eligibility remain unchanged. The ticket workspace's `teams` field contains only the responsible Manager's organizationally managed teams and GLOBAL teams; separate `subtaskTeams` choices preserve existing cross-team subtask delegation. Team Leads receive only their led primary team; ordinary agents and intake-only managers receive no assignment directory. Frozen tickets receive no assignment choices. Email addresses, passwords, and administrative details beyond the required team/eligible-agent options are not exposed.
+The context endpoint returns only the caller's led teams. The initial ticket pickers returned active MANAGER IDs/display names only for owned transferable tickets, and real teams with active AGENT member IDs/display names only for permitted assignment/creation. The enterprise-list phase below replaces embedded people with bounded purpose-specific lookups; team choices and eligibility remain unchanged. The ticket workspace's `teams` field contains only the responsible Manager's organizationally managed teams and GLOBAL teams; separate `subtaskTeams` choices preserve existing cross-team subtask delegation. Team Leads receive only their led primary team; ordinary agents and intake-only managers receive no assignment directory. Frozen tickets receive no assignment choices. Email addresses, passwords, and administrative details beyond the required team/eligible-agent options are not exposed.
 
 Primary assignment enforces the same team predicate server-side within the serializable ticket transaction and locks the destination TeamManager relationship against concurrent removal. Team membership, active status and AGENT-role checks apply equally to regional and GLOBAL primary agents. Subtask assignment, collaborator visibility, conversation and internal-note authorization are unchanged.
 
@@ -448,9 +506,9 @@ Lifecycle confirmation describes existing administrative offboarding without loa
 
 Organization implementation is bounded by existing APIs: list/create regions, departments, specialties and teams; add/remove membership; assign/replace/remove Team Lead; assign/remove TeamManager. Team scope is explicit and REGION requires a real region, while GLOBAL submits no regionId. Member pickers contain active AGENT accounts not already in that team. Lead pickers contain active member agents who lead no other team. Manager pickers contain active MANAGER accounts; an existing TeamManager must be explicitly removed before another is assigned. No fake/default records or relationships are used.
 
-GET /users adds only nullable region/department id/name relationships. The initial GET /organization/teams projection included members with userId and user id/username/role/status; the enterprise-list phase below moves this to a dedicated paginated membership read. These are small additions to already administrative reads, not new endpoints, permissions, or a service-desk preview. Existing raw directory sessionVersion is not rendered. Passwords and operational records are not included in the new projections.
+GET /users adds only nullable region/department id/name relationships. The initial GET /organization/teams projection included members with userId and user id/displayName/role/status; the enterprise-list phase below moves this to a dedicated paginated membership read. These are small additions to already administrative reads, not new endpoints, permissions, or a service-desk preview. Existing raw directory sessionVersion is not rendered. Passwords and operational records are not included in the new projections.
 
-Do not expose unsupported organization mutations. The organization maintenance phase above supersedes the original rename deferral with rename/archive/reactivate. Physical deletion is unsupported. Team coverage editing is implemented; account username/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing uses the dedicated lifecycle endpoint described above. The service desk configuration phase above implements specialty-link management and transactional ordinary membership-removal reconciliation. A Team Lead must first be removed as lead; ordinary member removal clears only the Agent from current operational work for that Team, preserving Team/Manager/status and historical evidence without choosing a replacement.
+Do not expose unsupported organization mutations. The organization maintenance phase above supersedes the original rename deferral with rename/archive/reactivate. Physical deletion is unsupported. Team coverage editing is implemented; account displayName/phone/home-organization editing is implemented; email is immutable and not admin-editable, while role editing uses the dedicated lifecycle endpoint described above. The service desk configuration phase above implements specialty-link management and transactional ordinary membership-removal reconciliation. A Team Lead must first be removed as lead; ordinary member removal clears only the Agent from current operational work for that Team, preserving Team/Manager/status and historical evidence without choosing a replacement.
 
 Administration dialogs show validation/errors, block repeat submission while pending, and require explicit reload after 403/404/409 before another mutation. Browser coverage uses isolated fixtures for both administrative roles and all exposed organization actions, and verifies no administrative ticket requests. Existing Employee and operational suites remain regression coverage. No new dependencies, schema, migrations, or organization mutation APIs were added.
 

@@ -87,19 +87,19 @@ describe('Lifecycle policies', () => {
       {
         id: 10,
         outcome: 'CLOSED',
-        endingAgent: { id: 3, username: 'ali' },
+        endingAgent: { id: 3, displayName: 'ali' },
         endingManager: null,
         endingTeam: null,
         ownershipSnapshotBasis: 'END_OF_WORK',
       } as Parameters<typeof mapCycle>[0],
       false,
       {
-        assignedAgent: { id: 9, username: 'mohammad' },
+        assignedAgent: { id: 9, displayName: 'mohammad' },
         assignedManager: null,
         assignedTeam: null,
       },
     );
-    expect(result.ownership.agent).toEqual({ id: 3, username: 'ali' });
+    expect(result.ownership.agent).toEqual({ id: 3, displayName: 'ali' });
     expect(result.isEnded).toBe(true);
   });
 });

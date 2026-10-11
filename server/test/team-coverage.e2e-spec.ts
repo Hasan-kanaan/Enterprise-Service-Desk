@@ -98,7 +98,7 @@ describe('Team coverage (focused PostgreSQL and HTTP)', () => {
       users[name] = await db.user.create({
         data: {
           sessions: { create: { id: sessionIds[name] } },
-          username: `${name}-${prefix}`,
+          displayName: `${name}-${prefix}`,
           email: `${name}-${prefix}@test.invalid`,
           password: 'unused-test-hash',
           activatedAt: new Date(),
@@ -421,8 +421,8 @@ describe('Team coverage (focused PostgreSQL and HTTP)', () => {
           },
         });
       }
-      await get(`/tickets/${owned.id}`, 'admin').expect(403);
-      await get(`/tickets/${owned.id}`, 'superAdmin').expect(403);
+      await get(`/tickets/${owned.id}`, 'admin').expect(404);
+      await get(`/tickets/${owned.id}`, 'superAdmin').expect(404);
     } finally {
       await db.team.update({
         where: { id: teamA.id },

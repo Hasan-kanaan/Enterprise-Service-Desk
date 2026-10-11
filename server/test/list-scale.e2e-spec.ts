@@ -15,7 +15,12 @@ import { jwtConstants } from '../src/auth/auth.constants';
 import request from 'supertest';
 
 type Page = {
-  items: { id: number; title?: string; username?: string; status?: string }[];
+  items: {
+    id: number;
+    title?: string;
+    displayName?: string;
+    status?: string;
+  }[];
   nextCursor: string | null;
   hasMore: boolean;
 };
@@ -36,7 +41,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
   let app: INestApplication<import('node:http').Server>;
   const users: Record<
     string,
-    { id: number; role: UserRole; username: string; sessionVersion: number }
+    { id: number; role: UserRole; displayName: string; sessionVersion: number }
   > = {};
   const groups: Record<string, number[]> = {};
   let teamId: number,
@@ -96,7 +101,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
       users[name] = await db.user.create({
         data: {
           sessions: { create: { id: sessionIds[name] } },
-          username: `${prefix}-${name}`,
+          displayName: `${prefix}-${name}`,
           email: `${prefix}-${name}@test.invalid`,
           password: 'test-only',
           activatedAt: new Date(),
@@ -133,7 +138,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
     ).id;
     const agents = await db.user.createManyAndReturn({
       data: Array.from({ length: size + 60 }, (_, i) => ({
-        username: `${prefix}-person-${String(i).padStart(4, '0')}`,
+        displayName: `${prefix}-agent-${i}`,
         email: `${prefix}-${i}@test.invalid`,
         password: 'test-only',
         activatedAt: new Date(),
@@ -239,7 +244,9 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
       await db.teamManager.deleteMany({ where: { team: teamWhere } });
       await db.team.deleteMany({ where: teamWhere });
       await db.region.deleteMany({ where: { name: prefix } });
-      await db.user.deleteMany({ where: { username: { startsWith: prefix } } });
+      await db.user.deleteMany({
+        where: { displayName: { startsWith: prefix } },
+      });
     } finally {
       await app?.close();
       await db.$disconnect();
@@ -371,7 +378,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
       expect(
         (
           await page(
-            `/users?search=${users.inactive.username}&status=INACTIVE`,
+            `/users?search=${users.inactive.displayName}&status=INACTIVE`,
             who,
           )
         ).items.map((item) => item.id),
@@ -380,7 +387,40 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
         (await page(`/users?search=${prefix}-agent%40test.invalid`, who))
           .items[0].id,
       ).toBe(users.agent.id);
-      await get('/tickets', who).expect(403);
+      const own = await db.ticket.create({
+        data: {
+          title: `${prefix} ${who} own request`,
+          description: 'Requester authority only',
+          categoryId,
+          requesterId: users[who].id,
+        },
+      });
+      for (const path of ['/tickets', '/tickets?queue=requests'])
+        expect((await page(path, who)).items.map((item) => item.id)).toEqual([
+          own.id,
+        ]);
+      await get(`/tickets/${own.id}`, who).expect(200);
+      expect(
+        (await page(`/tickets?search=${groups.primary[0]}`, who)).items,
+      ).toEqual([]);
+      await get(`/tickets/${groups.primary[0]}`, who).expect(404);
+      await request(app.getHttpServer())
+        .patch(`/tickets/${groups.primary[0]}`)
+        .set(
+          'Authorization',
+          `Bearer ${jwt.sign({ sub: users[who].id, sid: sessionIds[who], sessionVersion: users[who].sessionVersion })}`,
+        )
+        .send({ title: 'Unauthorized change' })
+        .expect(403);
+      expect(
+        (
+          await db.ticket.findUniqueOrThrow({
+            where: { id: groups.primary[0] },
+          })
+        ).title,
+      ).not.toBe('Unauthorized change');
+      // Neither own-request access nor account administration grants support routing.
+      await get(ticketPath(own.id, 'primary'), who).expect(403);
       await get(ticketPath(groups.primary[0], 'primary'), who).expect(403);
     },
   );
@@ -424,8 +464,25 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
       'manager',
     ).expect(200);
     expect(result.body as unknown[]).toHaveLength(20);
-    for (const person of result.body as { id: number; username: string }[])
-      expect(Object.keys(person).sort()).toEqual(['id', 'username']);
+    const people = result.body as {
+      id: number;
+      displayName: string;
+    }[];
+    for (const person of people) {
+      expect(Object.keys(person).sort()).toEqual(['displayName', 'id']);
+      expect(person).toEqual(
+        await db.user.findUniqueOrThrow({
+          where: { id: person.id },
+          select: { id: true, displayName: true },
+        }),
+      );
+    }
+    expect(people.every((person) => person.displayName.trim().length > 0)).toBe(
+      true,
+    );
+    expect(
+      people.some((person) => typeof person.displayName === 'string'),
+    ).toBe(true);
     expect(
       (
         await get(
@@ -433,7 +490,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
             groups.primary[0],
             'primary',
             teamId,
-            users.inactive.username,
+            users.inactive.displayName,
           ),
           'manager',
         )
@@ -446,7 +503,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
             groups.primary[0],
             'primary',
             teamId,
-            users.collaborator.username,
+            users.collaborator.displayName,
           ),
           'manager',
         )
@@ -464,7 +521,11 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
         )
       ).body,
     ).toEqual([
-      { id: users.collaborator.id, username: users.collaborator.username },
+      {
+        id: users.collaborator.id,
+
+        displayName: users.collaborator.displayName,
+      },
     ]);
     await get(ticketPath(groups.primary[0], 'primary'), 'otherManager').expect(
       404,
@@ -523,7 +584,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
     expect(
       (
         await get(
-          `/organization/teams/${otherTeamId}/people?purpose=lead&search=${users.lead.username}`,
+          `/organization/teams/${otherTeamId}/people?purpose=lead&search=${users.lead.displayName}`,
           'admin',
         )
       ).body,
@@ -531,7 +592,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
     expect(
       (
         await get(
-          `/organization/teams/${teamId}/people?purpose=member&search=${users.agent.username}`,
+          `/organization/teams/${teamId}/people?purpose=member&search=${users.agent.displayName}`,
           'admin',
         )
       ).body,
@@ -569,7 +630,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
     const boundary = first.items.at(-1)!;
     await db.user.update({
       where: { id: boundary.id },
-      data: { username: `${prefix}-renamed` },
+      data: { displayName: `${prefix}-renamed` },
     });
     const next = await page(
       `/users?role=AGENT&status=ACTIVE&limit=7&cursor=${first.nextCursor}`,

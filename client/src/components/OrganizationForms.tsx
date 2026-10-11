@@ -29,6 +29,7 @@ export function OrganizationCreateForm({
     [region, setRegion] = useState<number | null>(null)
   return (
     <AdminDialog
+      presentation="drawer"
       title={`Create ${kind === 'teams' ? 'team' : kind === 'specialties' ? 'specialty' : kind.slice(0, -1)}`}
       {...callbacks}
       valid={
@@ -112,6 +113,7 @@ export function TeamCoverageForm({
   )
   return (
     <AdminDialog
+      presentation="drawer"
       title="Change coverage"
       {...callbacks}
       valid={
@@ -178,6 +180,7 @@ export type TeamAction = {
     | 'remove-lead'
     | 'remove-manager'
   userId?: number
+  displayName?: string
 }
 export function TeamActionForm({
   team,
@@ -223,10 +226,10 @@ export function TeamActionForm({
         <p className="notice">
           Confirm removal of{' '}
           {action.kind === 'remove-member'
-            ? `member #${action.userId}`
+            ? action.displayName ?? 'this member'
             : action.kind === 'remove-lead'
-              ? team.teamLead?.username
-              : team.managers[0]?.manager.username}{' '}
+              ? team.teamLead?.displayName
+              : team.managers[0]?.manager.displayName}{' '}
           from this organizational responsibility. No replacement will be
           selected.
         </p>
@@ -276,6 +279,7 @@ export function OrganizationMaintenanceForm({
   const label = action.kind[0].toUpperCase() + action.kind.slice(1)
   return (
     <AdminDialog
+      presentation={action.kind === 'rename' ? 'drawer' : 'modal'}
       title={`${label} ${action.record.name}`}
       {...callbacks}
       valid={action.kind !== 'rename' || !!name.trim()}
