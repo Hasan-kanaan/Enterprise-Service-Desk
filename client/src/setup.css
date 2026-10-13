@@ -1,0 +1,27 @@
+﻿.setup-fields { display: grid; gap: 20px; min-width: 0; border: 0; padding: 0; margin: 0; }
+.setup-fields .field { margin: 0; }
+.setup-fields .field input { min-height: 44px; font-size: 16px; }
+.setup-fields .button { min-height: 44px; white-space: normal; }
+.setup-fields:disabled { opacity: 0.65; }
+.setup-fields button:disabled { opacity: 0.6; cursor: not-allowed; }
+.setup-page :is(input, button, a):focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.setup-recovery { border-top: 1px solid var(--border); padding-top: 20px; }
+.setup-restart { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); cursor: pointer; }
+.setup-restart:hover { border-color: var(--primary); }
+.setup-restart:focus-within { outline: 2px solid var(--ring); outline-offset: 3px; }
+.setup-restart[data-selected='true'] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
+.setup-restart input { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; accent-color: var(--primary); }
+.setup-restart-title { display: block; font-weight: 650; margin-bottom: 6px; }
+#restart-description, .setup-helper { display: block; color: var(--muted-foreground); font-size: 13px; line-height: 1.65; }
+.setup-restart-state { display: block; color: var(--primary); font-size: 12px; font-weight: 600; margin-top: 10px; }
+.setup-helper { margin-top: 12px; }
+.setup-delivery { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 24px; line-height: 1.65; }
+.setup-delivery h3 { font-weight: 650; }
+.setup-delivery p { margin-top: 6px; color: var(--foreground); }
+.setup-delivery .button { margin-top: 12px; white-space: normal; }
+.setup-delivery.is-success { color: var(--success); background: color-mix(in srgb, var(--success) 7%, var(--card)); }
+.setup-delivery.is-failure { color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--card)); }
+@media (min-width: 640px) {
+  .setup-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .setup-wide { grid-column: 1 / -1; }
+}

@@ -1,5 +1,33 @@
 # Project Status
 
+## Setup UX and branded security email ? Batch 4B (2026-10-13)
+
+ISS-018 / ISS-019 / ISS-020 and the remaining `/setup` portion of ISS-025 are
+implemented and focused-test verified. Batch 4A remains intact. Setup now has an
+accessible restart-confirmation card, meaningful identity-change guards, duplicate
+submission protection, truthful success/failure delivery feedback and shared sign-in
+navigation. The comparison baseline is memory-only; after reload, the availability
+API cannot reveal earlier identity details and server-authorized restart remains
+possible. A committed FAILED delivery still establishes the local baseline.
+
+Activation, reset and changed-password emails now include branded HTML and text
+fallbacks. Only activation/reset contain existing single-use action links. Values
+are escaped; no external rendering assets, tracking, password/secret data or ticket
+notifications were added. Bootstrap/auth behavior, tokens, authorization, sessions,
+rate limits and safe SMTP configuration are unchanged. No schema/migration changes.
+
+Server mail/account-security/auth unit tests pass (3 suites / 31 tests), server
+lint/typecheck/build pass, client lint/TypeScript/Vite build pass, focused Chromium
+bootstrap and account-security modes pass with no runtime/console errors, and
+`git diff --check` passes. Tests use mocked SMTP and isolated browser API/mail
+fixtures; no real SMTP/Mailpit or mailbox-client/manual screen-reader validation is
+claimed. Full PostgreSQL/e2e regression was not run because backend business logic
+was not changed. [Details, commands and file list](docs/account-security.md).
+
+This resolves the Setup/email deferral recorded in the historical Batch 4A entry
+below. Later global UI, settings/profile, directory, ticket email, MFA/SMS/WhatsApp,
+queue/outbox, cloud/deployment and AI work remains deferred. No commit or push.
+
 ## Account-security UX slice (2026-10-13)
 
 ISS-016 / ISS-017 / ISS-021 / ISS-022 / ISS-023 / ISS-024 / ISS-025 / ISS-026:

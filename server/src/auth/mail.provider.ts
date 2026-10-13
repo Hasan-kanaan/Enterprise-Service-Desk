@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import nodemailer from 'nodemailer';
 import { deployedMode } from '../security/security.config';
+import {
+  accountActivationEmail,
+  passwordResetEmail,
+  passwordChangedEmail,
+} from './security-email.templates';
 
 export abstract class MailProvider {
   abstract sendAccountActivation(email: string, link: string): Promise<void>;
@@ -73,33 +78,37 @@ export class SmtpMailProvider extends MailProvider {
     disableFileAccess: true,
     disableUrlAccess: true,
   });
-  private async send(to: string, subject: string, text: string) {
+  private async send(
+    to: string,
+    subject: string,
+    content: { text: string; html: string },
+  ) {
     await this.transport.sendMail({
       from: this.config.from,
       to,
       subject,
-      text,
+      ...content,
     });
   }
   sendAccountActivation(email: string, link: string) {
     return this.send(
       email,
-      'Activate your Enterprise Service Desk account',
-      `Your Enterprise Service Desk account has been created. Choose your password using this single-use link (expires in 24 hours):\n${link}\nIf unexpected, ignore this email or contact company IT.`,
+      'Activate your Kino Service Desk account',
+      accountActivationEmail(link),
     );
   }
   sendPasswordReset(email: string, link: string) {
     return this.send(
       email,
-      'Reset your Enterprise Service Desk password',
-      `A password reset was requested. This single-use link expires in 30 minutes:\n${link}\nIgnore this email if you did not request it.`,
+      'Reset your Kino Service Desk password',
+      passwordResetEmail(link),
     );
   }
   sendPasswordChanged(email: string) {
     return this.send(
       email,
-      'Enterprise Service Desk password changed',
-      'Your Enterprise Service Desk password was changed. If this was not you, contact company IT/security.',
+      'Kino Service Desk password changed',
+      passwordChangedEmail(),
     );
   }
 }

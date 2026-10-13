@@ -1,5 +1,30 @@
 # Project Decisions
 
+## Setup correction UX and branded account emails ? Batch 4B (2026-10-13)
+
+Complete ISS-018/019/020 and Setup's remaining ISS-025 without changing Batch 4A's
+account-security flows or backend bootstrap semantics. Keep Setup's larger layout
+and reuse shared public-auth navigation. Explicit restart confirmation describes
+identity replacement and prior-link invalidation. After an accepted setup response,
+require a normalized displayName/jobTitle/email change plus confirmation before a
+new corrective submission. A FAILED mail delivery still establishes that saved
+identity baseline. Block concurrent submissions; show truthful sent/failed feedback.
+Unchanged-identity email recovery uses the existing public resend page and controls.
+
+This is a memory-only UX guard. Availability exposes no pending identity; a reload
+cannot reconstruct a comparison baseline. Explain that limitation, allow explicit
+restart, and leave secret validation, concurrency, eligibility and invalidation to
+the existing server. Never persist the secret or draft and never auto-login.
+
+Use explicit activation/reset/changed-password email renderers through the existing
+MailProvider. Nodemailer sends HTML plus text fallback, with escaped values and no
+remote assets/tracking. Activation/reset alone contain their existing action URLs
+and expiry wording; changed-password notices invent no link or device metadata.
+Preserve SMTP TLS/loading/timeouts/logging controls and security-only email scope.
+No queue, schema, rate-limit, session, authorization or ticket changes. See
+[verification and reload boundaries](account-security.md). This entry resolves the
+Setup/email deferral in the earlier Batch 4A entries, not later UI batches.
+
 ## Public account-security UX (2026-10-13)
 
 Preserve the existing four public routes, fragment-token capture and removal,

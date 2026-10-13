@@ -44,4 +44,5 @@
 .public-auth-navigation { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; }
 .public-auth-navigation a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 6px; padding: 8px; color: var(--primary); font-weight: 600; text-decoration: none; }
 .public-auth-navigation a:hover { background: var(--muted); text-decoration: underline; text-underline-offset: 4px; }
+.public-auth-navigation a:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 .public-auth-note { text-align: center; font-size: 13px; }

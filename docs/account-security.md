@@ -1,5 +1,97 @@
 # Account activation and password recovery
 
+## Setup UX and branded security email ? Batch 4B (2026-10-13)
+
+ISS-018, ISS-019, ISS-020 and the remaining Setup portion of ISS-025 are
+implemented and focused-test verified. This completes the Setup/email scope
+previously deferred by Batch 4A; the historical verification entries below remain
+unchanged. Activation/reset/forgot-password/resend implementation is preserved.
+
+### Setup behavior and reload boundary
+
+The larger two-column Setup layout remains. A keyboard-operable native checkbox
+inside a grouped recovery card explicitly confirms replacing pending identity
+details and invalidating previous activation links. It is not described as a
+resend. Setup reuses `ReturnToSignIn`; completed/unavailable states also reuse
+`PublicAuthCard`. A small shared focus rule supports navigation outside the card.
+
+The first submission is enabled without restart. After a successful API response,
+including `delivery: FAILED` (the identity was committed), component memory holds
+only the normalized displayName/jobTitle/email comparison baseline. Further
+submissions require explicit restart confirmation and a meaningful change to one
+of those fields. Names/titles are trimmed and email is trimmed/lowercased like the
+backend; whitespace, email casing and setup-secret changes alone do not qualify.
+Confirmation resets after each accepted submission. The form disables while busy;
+a synchronous submission lock also prevents rapid duplicate requests. Rejected
+requests leave the previous baseline intact and can be corrected/retried.
+
+Successful delivery produces a success toast and persistent instructions to open
+the email, verify the address, choose a password and then sign in. Delivery failure
+produces an error toast and a truthful pending-identity-saved notice. Its link to
+the existing `/resend-activation` flow supports unchanged-identity delivery recovery
+after SMTP repair; that public flow retains generic responses and its cooldown.
+There is no automatic navigation, login, resend or mutation retry.
+
+No draft, secret or comparison baseline is persisted. After reload, the API only
+reports setup availability and exposes no pending identity. The page explicitly
+explains that it cannot compare previous details: ordinary initial submission is
+available and the server rejects it if a pending root exists; explicit authorized
+restart remains available. This memory-only UX guard is not a security boundary.
+
+### Email rendering and unchanged contracts
+
+All three existing provider methods now send both `text` and `html` via Nodemailer.
+Activation/reset messages have a Kino Service Desk header, restrained teal CTA,
+visible fallback URL, single-use/24-hour or 30-minute expiry guidance, and a reason
+footer. The changed-password notice has no URL/token and directs unexpected
+changes to company IT/security. Templates use inline table styling with no remote
+images/fonts, external CSS, JavaScript or tracking. Dynamic content is HTML-escaped;
+action URLs reject non-HTTP(S) schemes and credentials without echoing the URL.
+Only the existing application-generated URL contains an activation/reset token.
+
+Bootstrap availability, mandatory server-validated secret, advisory/User locking,
+restart invalidation, user-owned password selection, activation without auto-login,
+public anti-enumeration, session/rate-limit/authorization rules, SMTP TLS requirements,
+disabled URL/file loading, bounded timeouts and disabled transport logging are
+unchanged. No backend setup/auth logic, DTO, schema, migration or ticket behavior
+changed. No setup secret or password is accepted by the template functions.
+
+### Focused verification and files
+
+| Command (from the indicated application) | Result |
+| --- | --- |
+| Server: `pnpm.cmd test --runInBand --runTestsByPath src/auth/mail.provider.spec.ts src/auth/account-security.spec.ts src/auth/auth.service.spec.ts` | 3 suites, 31 tests pass |
+| Server: `pnpm.cmd lint` | Pass |
+| Server: `pnpm.cmd typecheck` | Pass |
+| Server: `pnpm.cmd build` | Pass |
+| Client: `pnpm.cmd lint` | Pass |
+| Client: `pnpm.cmd build` | TypeScript/Vite pass |
+| Client: `node test/administration-flow.mjs --bootstrap` | Pass |
+| Client: `node test/administration-flow.mjs --account-security` | Pass |
+| Repository: `git diff --check` | Pass |
+
+Mail tests mock Nodemailer and verify both formats, URL/CTA/expiry, notice without
+links, escaping/unsafe URL rejection, no secrets/ticket data/external dependencies
+and the full safe transport options. Bootstrap browser fixtures cover initial send,
+success/error toasts, normalized identity guards, confirmation/keyboard/focus,
+duplicate/in-flight prevention, recoverable rejection, committed FAILED baseline,
+prior-link invalidation, reload behavior, no stored secrets/drafts, sign-in navigation,
+320px/dark layout, activation and no auto-login. Both browser modes assert no
+runtime/console errors. Chromium uses the previously required approved execution
+outside the sandbox. No real SMTP/Mailpit, mailbox-client rendering or manual
+screen-reader verification was performed. No full PostgreSQL/e2e regression ran:
+backend business behavior is unchanged.
+
+Files: `client/src/pages/SetupPage.tsx`, `client/src/setup.css`,
+`client/src/public-auth.css`, `client/test/administration-flow.mjs`,
+`client/test/setup-polish.mjs`, `server/src/auth/mail.provider.ts`,
+`server/src/auth/security-email.templates.ts`, `server/src/auth/mail.provider.spec.ts`,
+this guide, `docs/decision.md`, and `status.md`.
+
+Global theme/scrollbar/skeleton and mutation-toast work, settings/profile and
+account-directory polish, ticket email, MFA/SMS/WhatsApp, durable mail delivery,
+cloud/deployment and AI remain outside this batch. No commit or push performed.
+
 ## Public account-security UX slice (2026-10-13)
 
 ISS-016, ISS-017, ISS-021, ISS-022, ISS-023, ISS-024, ISS-025 and ISS-026

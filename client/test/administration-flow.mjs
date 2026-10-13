@@ -1,3 +1,4 @@
+import { setupPolishChecks } from './setup-polish.mjs'
 import { accountSecurityChecks } from './account-security.mjs'
 import { administrationPolish } from './ui-polish.mjs'
 import { accountDirectoryChecks } from './account-directory.mjs'
@@ -67,6 +68,7 @@ const directoryMode = process.argv.includes('--account-directory')
 let directoryDelay = 0, creationMailFailure = false
 let securityActionFailure = false
 let bootstrapComplete = false, bootstrapAccount = null, setupChecks = 0
+let setupDelay = 0, setupFailure = null, setupDeliveryFailed = false
 let requesterDenial = false
 const requests = []
 const mutations = []
@@ -223,14 +225,17 @@ function response(request) {
   }
   if (path === '/auth/setup/status') { setupChecks++; return [200, { available: bootstrapMode && !bootstrapComplete }] }
   if (path === '/auth/setup') {
+    if (setupFailure) { const result = setupFailure; setupFailure = null; return result }
     assert(!('password' in body)); assert(!('confirmPassword' in body))
     if (body.setupSecret !== 'fixture-installation-secret') return [403, { message: 'Invalid setup credentials' }]
     if (bootstrapComplete || (bootstrapAccount && !body.restart)) return [409, { message: 'Setup could not be started. Check installation state and details.' }]
     if (!bootstrapAccount) { bootstrapAccount = { id: 900, role: 'SUPER_ADMIN', activatedAt: null }; accounts.push(bootstrapAccount) }
-    Object.assign(bootstrapAccount, body)
+    Object.assign(bootstrapAccount, { displayName: body.displayName.trim(), jobTitle: body.jobTitle.trim(), email: body.email.trim().toLowerCase() })
     securityMail.filter(m => m.account.id === bootstrapAccount.id).forEach(m => { m.used = true })
     sendSecurityMail(bootstrapAccount, 'activation')
-    return [201, { delivery: 'SENT' }]
+    const delivery = setupDeliveryFailed ? 'FAILED' : 'SENT'
+    setupDeliveryFailed = false
+    return [201, { delivery }]
   }
   const securityAction = path.match(/^\/auth\/accounts\/(\d+)\/(reset-password|resend-activation)$/)
   if (securityAction) {
@@ -575,6 +580,9 @@ try {
           await send('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' })
           return
         }
+        if (setupDelay && request.method === 'POST' && new URL(request.url).pathname === '/auth/setup') {
+          const wait = setupDelay; setupDelay = 0; await delay(wait)
+        }
         if (catalogDelay && /\/organization\/(regions|departments)$/.test(new URL(request.url).pathname)) await delay(catalogDelay)
         if (securityDelay && request.method === 'POST' && /\/auth\/(activate|reset-password)$/.test(new URL(request.url).pathname)) {
           const wait = securityDelay; securityDelay = 0; await delay(wait)
@@ -645,29 +653,12 @@ try {
     assert.equal(browserErrors.length, 0, JSON.stringify(browserErrors))
   } else if (bootstrapMode) {
     securitySession = false
-    await navigate('/login')
-    await waitText('Create the root administrator.')
-    assert.equal(await evaluate('location.pathname'), '/setup')
-    assert(!/Welcome back|Forgot password|Resend activation/.test(await evaluate('document.body.innerText')))
-    assert.equal(await evaluate('!!document.querySelector("input[name=password]")'), false)
-    assert.equal(await evaluate('!!document.querySelector("input[name=username]")'), false)
-    const checks = setupChecks
-    await delay(700)
-    assert.equal(setupChecks, checks, 'setup does not redirect repeatedly')
-    for (const [name, value] of Object.entries({ displayName: 'Root Operator', jobTitle: 'Administrator',  email: 'typo@example.test', setupSecret: 'wrong' })) await fill(`input[name="${name}"]`, value)
-    await click('Send activation email')
-    await waitText('Invalid setup credentials')
-    assert.equal(bootstrapAccount, null)
-    await fill('input[name="setupSecret"]', 'fixture-installation-secret')
-    await click('Send activation email')
-    await waitText('Activation email sent.')
-    assert.equal(await evaluate('location.pathname'), '/setup')
-    const oldToken = securityMail.at(-1).token
-    await fill('input[name="email"]', 'corrected@example.test')
-    await evaluate('document.querySelector("input[name=restart]").click()')
-    await click('Send activation email')
-    await until(() => securityMail.at(-1).token !== oldToken, 'fresh activation issued')
-    assert(securityMail.find(m => m.token === oldToken).used)
+    await setupPolishChecks({ navigate, click, fill, evaluate, waitText, until, send, requests, securityMail,
+      delayNext: () => { setupDelay = 700 },
+      failNext: value => { setupFailure = value },
+      failDelivery: () => { setupDeliveryFailed = true },
+      getSetupChecks: () => setupChecks,
+    })
     await navigate('/login')
     await waitText('Create the root administrator.')
     await navigate(`/activate#token=${securityMail.at(-1).token}`)
@@ -683,12 +674,13 @@ try {
     await waitText('Forgot password?')
     await navigate('/setup')
     await waitText('Initial setup is complete')
-    await click('Go to sign in')
+    await click('Return to sign in')
     await waitText('Welcome back')
     await fill('input[name="email"]', 'corrected@example.test')
     await fill('input[name="password"]', 'ChosenPassword123!')
     await click('Sign in')
     await waitText("Manage your service desk's people and configuration.")
+    assert.deepEqual(browserErrors, [])
     console.log('PASS: bootstrap redirect, no loop, pending recovery, activation password ownership, no auto-login and completed setup/login')
     process.exitCode = 0
   } else {
