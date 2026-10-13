@@ -1,0 +1,47 @@
+.public-auth-card {
+  width: 100%;
+  max-width: 460px;
+  margin: auto;
+  padding: clamp(24px, 5vw, 36px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  box-shadow: 0 24px 60px rgb(15 23 42 / 10%);
+}
+.public-auth-icon {
+  display: inline-flex;
+  padding: 12px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--card));
+}
+.public-auth-icon.is-success {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, var(--card));
+}
+.public-auth-heading { margin-bottom: 28px; }
+.public-auth-heading h1 { font-size: 26px; line-height: 1.25; font-weight: 650; letter-spacing: -0.03em; }
+.public-auth-heading p, .public-auth-note { margin-top: 12px; color: var(--muted-foreground); line-height: 1.7; }
+.public-auth-fields { display: grid; gap: 20px; min-width: 0; border: 0; padding: 0; margin: 0; }
+.public-auth-fields .field { margin: 0; gap: 8px; }
+.public-auth-fields input { min-height: 44px; font-size: 16px; }
+.public-auth-card :is(input, button, a):focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.public-auth-heading h1:focus { outline: none; }
+.public-auth-card .public-auth-primary { width: 100%; min-height: 44px; white-space: normal; text-align: center; }
+.public-auth-fields:disabled { opacity: 0.65; }
+.public-auth-fields:disabled button { cursor: wait; }
+.public-auth-guidance { border-radius: 10px; padding: 16px; background: color-mix(in srgb, var(--muted) 55%, var(--card)); font-size: 13px; }
+.public-auth-guidance-title { font-weight: 650; }
+.public-auth-guidance ul { display: grid; gap: 8px; margin: 12px 0; padding: 0; list-style: none; }
+.public-auth-guidance li { display: flex; align-items: center; gap: 8px; }
+.public-auth-guidance svg { flex-shrink: 0; color: var(--muted-foreground); }
+.public-auth-guidance [data-met='true'] svg { color: var(--success); }
+.public-auth-guidance > p:last-child { color: var(--muted-foreground); line-height: 1.6; }
+.public-auth-feedback { font-size: 13px; color: var(--warning); line-height: 1.6; }
+.public-auth-feedback .is-valid { color: var(--success); }
+.public-auth-error { margin-top: 16px; padding: 12px; border-radius: 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--card)); }
+.public-auth-navigation { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; }
+.public-auth-navigation a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 6px; padding: 8px; color: var(--primary); font-weight: 600; text-decoration: none; }
+.public-auth-navigation a:hover { background: var(--muted); text-decoration: underline; text-underline-offset: 4px; }
+.public-auth-note { text-align: center; font-size: 13px; }

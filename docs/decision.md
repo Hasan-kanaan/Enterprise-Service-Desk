@@ -1,5 +1,19 @@
 # Project Decisions
 
+## Public account-security UX (2026-10-13)
+
+Preserve the existing four public routes, fragment-token capture and removal,
+password policy, email-link semantics and session coordinator. Share a scoped
+public-auth card and sign-in navigation without changing Login/Setup or adding a
+UI dependency. Keep inline, live password guidance; use Sonner warnings only on
+invalid submissions, errors for failed operations and success for completion.
+Use fixed generic copy for public email requests, including masking error details.
+Only a missing token or the existing explicit unusable-link server response shows
+recovery controls. Network/rate-limit/conflict failures allow retries; success
+requires explicit sign-in and never shows recovery controls. No backend or token
+contract changes. Setup restart/resend and branded email templates remain deferred.
+See [implementation and focused verification](account-security.md).
+
 ## Identity and navigation (2026-10-11)
 
 Username has been removed from the Enterprise Service Desk identity model.

@@ -1,5 +1,59 @@
 # Account activation and password recovery
 
+## Public account-security UX slice (2026-10-13)
+
+ISS-016, ISS-017, ISS-021, ISS-022, ISS-023, ISS-024, ISS-025 and ISS-026
+are implemented and browser-verified for the requested public account-security scope.
+The four routes share `PublicAuthCard`, scoped `public-auth.css` and a reusable
+Return to sign in control. Login and Setup themselves are unchanged.
+
+Activation/reset show requirements before submission and live, associated field
+feedback for the eight-character minimum, 72 UTF-8 byte maximum and confirmation.
+Native `autocomplete="new-password"` remains enabled; no custom password generator
+or password persistence was added. Invalid submissions focus the offending field
+and use a warning toast. Request failures use error toasts; completed operations
+use success toasts. Activation and reset have distinct completion headings,
+Sign in buttons and no recovery controls. Completion focuses the heading.
+
+Recovery links appear only for a missing token or the existing HTTP 400
+`Invalid, expired or used link` response. Token presence alone is not a validity
+check. Other validation failures, network failures, 409 and 429 keep the form
+retryable. Public email request completion uses fixed generic copy for both
+eligible and unknown emails; errors never render account-specific backend details.
+
+Security contracts are unchanged: email links, short-lived single-use server tokens,
+fragment capture/removal, memory-only secrets, existing session coordinator and
+explicit sign-in after completion. No backend, auth service, schema, migration,
+authorization, rate-limit or session-invalidation changes.
+
+Verification (commands run from `client`, except the final Git check):
+
+| Command | Result |
+| --- | --- |
+| `pnpm.cmd lint` | Pass |
+| `pnpm.cmd build` | Pass, TypeScript and Vite |
+| `node test/administration-flow.mjs --account-security` | Pass |
+| `node test/administration-flow.mjs --bootstrap` | Pass |
+| `node test/administration-flow.mjs` | Pass |
+| `git diff --check` | Pass |
+
+The new focused mode covers inline guidance, no-request mismatches/short/over-byte
+passwords, exactly 72 UTF-8 bytes, duplicate-submit prevention, completion/focus,
+no auto-login, storage/fragment handling, generic public email copy and masked
+backend error details, missing/invalid/replayed links, network/409/429 retry,
+return navigation, 320px touch targets/overflow and dark theme. Existing
+administration coverage also verifies old-password rejection and session clearing.
+All browser modes report no runtime/console errors. API/mail responses are isolated
+fixtures; these checks do not claim real SMTP or manual screen-reader validation.
+PowerShell blocked the `pnpm.ps1` wrapper, so checks used `pnpm.cmd`. The initial
+sandboxed browser attempt timed out before any test; approved external Chromium
+runs passed. No backend suites were run because no backend behavior changed.
+
+Deferred: `/setup` restart/resend UX and branded HTML email templates remain a
+separate batch. Global theme switching and skeleton loaders are also out of scope.
+The existing untracked issue workbook and root lockfile were left untouched;
+this section and `status.md` record the issue-slice status without rewriting them.
+
 ## Identity and navigation (2026-10-11)
 
 Username has been removed from the Enterprise Service Desk identity model.

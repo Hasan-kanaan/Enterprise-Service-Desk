@@ -1,3 +1,4 @@
+import { accountSecurityChecks } from './account-security.mjs'
 import { administrationPolish } from './ui-polish.mjs'
 import { accountDirectoryChecks } from './account-directory.mjs'
 import { manualPolish } from './manual-polish.mjs'
@@ -180,6 +181,9 @@ const viewTeam = (t) => ({
 let securitySession = true
 let securitySequence = 0
 let securityRateLimit = false
+let publicSecurityFailure = null
+let securityDelay = 0
+let securityNetworkFailure = false
 const securityMail = []
 const securityPasswords = new Map()
 function sendSecurityMail(account, type) {
@@ -191,6 +195,9 @@ function response(request) {
   const url = new URL(request.url), path = url.pathname,
     body = request.postData ? JSON.parse(request.postData) : {}
   requests.push(`${request.method} ${path}`)
+  if (/^\/auth\/(activate|reset-password|forgot-password|resend-activation)$/.test(path) && publicSecurityFailure) {
+    const result = publicSecurityFailure; publicSecurityFailure = null; return result
+  }
   if (path === '/auth/activate' || path === '/auth/reset-password') {
     const type = path.endsWith('activate') ? 'activation' : 'reset'
     const message = securityMail.find(m => m.token === body.token && m.type === type && !m.used)
@@ -563,7 +570,15 @@ try {
       const { requestId, request } = data.params
       let delayedDirectoryRequest = false
       try {
+        if (securityNetworkFailure && request.method === 'POST' && /\/auth\/(activate|reset-password|forgot-password|resend-activation)$/.test(new URL(request.url).pathname)) {
+          securityNetworkFailure = false
+          await send('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' })
+          return
+        }
         if (catalogDelay && /\/organization\/(regions|departments)$/.test(new URL(request.url).pathname)) await delay(catalogDelay)
+        if (securityDelay && request.method === 'POST' && /\/auth\/(activate|reset-password)$/.test(new URL(request.url).pathname)) {
+          const wait = securityDelay; securityDelay = 0; await delay(wait)
+        }
         const [status, body] =
           request.method === 'OPTIONS' ? [200, {}] : response(request)
         if (directoryDelay && request.method === 'GET' && new URL(request.url).pathname === '/users') {
@@ -607,7 +622,17 @@ try {
   await send('Fetch.enable', {
     patterns: [{ urlPattern: 'http://localhost:8000/*' }],
   })
-  if (directoryMode) {
+  if (process.argv.includes('--account-security')) {
+    securitySession = false
+    await accountSecurityChecks({ accounts, requests, sendSecurityMail, navigate, click, fill, evaluate, waitText, until, send,
+      failNext: value => { publicSecurityFailure = value },
+      delayNext: () => { securityDelay = 700 },
+      failNetwork: () => { securityNetworkFailure = true },
+      hasSession: () => securitySession,
+    })
+    assert.deepEqual(browserErrors, [])
+    console.log('PASS: focused account-security browser checks; no runtime/console errors')
+  } else if (directoryMode) {
     const root = accounts.find(a => a.role === 'SUPER_ADMIN')
     root.activatedAt = new Date().toISOString()
     accounts.splice(0, accounts.length, root)
@@ -651,9 +676,9 @@ try {
     await fill('label:nth-child(1) input', 'ChosenPassword123!')
     await fill('label:nth-child(2) input', 'ChosenPassword123!')
     await click('Save password')
-    await waitText('Password saved. Sign in to continue.')
+    await waitText('Your account is verified')
     assert.equal(securitySession, false)
-    await click('Go to login')
+    await click('Sign in')
     await waitText('Welcome back')
     await waitText('Forgot password?')
     await navigate('/setup')
@@ -1363,9 +1388,9 @@ try {
   // Each input lives in its own label; select by label order.
   await fill('label:nth-child(2) input', 'UserChosenPassword123!')
   await click('Save password')
-  await waitText('Password saved. Sign in to continue.')
+  await waitText('Your account is verified')
   assert.equal(await evaluate('location.pathname'), '/activate')
-  await click('Go to login')
+  await click('Sign in')
   await waitText('Forgot password?')
   await fill('input[name="email"], input[type="email"]', invited.email)
   await fill('input[type="password"]', 'UserChosenPassword123!')
@@ -1381,8 +1406,8 @@ try {
   securitySession = false
   await navigate('/forgot-password')
   await fill('input[name="email"], input[type="email"]', invited.email)
-  await click('Send instructions')
-  await waitText('If an eligible account exists')
+  await click('Send reset instructions')
+  await waitText('If this email is associated with an eligible Kino Service Desk account')
   const reset = securityMail.filter(m => m.account.id === invited.id && m.type === 'reset').at(-1)
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
   securitySession = true
@@ -1394,12 +1419,12 @@ try {
   await fill('label:nth-child(1) input', 'NewUserPassword456!')
   await fill('label:nth-child(2) input', 'Mismatch')
   await click('Save password')
-  await waitText('Use matching passwords')
+  await waitText('Both password fields must match.')
   await fill('label:nth-child(2) input', 'NewUserPassword456!')
   await click('Save password')
-  await waitText('Password saved. Sign in to continue.')
+  await waitText('Your password has been changed')
   assert.equal(await evaluate('location.pathname'), '/reset-password')
-  await click('Go to login')
+  await click('Sign in')
   await waitText('Welcome back')
   await fill('input[name="email"], input[type="email"]', invited.email)
   await fill('input[type="password"]', 'UserChosenPassword123!')
@@ -1415,15 +1440,15 @@ try {
   await click('Save password')
   await waitText('Invalid, expired or used link')
   await navigate('/activate')
-  await waitText('Invalid or missing link')
+  await waitText('No link was supplied')
   await navigate('/resend-activation')
   securityRateLimit = true
   await fill('input[name="email"], input[type="email"]', 'unknown@example.test')
-  await click('Send instructions')
+  await click('Send activation instructions')
   await waitText('Too many requests')
   securityRateLimit = false
-  await click('Send instructions')
-  await waitText('If an eligible account exists')
+  await click('Send activation instructions')
+  await waitText('If this email is associated with an eligible Kino Service Desk account')
   console.log('PASS: activation mail, memory-only fragment, no auto-login, user-owned passwords, admin resend/reset links, forgot/reset, old password rejection, replay, rate limits and mobile security pages')
   }
   assert.deepEqual(browserErrors, [])

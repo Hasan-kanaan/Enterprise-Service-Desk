@@ -1,5 +1,28 @@
 # Project Status
 
+## Account-security UX slice (2026-10-13)
+
+ISS-016 / ISS-017 / ISS-021 / ISS-022 / ISS-023 / ISS-024 / ISS-025 / ISS-026:
+implemented and browser-verified for the requested public account-security scope.
+Activation, reset, forgot-password and resend-activation now share a responsive
+public-auth card, accessible password feedback, deliberate completion/recovery
+states and consistent sign-in navigation. Public email responses remain generic;
+email-link tokens, password limits, memory-only secrets, URL cleanup, explicit
+sign-in and existing session invalidation remain unchanged. No backend changes.
+
+Client lint and TypeScript/Vite build pass. Chromium account-security, bootstrap
+and existing administration acceptance modes pass with no runtime/console errors;
+`git diff --check` passes. New checks cover Unicode byte boundaries, mismatch,
+network/conflict/rate-limit retry, masked email errors, completion, missing/unusable
+links and 320px/dark-mode layouts. Browser tests use isolated API/mail fixtures;
+no real SMTP or manual screen-reader validation is claimed. Backend suites were
+not run. See [details and exact commands](docs/account-security.md).
+
+The separate `/setup` restart/resend UX and branded HTML email batch is **not
+complete** and remains deferred. Global theme switching and skeleton loaders were
+not implemented. Existing untracked workbook/root lockfile were retained. No commit
+or push was performed.
+
 ## Production dependency gate cleared (2026-10-11)
 
 Patched `@nestjs/platform-express > express > proxy-addr` from 2.0.7 to 2.0.8
