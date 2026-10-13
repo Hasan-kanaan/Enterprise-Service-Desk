@@ -20,6 +20,7 @@ export function PasswordForm({ onDone }: { onDone?: () => void }) {
           [...password].length < 8 ||
           new TextEncoder().encode(password).length > 72
         ) {
+          toast.warning('Check the password requirements and confirmation.')
           setError(
             'Use at least 8 characters, at most 72 UTF-8 bytes, and matching passwords.',
           )
@@ -37,6 +38,7 @@ export function PasswordForm({ onDone }: { onDone?: () => void }) {
           )
           onDone?.()
         } catch (failure) {
+          toast.error(getApiErrorMessage(failure, 'Password could not be updated.'))
           setError(
             getApiErrorMessage(failure, 'Password could not be updated.'),
           )

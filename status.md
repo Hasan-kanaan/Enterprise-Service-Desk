@@ -1,5 +1,69 @@
 # Project Status
 
+## Account-directory finishing polish - Batch 6 (2026-10-13)
+
+ISS-030 / ISS-031 / ISS-032 are complete. Failed account creation keeps an editable
+draft and inline/toast feedback without a redundant reload action. The top-level
+Refresh accounts and initial-load retry remain. Directory wording separates
+Active/Inactive from Verified/Pending verification; a reserved action cell keeps
+the noninteractive SUPER_ADMIN self-row aligned with manageable accounts.
+
+Client lint and TypeScript/Vite build pass. Focused Chromium account-directory and
+Batch 5B loading-feedback modes pass, including correction/retry, state variants,
+self-row permissions/alignment, long identities at desktop/tablet/mobile widths,
+skeletons, refresh retention and mutation toasts. Tests use isolated API fixtures.
+Broader administration acceptance and `git diff --check` pass; role restrictions,
+edit/organization reload handling and public security flows remain verified, with
+no browser runtime/console errors.
+Prior batches and backend/security contracts are preserved; no backend tests,
+commit or push. [File map, verification and boundaries](docs/frontend-polish.md).
+
+This supersedes the historical Batch 6 deferrals below.
+
+## Loading and mutation feedback - Batch 5B (2026-10-13)
+
+ISS-027 and ISS-033 are implemented. Shared accessible skeletons cover unresolved
+routes, lists, cards, details and forms; loaded content remains visible on refresh.
+Mutation feedback now consistently uses success/warning/error Sonner semantics,
+retains inline guidance and avoids duplicate account-creation outcomes. Existing
+4A/4B/5A work, authorization, auth/session rules and API contracts are preserved.
+No backend files, dependencies or persistent data fields changed.
+
+Client lint and TypeScript/Vite build pass. Chromium loading-feedback, requester
+and administration acceptance, requester UI-polish and session UI-polish checks
+pass. Operational acceptance passed on rerun after an initial CDP cleanup timeout.
+Administration shell/profile and manual-polish modes and `git diff --check` pass.
+Checks use API fixtures, not a live backend; no backend suites were run.
+See [the detailed file map, audit and verification](docs/frontend-polish.md).
+
+Batch 6 ISS-030/031/032 remains deferred: account-create failure refresh removal,
+activation wording and account-row alignment. No commit or push.
+
+## Shell/account settings and theme - Batch 5A (2026-10-13)
+
+ISS-015 / ISS-028 / ISS-029 are implemented and focused-browser verified.
+`/profile` is canonical Account settings; `/settings` redirects there. The topbar
+uses notification/theme/settings controls, and the sidebar shows a truncating
+identity/avatar link with separate sign-out. Existing Profile password/session
+functionality, role access and protected routing remain unchanged.
+
+Explicit light/dark preference persists only as `kino-theme`; absent/invalid values
+follow the live system theme. Early root initialization, CSS/Tailwind and Sonner
+use the same resolved theme. Global visible scrollbars now follow light/dark colors.
+No backend, auth semantics, notification behavior or dependencies changed.
+
+Client lint and TypeScript/Vite build pass; Chromium `--shell-profile` and
+`--manual-polish` administration modes plus session `--ui-polish` pass, with no
+runtime/console errors. Coverage includes all roles, routing/history, keyboard,
+notifications, persistence/system override, public themes and 1440/768/320px layouts.
+Mobile-topbar and dark-notification screenshots were reviewed; `git diff --check`
+passes. API fixtures were used. No backend tests or full regression suite ran.
+[Files, exact commands and boundaries](docs/frontend-polish.md).
+
+Batch 5B skeleton/loading and mutation-toast work, and Batch 6 account-directory
+polish remain deferred. ISS-027, ISS-030, ISS-031, ISS-032 and ISS-033 are not marked
+complete. No commit or push.
+
 ## Setup UX and branded security email ? Batch 4B (2026-10-13)
 
 ISS-018 / ISS-019 / ISS-020 and the remaining `/setup` portion of ISS-025 are

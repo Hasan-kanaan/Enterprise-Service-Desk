@@ -1,3 +1,6 @@
+import { Suspense } from 'react'
+import { SkeletonState } from '@/components/Skeleton'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { Avatar } from '@/components/Avatar'
 import { useResource } from '@/hooks/useResource'
 import { getWorkspace } from '@/services/operations.service'
@@ -111,8 +114,8 @@ export function AppLayout() {
       : userRole === 'ADMIN' || userRole === 'SUPER_ADMIN'
         ? 'Administration'
         : 'Support workspace'
-  const pageLabel = location.pathname.startsWith('/settings') ? 'Settings' : location.pathname.startsWith('/profile')
-    ? 'Profile'
+  const pageLabel = location.pathname.startsWith('/profile') || location.pathname.startsWith('/settings')
+    ? 'Account settings'
     : ([...userNavigation]
         .reverse()
         .find(
@@ -168,14 +171,15 @@ export function AppLayout() {
       </nav>
       <div className="sidebar-account">
         <NavLink
-          to="/settings"
+          to="/profile"
+          state={{ profileReturnTo: location.pathname + location.search }}
           onClick={closeNavigation}
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title="Settings"
-          aria-label="Settings"
+          className={({ isActive }) => `nav-item account-link ${isActive ? 'active' : ''}`}
+          title={identity}
+          aria-label={`Account settings for ${identity}`}
         >
-          <Settings size={17} aria-hidden="true" />
-          <span>Settings</span>
+          <Avatar displayName={identity} />
+          <span className="account-identity"><strong>{identity}</strong></span>
         </NavLink>
         <button
           onClick={() => void handleLogout()}
@@ -250,14 +254,14 @@ export function AppLayout() {
           </div>
           <div className="topbar-account">
             <NotificationBell key={user!.id} role={userRole} />
-            <NavLink to="/profile" state={{ profileReturnTo: location.pathname + location.search }} className="topbar-profile" aria-label={`Open profile for ${identity}`} title="Open profile">
-              <Avatar displayName={user?.displayName} />
-              <span className="topbar-profile-name">{identity}</span>
+            <ThemeToggle />
+            <NavLink to="/profile" state={{ profileReturnTo: location.pathname + location.search }} className="icon-button" aria-label="Account settings" title="Account settings">
+              <Settings size={20} aria-hidden="true" />
             </NavLink>
           </div>
         </header>
         <main id="main-content" tabIndex={-1} className="app-content">
-          <Outlet />
+          <Suspense fallback={<SkeletonState variant="page" label="Loading workspace..." />}><Outlet /></Suspense>
         </main>
       </div>
     </div>

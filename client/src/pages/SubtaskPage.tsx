@@ -27,7 +27,7 @@ function SubtaskContent({ id }: { id: number }) {
     setEditing(false)
     resource.reload()
   }
-  if (resource.loading && !resource.data) return <LoadingState label="Loading subtask..." />
+  if (resource.loading && !resource.data) return <LoadingState variant="detail" label="Loading subtask..." />
   if (resource.error || !resource.data)
     return (
       <ErrorState

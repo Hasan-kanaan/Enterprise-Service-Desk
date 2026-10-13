@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useCallback, useState } from 'react'
 import api from '@/services/api'
 import { useResource } from '@/hooks/useResource'
@@ -74,7 +75,7 @@ export function SpecialtyLinks({
           valid={'remove' in action || !!selected}
           onClose={() => setAction(null)}
           onReload={reload}
-          onDone={reload}
+          onDone={() => { toast.success('remove' in action ? 'Specialty removed' : 'Specialty added'); reload() }}
           submit={() =>
             'remove' in action
               ? api.delete(
@@ -137,7 +138,7 @@ export function AgentSpecialties({
       [id],
     ),
   )
-  if (resource.loading) return <LoadingState label="Loading specialties..." />
+  if (resource.loading && !resource.data) return <LoadingState label="Loading specialties..." />
   if (resource.error || !resource.data)
     return <ErrorState error={resource.error} onRetry={resource.reload} />
   return (

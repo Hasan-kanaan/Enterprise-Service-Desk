@@ -47,7 +47,7 @@ export function OrganizationPage() {
     toast.success('Organization updated')
     reload()
   }
-  if (resource.loading && !resource.data) return <LoadingState label="Loading organization..." />
+  if (resource.loading && !resource.data) return <LoadingState variant="page" label="Loading organization..." />
   if (resource.error || !resource.data)
     return (
       <ErrorState
@@ -213,8 +213,8 @@ export function OrganizationPage() {
                 onChange={(e) => setMemberSearch(e.target.value)}
               />
             </label>
-            {members.loading ? (
-              <LoadingState />
+            {members.loading && !members.items.length ? (
+              <LoadingState label="Loading team members..." />
             ) : members.error && !members.items.length ? (
               <ErrorState error={members.error} onRetry={members.retry} />
             ) : members.items.length ? (

@@ -1,3 +1,4 @@
+import { SkeletonState } from './Skeleton'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import api from '@/services/api'
@@ -38,6 +39,7 @@ export function SessionsPanel() {
     }
   }, [revision])
   async function revoke(session?: Session) {
+    if (busy) return
     if (
       !window.confirm(
         session
@@ -61,6 +63,7 @@ export function SessionsPanel() {
       setRevision((value) => value + 1)
     } catch {
       setError('Could not log out sessions. Please retry.')
+      toast.error('Could not log out sessions. Please retry.')
     } finally {
       setBusy(false)
     }
@@ -77,7 +80,7 @@ export function SessionsPanel() {
         Review devices with access to your account. Device names and last-active
         times are approximate.
       </p>
-      {loading && <p role="status">Loading sessions...</p>}
+      {loading && !sessions.length && <SkeletonState count={2} label="Loading sessions..." />}
       {error && (
         <div role="alert">
           {error}{' '}

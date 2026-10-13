@@ -1,5 +1,37 @@
 # Project Decisions
 
+## Initial loading and mutation feedback - Batch 5B (2026-10-13)
+
+Use shared, noninteractive skeleton compositions for initial unresolved content and
+lazy route loading. Keep the authenticated shell mounted and retain loaded content
+during background refresh; preserve existing refresh indicators, empty states,
+errors and retry controls. Skeletons use a labeled status region, decorative hidden
+shapes, theme variables and reduced-motion support. Button-level progress stays local.
+
+Use Sonner at explicit mutation boundaries: success for completed operations,
+warning for correctable submitted input or a completed action with partial delivery,
+error for rejected requests. Keep actionable inline feedback and one toast owner per
+outcome; services and global HTTP interceptors must not add competing toasts.
+Navigation, filters, theme changes, data loading and local UI interactions do not
+toast. Public recovery privacy and all existing server contracts remain authoritative.
+See [the mutation audit and verification](frontend-polish.md).
+
+## Unified account settings and explicit theme - Batch 5A (2026-10-13)
+
+Keep `/profile` as the sole functional Account settings destination and replace
+legacy `/settings` navigation with a protected redirect to it. Preserve all Profile
+security controls and existing role/forced-password guards. Topbar notifications,
+theme control and Settings icon replace duplicated identity text; the sidebar
+identity block links to the same page and sign-out remains explicit. This supersedes
+only the earlier separate Profile/Settings shell-navigation notes.
+
+Store only explicit `light`/`dark` UI preference under `kino-theme` in localStorage.
+With no valid preference, follow live system preference. Apply a resolved root
+`data-theme` early and consistently across CSS variables, Tailwind and Sonner;
+no server persistence or identity/session data is involved. Preserve scrollbar
+visibility and usable widths with theme-aware native/WebKit styling. No auth,
+notification or business behavior changes. See [verification](frontend-polish.md).
+
 ## Setup correction UX and branded account emails ? Batch 4B (2026-10-13)
 
 Complete ISS-018/019/020 and Setup's remaining ISS-025 without changing Batch 4A's

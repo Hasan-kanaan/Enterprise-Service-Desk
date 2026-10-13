@@ -1,3 +1,5 @@
+import { toast } from 'sonner'
+import { getApiErrorMessage } from '@/services/api'
 import { RefreshSurface } from './RefreshSurface'
 import { Bell, BellRing } from 'lucide-react'
 import '@/notifications.css'
@@ -41,6 +43,7 @@ export function NotificationBell({ role }: { role: UserRole }) {
       : null
   }
   const mark = async (record?: Notification, open = false) => {
+    if (busy) return
     setBusy(true)
     setError(undefined)
     try {
@@ -48,12 +51,14 @@ export function NotificationBell({ role }: { role: UserRole }) {
       else await markAllNotificationsRead()
       reload()
       const target = record && open ? destination(record) : null
+      if (!target) toast.success(record ? 'Notification marked as read' : 'Notifications marked as read')
       if (target) {
         setOpen(false)
         navigate(target)
       }
     } catch (failure) {
       setError(failure)
+      toast.error(getApiErrorMessage(failure, 'Could not update notifications.'))
     } finally {
       setBusy(false)
     }

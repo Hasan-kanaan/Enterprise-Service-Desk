@@ -1,3 +1,4 @@
+import { getApiErrorMessage } from '@/services/api'
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
@@ -21,6 +22,7 @@ export function CreateTicketPage() {
       navigate(`/tickets/${ticket.id}`, { replace: true })
     } catch (failure) {
       setError(failure)
+      toast.error(getApiErrorMessage(failure, 'Could not save the ticket. Please try again.'))
     }
   }
   return (
@@ -38,7 +40,7 @@ export function CreateTicketPage() {
       </header>
       <div className="panel">
         {options.loading ? (
-          <LoadingState label="Loading request options..." />
+          <LoadingState variant="form" label="Loading request options..." />
         ) : options.error ? (
           <ErrorState error={options.error} onRetry={options.reload} />
         ) : (

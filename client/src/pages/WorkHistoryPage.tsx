@@ -111,7 +111,7 @@ export function WorkHistoryPage() {
           />
         </label>
       </div>
-      {history.loading ? (
+      {history.loading && !history.data ? (
         <LoadingState label="Loading work history..." />
       ) : history.error ? (
         <ErrorState

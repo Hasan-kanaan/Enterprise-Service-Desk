@@ -1,5 +1,200 @@
 # Frontend UI/UX polish — 2026-10-04
 
+## Account-directory finishing polish - Batch 6 (2026-10-13)
+
+ISS-030, ISS-031 and ISS-032 are complete. This supersedes their earlier deferrals
+below without changing the historical verification records.
+
+- Account creation no longer supplies a stale-record reload callback to
+  `AdminDialog`. A failed create retains its editable draft, inline error and error
+  toast; the administrator can correct and resubmit. There is still one top-level
+  **Refresh accounts** control. Edit/organization dialogs retain their existing
+  403/404/409 reload handling, and directory initial-load errors retain retry.
+- Directory state text uses **Active/Inactive · Verified/Pending verification**.
+  Administrative status still comes from `status`; verification still comes only
+  from `activatedAt`. API values, activation actions and eligibility are unchanged.
+- Every directory row has an empty-or-populated 100px action cell. The same track
+  is reserved on desktop/tablet and beside the stacked mobile identity/state.
+  Empty cells have no controls, fake menu or tab stop. The SUPER_ADMIN self-row
+  remains visible, and unchanged `manageableRoles` rules determine actual menus.
+
+Changed files for this batch: `client/src/pages/UsersPage.tsx`,
+`client/src/components/AccountForm.tsx`, `client/src/components/AdminDialog.tsx`,
+`client/src/workspace.css`, `client/test/account-directory.mjs`,
+`client/test/administration-flow.mjs`, this guide and `status.md`.
+Prior batch changes in the working tree are preserved. No lasting architecture
+decision changed, so this batch does not add a decision entry.
+
+Verification from `client`: `pnpm.cmd lint`, `pnpm.cmd build`,
+`node test/administration-flow.mjs --account-directory` and
+`node test/administration-flow.mjs --loading-feedback` pass. Directory coverage
+includes duplicate-email correction/retry, one top-level refresh, retained error
+feedback, a single creation-success toast, all four state combinations, self-row
+and actionable-row geometry, noninteractive placeholders, long names/emails and
+1440/768/320px layouts. Batch 5B checks retain skeleton, background-refresh,
+initial-error retry, light/dark, reduced-motion and mutation-feedback coverage.
+An initial new test assertion matched an earlier mail warning as well as the later
+success; it was scoped to success toasts and the focused mode passed on rerun.
+The broader `node test/administration-flow.mjs` also passes, covering unchanged
+role/authorization rules, edit/organization stale-record reloads, account mutations
+and public security flows, with no runtime/console errors. Its first attempt timed
+out before application startup; a subsequent run identified an old directory-text
+expectation, updated to Pending verification before the passing final run.
+`git diff --check` passes.
+
+No backend, authorization, role hierarchy, self-management, auth/session, schema,
+email, profile or theme behavior changed. Browser checks use API fixtures; no live
+backend or backend suite was run. No new known issue in this scope; real
+screen-reader validation was not performed. No commit or push.
+
+## Loading and mutation feedback - Batch 5B (2026-10-13)
+
+ISS-027 and ISS-033 are implemented. This entry supersedes the earlier Batch 5A
+deferral of these two items; earlier verification records remain historical.
+
+`Skeleton` supplies line, heading, avatar, control and card shapes; `SkeletonState`
+composes list/table/detail/form/cards/page placeholders. `LoadingState` delegates to
+these primitives. Shapes are decorative and noninteractive; a labeled status region
+announces loading. Theme variables support light/dark, mobile grids collapse, and
+reduced motion disables the restrained pulse.
+
+Initial session and route loading, requester/operations summaries, ticket queues,
+ticket/subtask details, communications, attachments, history, account directory,
+organization/member lists, configuration, specialties, account/ticket forms and
+Profile sessions use the shared skeleton system. Suspense lives inside layouts so
+the authenticated shell remains visible. Existing data stays mounted on refresh;
+empty/error states terminate loading and existing retries remain available. Local
+button, lookup and pagination progress remains local rather than obscuring content.
+
+Mutation audit:
+
+| Surface | Outcome handling |
+| --- | --- |
+| Account create/edit, organization dialogs | Shared error toast plus inline error; existing parent success retained. Account creation owns one success or partial-delivery warning, with no service-layer toast. |
+| Account activation resend | Existing success/error retained; NOT_SENT is a warning. Public recovery behavior is unchanged. |
+| Ticket configuration and specialties | Added completion success; shared dialog failure handling retains inline recovery. |
+| Ticket create/edit and operational actions | Existing successes retained, missing request-failure errors added; submitted selection validation uses warning plus inline guidance. |
+| Messages, notes and attachment deletion | Added completed-action successes and request errors. Attachment deletion owns its toast once; downloads do not get success toasts. |
+| Profile password and sessions | Submitted password validation warns with inline guidance; failed requests error; existing success and session invalidation remain. |
+| Notifications | Explicit mark-read/all gets success or error; opening/navigating does not produce a success toast. |
+| Login, Setup, public account security and sign-out | Existing feedback preserved; no auth or public-response changes. |
+
+Toasts occur at explicit mutation boundaries, never a global HTTP interceptor.
+Warnings are styled in both themes. Form guidance stays inline; keystrokes, filters,
+navigation, theme changes, loading and local UI interactions do not toast. Existing
+submission guards remain; operation dialogs now also guard synchronous repeated
+submissions. No backend, API endpoint, authorization, pagination, ticket lifecycle,
+session/token, email or storage contract changed.
+
+Verification (commands run from `client`, except Git):
+
+| Command | Result |
+| --- | --- |
+| `pnpm.cmd lint` | Pass |
+| `pnpm.cmd build` | TypeScript/Vite pass |
+| `node test/administration-flow.mjs --loading-feedback` | Pass |
+| `node test/administration-flow.mjs --shell-profile` | Pass |
+| `node test/administration-flow.mjs --manual-polish` | Pass |
+| `node test/administration-flow.mjs` | Pass |
+| `node test/employee-flow.mjs` | Pass |
+| `node test/employee-flow.mjs --ui-polish` | Pass |
+| `node test/session-flow.mjs --ui-polish` | Pass |
+| `node test/operations-flow.mjs` | Pass on rerun; first run passed assertions but exited with a CDP Fetch.failRequest cleanup timeout. No harness change was needed. |
+| `git diff --check` | Pass |
+
+Controlled delays verify route/list placeholders, retained shell/content on refresh,
+empty/error/retry transitions, reduced motion and mobile/dark rendering. Feedback
+checks verify single success/error/warning outcomes, partial mail delivery, duplicate
+submit protection and inline password validation. Existing acceptance exercises
+role access, conflicts, paging, lifecycle, notifications, attachments and public
+account-security flows. Browser checks use API fixtures and report no application
+runtime/console errors. No live backend, SMTP, real screen-reader or backend suite
+verification is claimed.
+
+Batch 5B file map (prior Batch 5A files below remain preserved):
+
+- Primitives/loading: `client/src/components/Skeleton.tsx`, `client/src/skeleton.css`,
+  `TicketUI.tsx`, `SessionBootstrap.tsx`, `EditAccountForm.tsx`, `SessionsPanel.tsx`,
+  `client/src/layouts/AppLayout.tsx`, `PublicLayout.tsx`, `client/src/routes/AppRoutes.tsx`.
+- Pages under `client/src/pages`: `CreateTicketPage.tsx`, `EmployeeTicketPage.tsx`,
+  `EmployeeTicketsPage.tsx`, `OperationalTicketPage.tsx`, `OperationalWorkspacePage.tsx`,
+  `OrganizationPage.tsx`, `SubtaskPage.tsx`, `TicketConfigurationPage.tsx`,
+  `UsersPage.tsx`, `WorkHistoryPage.tsx`.
+- Feedback components under `client/src/components`: `AccountForm.tsx`,
+  `AdminDialog.tsx`, `OperationDialog.tsx`, `Attachments.tsx`, `NotificationBell.tsx`,
+  `PasswordForm.tsx`, `SpecialtyLinks.tsx`, `TicketCommunication.tsx`, `TicketForm.tsx`;
+  `client/src/services/users.service.ts`, `client/src/workspace.css`.
+- Tests: `client/test/loading-feedback.mjs`, `administration-flow.mjs`,
+  `session-flow.mjs`, `ui-polish.mjs`. Documentation: this file, `decision.md`, `status.md`.
+
+Batch 6 ISS-030/031/032 remains deferred: account-create failure refresh removal,
+activation wording and account-row alignment. No new UI/state library, backend
+changes, email changes, MFA or AI. No commit or push.
+
+## Shell/account settings and theme - Batch 5A (2026-10-13)
+
+ISS-015, ISS-028 and ISS-029 are implemented and focused-browser verified.
+This supersedes the earlier separate topbar Profile/sidebar Settings navigation
+notes below; historical verification entries remain unchanged.
+
+- `/profile` is the canonical Account settings page. Protected `/settings` uses
+  React Router `Navigate replace` to `/profile`. The existing identity display,
+  password change and session controls remain, including forced-password routing.
+- The topbar contains notifications, a light/dark control and an Account settings
+  icon, with no repeated identity text. The sidebar identity link shows the visible
+  display name and its grapheme initial; the existing neutral `Account` fallback
+  is used for unexpected blank identity. Both links open `/profile`; sign-out
+  remains separate. Long names truncate in the sidebar and wrap on Profile.
+- `kino-theme` stores only `light` or `dark`. Missing/invalid preferences follow
+  the system, including live changes. Explicit choices override system changes,
+  persist across reload and synchronize through browser storage events. Storage
+  failures retain a working in-memory preference. A small same-origin head script
+  initializes `data-theme` before application rendering. Shared CSS variables,
+  Tailwind dark variants and Sonner all use that resolved theme, including public
+  pages. No theme toast, route change or reload is introduced.
+- Global scrollbars use neutral tracks and subtle teal thumbs, with light/dark
+  values and hover treatment. Firefox keeps native width with `scrollbar-color`;
+  WebKit/Chromium use 12px scrollbars. Nested scrolling is retained; forced colors
+  use system colors. Scrollbars are never hidden.
+
+Verification (from `client`, except Git):
+
+| Command | Result |
+| --- | --- |
+| `pnpm.cmd lint` | Pass |
+| `pnpm.cmd build` | TypeScript/Vite pass |
+| `node test/administration-flow.mjs --shell-profile` | Pass |
+| `node test/administration-flow.mjs --manual-polish` | Pass |
+| `node test/session-flow.mjs --ui-polish` | Pass |
+| `git diff --check` | Pass |
+
+The new shell mode covers canonical/legacy/protected routes, all five roles,
+keyboard order/focus, Back/Forward, separate sign-out, identity fallback/truncation,
+notification opening, theme persistence/system changes/removal/invalid values,
+no extra storage fields or theme toast, public Tailwind theme application,
+scrollbar width/colors and 1440/768/320px layouts/mobile drawer navigation.
+Existing administration checks cover notifications, focus/dismissal, drawers,
+refresh, selects, mobile/reflow and dark surfaces. Existing session checks cover
+remote/current-device logout and password-field layout. Browser modes report no
+runtime/console errors and use API fixtures, not live backend mutations.
+Generated mobile-topbar and dark-notification screenshots were visually reviewed;
+no screenshot-golden suite was introduced. Firefox scrollbar styling and assistive
+technology were not tested in a real Firefox/screen-reader session.
+
+Changed files: `client/index.html`, `client/public/theme-init.js`,
+`client/src/hooks/useTheme.ts`, `client/src/components/ThemeToggle.tsx`,
+`client/src/App.tsx`, `client/src/layouts/AppLayout.tsx`,
+`client/src/routes/AppRoutes.tsx`, `client/src/pages/ProfilePage.tsx`,
+`client/src/index.css`, `client/src/workspace.css`, `client/src/tickets.css`,
+`client/test/shell-profile.mjs`, `client/test/administration-flow.mjs`,
+`client/test/manual-polish.mjs`, this guide, `docs/decision.md`, `status.md`.
+
+No backend, auth/session/token/authorization, notification behavior, organization,
+ticket workflow, dependency or email changes. No backend tests were run. Batch 5B
+(global skeleton/loading and mutation-toast work) and Batch 6 (account-directory
+polish) remain deferred; ISS-027/030/031/032/033 are not marked complete. No commit
+or push.
+
 ## Identity and navigation (2026-10-11)
 
 Username has been removed from the Enterprise Service Desk identity model.

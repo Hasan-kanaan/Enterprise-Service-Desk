@@ -686,7 +686,7 @@ button:disabled {
     display: none;
   }
 }
-@media (prefers-color-scheme: dark) {
+:root[data-theme=dark] {
   .status-new,
   .status-assigned {
     background: #203248;

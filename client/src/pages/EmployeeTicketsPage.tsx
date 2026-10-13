@@ -1,3 +1,4 @@
+import { SkeletonState } from '@/components/Skeleton'
 import { RefreshSurface } from '@/components/RefreshSurface'
 import { Plus, Search, RefreshCw, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -77,7 +78,7 @@ export function EmployeeTicketsPage({
           New request
         </Link>
       </header>
-      <section className="ticket-stats" aria-label="Ticket summary">
+      {summary.loading && !summary.data ? <SkeletonState variant="cards" label="Loading ticket summary..." /> : (<section className="ticket-stats" aria-label="Ticket summary">
         {['Active requests', 'Waiting for you', 'Ready to close'].map(
           (label, index) => (
             <div className="stat-card" key={label}>
@@ -86,7 +87,7 @@ export function EmployeeTicketsPage({
             </div>
           ),
         )}
-      </section>
+      </section>)}
       <section className="panel">
         <div className="list-heading">
           <h2>{overview ? 'Recent requests' : 'Your requests'}</h2>

@@ -1,3 +1,4 @@
+import { getApiErrorMessage } from '@/services/api'
 import { RefreshSurface } from '@/components/RefreshSurface'
 import { ActionMenu } from '@/components/ActionMenu'
 import { TicketAttachments } from '@/components/Attachments'
@@ -65,7 +66,7 @@ function OperationalTicket({ id }: { id: number }) {
     resource.reload()
   }
   if (resource.loading && !resource.data)
-    return <LoadingState label="Loading ticket workspace..." />
+    return <LoadingState variant="detail" label="Loading ticket workspace..." />
   if (resource.error || !resource.data)
     return (
       <div className="ticket-workspace">
@@ -178,6 +179,7 @@ function OperationalTicket({ id }: { id: number }) {
                     reload()
                   } catch (failure) {
                     setError(failure)
+      toast.error(getApiErrorMessage(failure, 'Could not save the ticket. Please try again.'))
                   } finally {
                     setBusy(false)
                   }

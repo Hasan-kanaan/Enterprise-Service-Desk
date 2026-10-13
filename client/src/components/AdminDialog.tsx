@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useRef, useState, type ReactNode } from 'react'
 import { Modal } from './Modal'
 import { getApiErrorMessage, getApiStatus } from '@/services/api'
@@ -17,13 +18,14 @@ export function AdminDialog({
   submit: () => Promise<unknown>
   onClose: () => void
   onDone: () => void
-  onReload: () => void
+  onReload?: () => void
   presentation?: 'modal' | 'drawer'
 }) {
   const submitting = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
-  const stale = [403, 404, 409].includes(getApiStatus(error) ?? 0)
+  // Creation has no existing record to reload; keep its draft editable on rejection.
+  const stale = !!onReload && [403, 404, 409].includes(getApiStatus(error) ?? 0)
   return (
     <Modal
       title={title}
@@ -43,6 +45,7 @@ export function AdminDialog({
             onDone()
           } catch (failure) {
             setError(failure)
+            toast.error(getApiErrorMessage(failure, 'Could not save the change. Please try again.'))
           } finally {
             submitting.current = false
             setBusy(false)
@@ -60,7 +63,9 @@ export function AdminDialog({
                     ? 'This account or organization record is no longer available.'
                     : getApiErrorMessage(
                         error,
-                        'We could not confirm the change. Reload before trying again.',
+                        onReload
+                          ? 'We could not confirm the change. Reload before trying again.'
+                          : 'We could not create the account. Check the details and try again.',
                       )}
               </p>
               {stale && (

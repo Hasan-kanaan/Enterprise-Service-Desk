@@ -3,8 +3,7 @@ import { AccountSecurityPage } from '@/pages/AccountSecurityPage'
 import { WorkHistoryPage } from '@/pages/WorkHistoryPage'
 import { OperationalWorkspacePage } from '@/pages/OperationalWorkspacePage'
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
-import { LoadingState } from '@/components/TicketUI'
+import { lazy } from 'react'
 import { AppLayout } from '@/layouts/AppLayout'
 import { PublicLayout } from '@/layouts/PublicLayout'
 import { ProtectedRoute } from '@/routes/ProtectedRoute'
@@ -58,7 +57,6 @@ const OrganizationPage = lazy(() =>
 
 export function AppRoutes() {
   return (
-    <Suspense fallback={<LoadingState label="Loading workspace..." />}>
       <Routes>
         <Route element={<PublicLayout />}>
           {(['activate', 'reset-password', 'forgot-password', 'resend-activation'] as const).map(action => <Route key={action} path={`/${action}`} element={<AccountSecurityPage key={action} action={action} />} />)}
@@ -129,12 +127,11 @@ export function AppRoutes() {
               />
             </Route>
             <Route path="/notifications" element={<PlaceholderPage />} />
-            <Route path="/settings" element={<PlaceholderPage />} />
+            <Route path="/settings" element={<Navigate to="/profile" replace />} />
           </Route>
         </Route>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
-    </Suspense>
   )
 }

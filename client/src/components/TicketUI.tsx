@@ -1,4 +1,5 @@
-import { AlertCircle, ArrowUpRight, Inbox, LoaderCircle } from 'lucide-react'
+import { SkeletonState, type SkeletonVariant } from './Skeleton'
+import { AlertCircle, ArrowUpRight, Inbox } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { getApiStatus, getApiErrorMessage } from '@/services/api'
@@ -13,17 +14,9 @@ export function StatusBadge({ status }: { status: TicketStatus }) {
     </span>
   )
 }
-export function LoadingState({
-  label = 'Loading tickets...',
-}: {
-  label?: string
-}) {
-  return (
-    <div className="empty-state" role="status">
-      <LoaderCircle className="spin" size={22} />
-      <p>{label}</p>
-    </div>
-  )
+// Compatibility entry point; callers select the shape appropriate to their content.
+export function LoadingState({ label = 'Loading tickets...', variant = 'list' }: { label?: string; variant?: SkeletonVariant }) {
+  return <SkeletonState label={label} variant={variant} />
 }
 export function ErrorState({
   error,

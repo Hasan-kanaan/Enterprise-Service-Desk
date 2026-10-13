@@ -1,3 +1,4 @@
+import { SkeletonState } from '@/components/Skeleton'
 import { RefreshSurface } from '@/components/RefreshSurface'
 import { useCallback } from 'react'
 import { NavLink } from 'react-router-dom'
@@ -125,7 +126,7 @@ export function OperationalWorkspacePage({
         <NavLink to="/work/subtasks">Subtasks</NavLink>
       </nav>
       {overview && (
-        <section className="ticket-stats" aria-label="Operational counts">
+        summary.loading && !summary.data ? <SkeletonState variant="cards" label="Loading operational summary..." /> : (<section className="ticket-stats" aria-label="Operational counts">
           <div className="stat-card">
             <span>
               {manager
@@ -144,7 +145,7 @@ export function OperationalWorkspacePage({
             <span>Authorized incomplete subtasks</span>
             <strong>{summary.data?.counts[2] ?? '-'}</strong>
           </div>
-        </section>
+        </section>)
       )}
       {overview && !!tasks.error && (
         <ErrorState error={tasks.error} onRetry={tasks.reload} />

@@ -1,3 +1,5 @@
+import { toast } from 'sonner'
+import { getApiErrorMessage } from '@/services/api'
 import { useCallback, useState } from 'react'
 import api from '@/services/api'
 import {
@@ -112,13 +114,16 @@ export function AttachmentList({
 }) {
   const [error, setError] = useState<unknown>()
   const [busy, setBusy] = useState(false)
-  const action = async (run: () => Promise<void>) => {
+  const action = async (run: () => Promise<void>, removing = false) => {
+    if (busy) return
     setBusy(true)
     setError(undefined)
     try {
       await run()
+      if (removing) toast.success('Attachment deleted')
     } catch (failure) {
       setError(failure)
+      toast.error(getApiErrorMessage(failure, 'Could not complete the attachment action.'))
     } finally {
       setBusy(false)
     }
@@ -158,7 +163,7 @@ export function AttachmentList({
                           'Delete this attachment? It will no longer be downloadable.',
                         )
                       )
-                        void action(() => onDelete(file))
+                        void action(() => onDelete(file), true)
                     }}
                   >
                     Delete attachment
@@ -193,7 +198,7 @@ export function TicketAttachments({ ticketId, refreshKey = 0 }: { ticketId: numb
       <h2>Original request attachments</h2>
       <p className="small muted">Files submitted with this request.</p>
       {resource.loading && !resource.data ? (
-        <LoadingState />
+        <LoadingState label="Loading attachments..." />
       ) : resource.error ? (
         <ErrorState error={resource.error} onRetry={resource.reload} />
       ) : resource.data?.length ? (

@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useState } from 'react'
 import { AttachmentPicker } from './Attachments'
 import { useForm, useWatch } from 'react-hook-form'
@@ -127,12 +128,14 @@ export function TicketForm({
   )
   const submit = handleSubmit(async (input) => {
     if (!input.allRegions && input.affectedRegionIds.length === 0) {
+      toast.warning('Select an affected region or choose all regions.')
       setError('affectedRegionIds', {
         message: 'Select an affected region or choose all regions.',
       })
       return
     }
     if (!input.allDepartments && input.affectedDepartmentIds.length === 0) {
+      toast.warning('Select an affected department or choose all departments.')
       setError('affectedDepartmentIds', {
         message: 'Select an affected department or choose all departments.',
       })

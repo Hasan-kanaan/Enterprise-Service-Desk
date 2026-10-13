@@ -1,3 +1,4 @@
+import { useTheme } from '@/hooks/useTheme'
 import { BrowserRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { Toaster } from 'sonner'
@@ -6,6 +7,7 @@ import { SessionBootstrap } from '@/components/SessionBootstrap'
 import { store } from '@/store/store'
 
 function App() {
+  const theme = useTheme()
   return (
     <Provider store={store}>
       <BrowserRouter>
@@ -13,7 +15,7 @@ function App() {
           <AppRoutes />
         </SessionBootstrap>
       </BrowserRouter>
-      <Toaster position="top-right" richColors theme="system" />
+      <Toaster position="top-right" richColors theme={theme} />
     </Provider>
   )
 }

@@ -80,6 +80,7 @@ function TicketContent({ id }: { id: number }) {
       reload()
     } catch (failure) {
       setError(failure)
+      toast.error(getApiErrorMessage(failure, 'Could not save the ticket. Please try again.'))
     } finally {
       setBusy(false)
     }
@@ -108,12 +109,13 @@ function TicketContent({ id }: { id: number }) {
       reload()
     } catch (failure) {
       setActionError(failure)
+      toast.error(getApiErrorMessage(failure, 'Could not complete the ticket action.'))
     } finally {
       setBusy(false)
     }
   }
   if (ticketResource.loading && !ticketResource.data)
-    return <LoadingState label="Loading your ticket..." />
+    return <LoadingState variant="detail" label="Loading your ticket..." />
   if (ticketResource.error || !ticket)
     return (
       <div className="ticket-workspace">

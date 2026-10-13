@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
+import { useRef, useState, type ReactNode } from 'react'
 import { Modal } from './Modal'
 import { ErrorState } from './TicketUI'
 import { getApiErrorMessage, getApiStatus } from '@/services/api'
@@ -22,6 +23,7 @@ export function OperationDialog({
   valid?: boolean
   reopen?: boolean
 }) {
+  const submitting = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
   const [intake, setIntake] = useState(false)
@@ -35,7 +37,8 @@ export function OperationDialog({
       <form
         onSubmit={async (event) => {
           event.preventDefault()
-          if (busy || !valid || (conflict && !(routing && intake))) return
+          if (submitting.current || busy || !valid || (conflict && !(routing && intake))) return
+          submitting.current = true
           setBusy(true)
           setError(undefined)
           try {
@@ -43,7 +46,9 @@ export function OperationDialog({
             onDone()
           } catch (failure) {
             setError(failure)
+            toast.error(getApiErrorMessage(failure, 'Could not save the change. Please try again.'))
           } finally {
+            submitting.current = false
             setBusy(false)
           }
         }}

@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { RefreshSurface } from '@/components/RefreshSurface'
 import { useState } from 'react'
 import api from '@/services/api'
@@ -27,7 +28,7 @@ export function TicketConfigurationPage() {
     resource.reload()
   }
   if (resource.loading && !resource.data)
-    return <LoadingState label="Loading ticket configuration..." />
+    return <LoadingState variant="page" label="Loading ticket configuration..." />
   if (resource.error || !resource.data)
     return <ErrorState error={resource.error} onRetry={reload} />
   return (
@@ -121,7 +122,7 @@ function ConfigurationDialog({
       title={`${action.kind[0].toUpperCase() + action.kind.slice(1)} ${action.record?.name ?? (action.catalog === 'categories' ? 'category' : 'tag')}`}
       onClose={onClose}
       onReload={onReload}
-      onDone={onReload}
+      onDone={() => { toast.success('Ticket configuration updated'); onReload() }}
       valid={!naming || !!name.trim()}
       submit={() =>
         action.kind === 'create'

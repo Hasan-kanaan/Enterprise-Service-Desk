@@ -74,8 +74,8 @@ export function EditAccountForm({
       <label className="field">Display name<input aria-label="Account display name" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
       <label className="field">Job title<input aria-label="Account job title" maxLength={100} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} /></label>
       <PhoneField value={phone} onChange={setPhone} onValidityChange={setPhoneValid} />
-      {catalogs.loading ? (
-        <LoadingState label="Loading home organization choices..." />
+      {catalogs.loading && !catalogs.data ? (
+        <LoadingState variant="form" label="Loading home organization choices..." />
       ) : catalogs.error ? (
         <ErrorState
           error={catalogs.error}

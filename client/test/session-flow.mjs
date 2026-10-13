@@ -45,6 +45,7 @@ const browser = spawn(
 )
 const clients = []
 const errors = []
+let passwordFailure = false, passwordRequests = 0
 const user = {
   id: 10,
   displayName: 'Maya',
@@ -227,8 +228,9 @@ async function page(source = '', contextId = null) {
         } else if (path.startsWith('/auth/sessions/') && request.method === 'DELETE') {
           sessionRows = sessionRows.filter(row => row.id !== path.split('/').pop())
         } else if (path === '/auth/password') {
-          rejection = true
-          body = { message: 'Password updated' }
+          passwordRequests++
+          if (passwordFailure) { status = 400; body = { message: 'Current password is incorrect.' } }
+          else { rejection = true; body = { message: 'Password updated' } }
         } else if (path === '/auth/logout') {
           logouts++
           rejection = true
@@ -341,7 +343,31 @@ try {
     writeFileSync(join(tmpdir(), 'eds-polish-profile-mobile.png'), Buffer.from(mobileShot.data, 'base64'))
     assert(await a.evaluate(`document.querySelector('input[autocomplete="current-password"]').closest('label').textContent.includes('Current password')`))
     assert.deepEqual(errors, [])
-    console.log('PASS: Profile/security layout, labeled password fields and 390px viewport')
+    const passwordValues = async confirm => a.evaluate(`(() => {
+      const values = ['CurrentPassword123!', 'NewPassword123!', ${JSON.stringify(confirm)}];
+      document.querySelectorAll('.security-form input').forEach((input, index) => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input, values[index]);
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+      });
+    })()`)
+    await passwordValues('Mismatch')
+    await a.evaluate('document.querySelector(".security-form").requestSubmit()')
+    await until(() => a.evaluate('!!document.querySelector("[data-sonner-toast][data-type=warning]")'), 'password warning toast')
+    assert.equal(passwordRequests,0)
+    await passwordValues('NewPassword123!')
+    passwordFailure = true
+    await a.evaluate('document.querySelector(".security-form").requestSubmit()')
+    await until(() => a.evaluate('[...document.querySelectorAll("[data-sonner-toast][data-type=error]")].some(el=>el.textContent.includes("Current password is incorrect"))'), 'password error toast')
+    assert.equal(await a.evaluate('[...document.querySelectorAll("[data-sonner-toast]")].filter(el=>el.textContent.includes("Current password is incorrect")).length'),1)
+    assert(await a.evaluate('document.querySelector(".field-error").textContent.includes("Current password is incorrect")'))
+    passwordFailure = false
+    await a.evaluate('document.querySelector(".security-form").requestSubmit()')
+    await until(() => a.evaluate('[...document.querySelectorAll("[data-sonner-toast][data-type=success]")].some(el=>el.textContent.includes("Password updated"))'), 'password success toast')
+    assert.equal(await a.evaluate('[...document.querySelectorAll("[data-sonner-toast]")].filter(el=>el.textContent.includes("Password updated")).length'),1)
+    assert.equal(passwordRequests,2)
+    await until(async () => !(await state(a)).user && !(await state(b)).user,'password clears both sessions')
+    assert.deepEqual(errors, [])
+    console.log('PASS: Profile/security layout, mobile, inline warning/error, single outcome toasts and password-change sign-out')
   } else {
   assert.equal(peak, 1)
   let before = count

@@ -20,7 +20,7 @@ export function ProfilePage() {
       <header className="page-heading">
         <div>
           <p className="eyebrow">Account</p>
-          <h1>Profile</h1>
+          <h1>Account settings</h1>
         </div>
       </header>
       <section className="panel detail-body">

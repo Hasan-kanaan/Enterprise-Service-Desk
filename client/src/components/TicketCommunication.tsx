@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { RefreshSurface } from './RefreshSurface'
 import { useOlderPages, uniqueById } from '@/hooks/useOlderPages'
 import { AttachmentList, AttachmentPicker } from './Attachments'
@@ -6,7 +7,7 @@ import {
   postWithAttachments,
 } from '@/services/attachments.service'
 import { useCallback, useRef, useState } from 'react'
-import api, { getApiStatus } from '@/services/api'
+import api, { getApiStatus, getApiErrorMessage } from '@/services/api'
 import { useResource } from '@/hooks/useResource'
 import { ErrorState, LoadingState } from './TicketUI'
 import { cycleLabel, formatDate } from '@/types/ticketPresentation'
@@ -179,7 +180,7 @@ function CommunicationStream({
   const submit = async () => {
     const content = draft.trim()
     const cycle = draftCycle ?? data?.currentCycleId
-    if (!content || !cycle || stale || conflict) return
+    if (busy || !content || !cycle || stale || conflict) return
     setBusy(true)
     setError(undefined)
     try {
@@ -211,6 +212,7 @@ function CommunicationStream({
           )
         ).data
       }
+      toast.success(editing !== null ? (notes ? 'Note updated' : 'Message updated') : (notes ? 'Note added' : 'Message sent'))
       setDraft('')
       setFiles([])
       setDraftCycle(null)
@@ -222,11 +224,13 @@ function CommunicationStream({
       if (!notes && !data?.canReadNotes && editing === null) onChanged()
     } catch (failure) {
       setError(failure)
+      toast.error(getApiErrorMessage(failure, 'Could not save the message or note.'))
     } finally {
       setBusy(false)
     }
   }
   const remove = async (record: Entry, file?: Attachment) => {
+    if (busy) return
     if (
       !file &&
       !window.confirm(
@@ -263,9 +267,11 @@ function CommunicationStream({
           ),
         }))
       else integrate(removed.data as Entry)
+      if (!file) toast.success(notes ? 'Note deleted' : 'Message deleted')
     } catch (failure) {
       setError(failure)
       if (file) throw failure
+      toast.error(getApiErrorMessage(failure, 'Could not delete the message or note.'))
     } finally {
       setBusy(false)
     }

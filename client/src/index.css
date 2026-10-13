@@ -2,7 +2,12 @@
 @import './tickets.css';
 @import './workspace.css';
 
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 :root {
+  --scrollbar-track: #e8eef2;
+  --scrollbar-thumb: #8cabb2;
+  --scrollbar-hover: #557f8a;
   --background: #f6f7f9;
   --foreground: #17212b;
   --card: #ffffff;
@@ -33,9 +38,11 @@
   -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme=dark] {
     color-scheme: dark;
+    --scrollbar-track: #17232b;
+    --scrollbar-thumb: #547780;
+    --scrollbar-hover: #79a8b2;
     --background: #10171d;
     --foreground: #e8f0f3;
     --card: #17232b;
@@ -49,7 +56,6 @@
     --success: #4ade80;
     --warning: #fbbf24;
     --danger: #fb7185;
-  }
 }
 
 #root {
@@ -60,4 +66,19 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100svh;
+}
+
+/* Keep usable native widths; theme all document and nested scroll containers. */
+* { scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); scrollbar-width: auto; }
+@supports selector(::-webkit-scrollbar) {
+  * { scrollbar-color: auto; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--scrollbar-track); }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border: 3px solid var(--scrollbar-track); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+}
+@media (forced-colors: active) {
+  * { scrollbar-color: auto; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: Canvas; }
+  ::-webkit-scrollbar-thumb { background: ButtonText; border-color: Canvas; }
 }

@@ -117,7 +117,7 @@ export function UsersPage() {
           </select>
         </div>
         {resource.loading && !resource.items.length ? (
-          <LoadingState label="Loading accounts..." />
+          <LoadingState variant="table" label="Loading accounts..." />
         ) : resource.error && !rows.length ? (
           <ErrorState
             error={resource.error}
@@ -150,9 +150,10 @@ export function UsersPage() {
                 </strong>
                 <span>
                   {account.status === 'ACTIVE' ? 'Active' : 'Inactive'} &#183;{' '}
-                  {account.activatedAt ? 'Activated' : 'Pending activation'}
+                  {account.activatedAt ? 'Verified' : 'Pending verification'}
                 </span>
               </div>
+              <div className="directory-actions">
               {manageableRoles(role).includes(account.role) && (
                 <ActionMenu
                   label={`Actions for ${account.displayName}`}
@@ -203,7 +204,7 @@ export function UsersPage() {
                                 'Email delivery failed. Please retry later.',
                               )
                             else if (data.delivery === 'NOT_SENT')
-                              toast.info(
+                              toast.warning(
                                 'Please wait at least one minute before resending. Account must be eligible.',
                               )
                             else
@@ -239,6 +240,7 @@ export function UsersPage() {
                   )}
                 </ActionMenu>
               )}
+              </div>
               {manageableRoles(role).includes(account.role) &&
                 specialties === account.id && (
                   <AgentSpecialties
@@ -290,9 +292,7 @@ export function UsersPage() {
         <AccountForm
           caller={role}
           onClose={() => setCreating(false)}
-          onReload={reload}
           onDone={() => {
-            toast.success('Account created')
             reload()
           }}
         />

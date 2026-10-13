@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { PhoneField } from './PhoneField'
 import { useState } from 'react'
 import { AdminDialog } from './AdminDialog'
@@ -8,12 +9,10 @@ export function AccountForm({
   caller,
   onClose,
   onDone,
-  onReload,
 }: {
   caller: UserRole
   onClose: () => void
   onDone: () => void
-  onReload: () => void
 }) {
   const roles = creatableRoles(caller)
   const [email, setEmail] = useState(''),
@@ -28,21 +27,22 @@ export function AccountForm({
       title="Create account"
       onClose={onClose}
       onDone={onDone}
-      onReload={onReload}
       valid={
         phoneValid &&
         !!displayName.trim() && !!jobTitle.trim() &&
         !!email.trim() &&
         roles.includes(role as UserRole)
       }
-      submit={() =>
-        createAccount({
+      submit={async () => {
+        const result = await createAccount({
           displayName: displayName.trim(), jobTitle: jobTitle.trim(),
           email: email.trim(),
           ...(phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}),
           role: role as UserRole,
         })
-      }
+        if (result.delivery === 'FAILED') toast.warning('Account created, but activation email delivery failed. Resend activation from the directory.')
+        else toast.success('Account created')
+      }}
     >
       <label className="field">Display name<input aria-label="Account display name" maxLength={100} value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
       <label className="field">Job title<input aria-label="Account job title" maxLength={100} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} /></label>

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
+import { expectToast } from './loading-feedback.mjs'
 import { setTimeout as delay } from 'node:timers/promises'
 
-export async function accountDirectoryChecks({ accounts, root, securityMail, requests, navigate, click, fill, evaluate, waitText, until, delayNextList, failMail }) {
+export async function accountDirectoryChecks({ accounts, root, securityMail, requests, navigate, click, fill, evaluate, waitText, until, delayNextList, failMail, send }) {
   const rowIds = () => evaluate('[...document.querySelectorAll("[data-account-id]")].map(el => Number(el.dataset.accountId))')
   const settled = () => until(() => evaluate('!document.body.textContent.includes("Loading accounts...")'), 'directory settled')
   await navigate('/login')
@@ -34,9 +35,13 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
     assert.equal(accounts.length, 1)
     assert.equal(securityMail.length, count)
     assert.deepEqual(await rowIds(), first)
-    await click('Reload administration')
+    await expectToast(evaluate, until, 'error', 'User with this email already exists')
+    assert.equal(await evaluate(`[...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Refresh accounts').length`), 1)
+    assert.equal(await evaluate(`document.querySelectorAll('dialog .error-state button').length`), 0)
+    assert.equal(await evaluate(`document.querySelector('dialog fieldset').disabled`), false)
+    await click('Cancel')
     await settled()
-    assert.deepEqual(await rowIds(), first, 'conflict reload retains exactly the persisted root')
+    assert.deepEqual(await rowIds(), first, 'failed create retains exactly the persisted root')
   }
   await fill('[aria-label="Account role filter"]', 'SUPER_ADMIN')
   await fill('[aria-label="Account status filter"]', 'ACTIVE')
@@ -70,5 +75,45 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
   await click('Refresh accounts')
   await settled()
   assert.deepEqual(new Set(await rowIds()), new Set(accounts.map(a => a.id)))
+  await create('Correctable draft', root.email)
+  await waitText('User with this email already exists')
+  await fill('[aria-label="Account email"]', 'corrected@example.test')
+  failMail(false)
+  await click('Confirm')
+  await until(() => evaluate(`document.querySelector('[data-sonner-toast][data-type="success"]')?.textContent.includes('Account created')`), 'corrected create success toast')
+  assert.equal(await evaluate(`[...document.querySelectorAll('[data-sonner-toast][data-type="success"]')].filter(el => el.textContent.includes('Account created')).length`), 1)
+  await until(() => evaluate('!document.querySelector("dialog")'), 'corrected draft saves')
+  await waitText('corrected@example.test')
+
+  // Exercise both independent state dimensions, including long identities.
+  const pending = accounts.find(a => a.email === 'corrected@example.test')
+  const verifiedInactive = { ...pending, id: 8001, email: 'verified.inactive@example.test', status: 'INACTIVE', activatedAt: root.activatedAt }
+  const pendingInactive = { ...pending, id: 8002, email: 'verylong'.repeat(15) + '@example.test', displayName: 'Long identity '.repeat(12), status: 'INACTIVE' }
+  accounts.push(verifiedInactive, pendingInactive)
+  await click('Refresh accounts'); await waitText(verifiedInactive.email)
+  for (const [id, wording] of [[root.id, 'Active · Verified'], [pending.id, 'Active · Pending verification'], [8001, 'Inactive · Verified'], [8002, 'Inactive · Pending verification']]) {
+    assert.equal(await evaluate(`document.querySelector('[data-account-id="${id}"] .directory-state span').textContent`), wording)
+  }
+  assert.equal(await evaluate(`document.body.textContent.includes('Active · Activated')`), false)
+  for (const width of [1440, 768, 320]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 320 })
+    const layout = await evaluate(`(() => {
+      const root = document.querySelector('[data-account-id="${root.id}"]');
+      const other = document.querySelector('[data-account-id="${pending.id}"]');
+      const slot = row => row.querySelector('.directory-actions');
+      const rect = el => ({ x: el.getBoundingClientRect().x, width: el.getBoundingClientRect().width });
+      return { root: rect(slot(root)), other: rect(slot(other)),
+        rootState: rect(root.querySelector('.directory-state')), otherState: rect(other.querySelector('.directory-state')),
+        rootControls: slot(root).querySelectorAll('button,a,[tabindex]').length,
+        otherLabel: slot(other).querySelector('button').getAttribute('aria-label'),
+        overflow: document.documentElement.scrollWidth > innerWidth };
+    })()`)
+    assert.deepEqual(layout.root, layout.other, `action track at ${width}px`)
+    assert.deepEqual(layout.rootState, layout.otherState, `state track at ${width}px`)
+    assert.equal(layout.rootControls, 0)
+    assert.equal(layout.otherLabel, 'Actions for Correctable draft')
+    assert.equal(layout.overflow, false)
+  }
+  console.log('PASS: correctable create conflict without duplicate recovery, separate verification/status wording, aligned noninteractive self-row and long identities at desktop/tablet/mobile')
   console.log('PASS: sole bootstrap root after login, identical reload, duplicate email unchanged, filters, out-of-order responses and truthful mail failure')
 }

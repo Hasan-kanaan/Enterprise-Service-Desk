@@ -1,3 +1,4 @@
+import { SkeletonState } from './Skeleton'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAppDispatch, useAppSelector } from '@/hooks/storeHooks'
 import { clearSession, refreshSession } from '@/services/api'
@@ -29,9 +30,7 @@ export function SessionBootstrap({ children }: { children: ReactNode }) {
   }, [attempt, dispatch])
   if (status === 'checking')
     return (
-      <div className="session-state" role="status">
-        Opening your workspace...
-      </div>
+      <SkeletonState variant="page" label="Opening your workspace..." />
     )
   if (status === 'error')
     return (

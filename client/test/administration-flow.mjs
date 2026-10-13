@@ -1,3 +1,5 @@
+import { loadingFeedbackChecks } from './loading-feedback.mjs'
+import { shellProfileChecks } from './shell-profile.mjs'
 import { setupPolishChecks } from './setup-polish.mjs'
 import { accountSecurityChecks } from './account-security.mjs'
 import { administrationPolish } from './ui-polish.mjs'
@@ -575,6 +577,11 @@ try {
       const { requestId, request } = data.params
       let delayedDirectoryRequest = false
       try {
+        if (request.url.startsWith('http://127.0.0.1:3000/assets/')) {
+          await delay(900)
+          await send('Fetch.continueRequest', { requestId })
+          return
+        }
         if (securityNetworkFailure && request.method === 'POST' && /\/auth\/(activate|reset-password|forgot-password|resend-activation)$/.test(new URL(request.url).pathname)) {
           securityNetworkFailure = false
           await send('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' })
@@ -628,9 +635,24 @@ try {
   await send('Page.enable')
   await send('Runtime.enable')
   await send('Fetch.enable', {
-    patterns: [{ urlPattern: 'http://localhost:8000/*' }],
+    patterns: [{ urlPattern: 'http://localhost:8000/*' }, ...(process.argv.includes('--loading-feedback') ? [{ urlPattern: 'http://127.0.0.1:3000/assets/UsersPage-*.js' }] : [])],
   })
-  if (process.argv.includes('--account-security')) {
+  if (process.argv.includes('--loading-feedback')) {
+    await loadingFeedbackChecks({ send, navigate, click, fill, evaluate, waitText, until, requests,
+      delayList: () => { directoryDelay = 1800 },
+      failMutation: () => { rejectMutation = true; failureCode = 400 },
+      failMail: () => { creationMailFailure = true },
+      failLoad: value => { failure = value },
+    })
+    assert.deepEqual(browserErrors, [])
+  } else if (process.argv.includes('--shell-profile')) {
+    await shellProfileChecks({ send, navigate, evaluate, click, waitText, until,
+      setUser: value => { user = { ...user, ...value } },
+      setSession: value => { securitySession = value },
+    })
+    assert.deepEqual(browserErrors, [])
+    console.log('PASS: shell/profile mode has no runtime/console errors')
+  } else if (process.argv.includes('--account-security')) {
     securitySession = false
     await accountSecurityChecks({ accounts, requests, sendSecurityMail, navigate, click, fill, evaluate, waitText, until, send,
       failNext: value => { publicSecurityFailure = value },
@@ -646,9 +668,9 @@ try {
     accounts.splice(0, accounts.length, root)
     securityPasswords.set(root.email, 'ChosenPassword123!')
     securitySession = false
-    await accountDirectoryChecks({ accounts, root, securityMail, requests, navigate, click, fill, evaluate, waitText, until,
+    await accountDirectoryChecks({ accounts, root, securityMail, requests, navigate, click, fill, evaluate, waitText, until, send,
       delayNextList: () => { directoryDelay = 900 },
-      failMail: () => { creationMailFailure = true },
+      failMail: (value = true) => { creationMailFailure = value },
     })
     assert.equal(browserErrors.length, 0, JSON.stringify(browserErrors))
   } else if (bootstrapMode) {
@@ -1364,7 +1386,7 @@ try {
   // Account/security browser flows use the same in-memory mail boundary as API fixtures.
   user = accounts.find(a => a.role === 'SUPER_ADMIN')
   await navigate('/admin/accounts')
-  await waitText('Pending activation')
+  await waitText('Pending verification')
   const invited = accounts.find(a => a.role === 'ADMIN' && a.activatedAt === null)
   assert(invited)
   await evaluate(`(() => { const row = document.querySelector('[data-account-id="${invited.id}"]'); row.querySelector('button[popovertarget]').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === '${invited.activatedAt ? 'Send password reset' : 'Resend activation'}').click() })()`)

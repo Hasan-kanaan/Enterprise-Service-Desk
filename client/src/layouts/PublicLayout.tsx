@@ -1,3 +1,5 @@
+import { Suspense } from 'react'
+import { SkeletonState } from '@/components/Skeleton'
 import { Outlet } from 'react-router-dom'
 import { BrandMark } from '@/components/BrandMark'
 
@@ -8,7 +10,7 @@ export function PublicLayout() {
         <BrandMark />
       </header>
       <div className="mx-auto flex min-h-svh w-full max-w-7xl items-center px-5 py-24 sm:px-8 lg:px-12">
-        <Outlet />
+        <Suspense fallback={<SkeletonState variant="form" label="Loading workspace..." />}><Outlet /></Suspense>
       </div>
     </main>
   )
