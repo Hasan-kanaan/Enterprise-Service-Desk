@@ -59,6 +59,8 @@ export async function accountSecurityChecks({ accounts, requests, sendSecurityMa
   await noRecovery()
   await mobile()
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] })
+  // Batch 5A applies live system changes through the MediaQueryList event.
+  await until(() => evaluate("document.documentElement.dataset.theme === 'dark' && getComputedStyle(document.documentElement).colorScheme === 'dark'"), 'dark account-security theme')
   assert.equal(await evaluate('getComputedStyle(document.documentElement).colorScheme'), 'dark')
   await mobile()
   await passwords('é'.repeat(36)) // Exactly 72 UTF-8 bytes is accepted.

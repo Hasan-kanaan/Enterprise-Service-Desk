@@ -1,6 +1,30 @@
 # Account activation and password recovery
 
-## Setup UX and branded security email ? Batch 4B (2026-10-13)
+## Final issue-log checkpoint (2026-10-14)
+
+ISS-015 through ISS-033, including Batches 4A, 4B, 5A, 5B and 6, are implemented
+and were subsequently committed and pushed to `development` through `347b51f`.
+See the [final checkpoint](../status.md#final-issue-log-checkpoint-2026-10-14)
+for the complete regression results and remaining manual boundaries.
+Email-link activation/recovery, public anti-enumeration and session invalidation
+remain unchanged. Unified Profile/Settings, explicit themes, initial-loading
+skeletons, mutation toasts and account-directory finishing polish are complete.
+
+Dated batch verification records below describe the state when each batch was
+verified. Their uncommitted/unpushed wording and deferrals subsequently completed
+by Batches 4B/5A/5B/6 are historical, not the present repository state. The new
+checkpoint documentation and test fixes remain uncommitted; no new push was made.
+MFA/SMS/WhatsApp, ticket email, durable mail queue/outbox, AI and outstanding
+deployment/manual verification remain deferred.
+
+Checkpoint regression found two browser-test timing assumptions from before
+Batch 5A: Setup and account-security checked the computed theme immediately after
+emulating a system preference change. Both now use the existing bounded `until`
+helper to wait for the root theme and computed color scheme, retaining the original
+assertions. This matches the approved event-driven system-theme behavior and the
+existing shell/profile checks; no application or security behavior changed.
+
+## Setup UX and branded security email — Batch 4B (2026-10-13)
 
 ISS-018, ISS-019, ISS-020 and the remaining Setup portion of ISS-025 are
 implemented and focused-test verified. This completes the Setup/email scope

@@ -32,7 +32,7 @@ no server persistence or identity/session data is involved. Preserve scrollbar
 visibility and usable widths with theme-aware native/WebKit styling. No auth,
 notification or business behavior changes. See [verification](frontend-polish.md).
 
-## Setup correction UX and branded account emails ? Batch 4B (2026-10-13)
+## Setup correction UX and branded account emails — Batch 4B (2026-10-13)
 
 Complete ISS-018/019/020 and Setup's remaining ISS-025 without changing Batch 4A's
 account-security flows or backend bootstrap semantics. Keep Setup's larger layout

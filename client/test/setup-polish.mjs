@@ -107,6 +107,8 @@ export async function setupPolishChecks({ navigate, click, fill, evaluate, waitT
   await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 740, deviceScaleFactor: 1, mobile: true })
   for (const scheme of ['light', 'dark']) {
     await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] })
+    // Batch 5A applies live system changes through the MediaQueryList event.
+    await until(() => evaluate(`document.documentElement.dataset.theme === '${scheme}' && getComputedStyle(document.documentElement).colorScheme === '${scheme}'`), `${scheme} setup theme`)
     assert.equal(await evaluate('getComputedStyle(document.documentElement).colorScheme'), scheme)
     assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'), `${scheme} mobile overflow`)
     assert(await evaluate('document.querySelector(".setup-restart").getBoundingClientRect().width <= innerWidth'))

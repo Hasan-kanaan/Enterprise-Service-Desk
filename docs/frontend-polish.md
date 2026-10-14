@@ -1,5 +1,27 @@
 # Frontend UI/UX polish — 2026-10-04
 
+## Final issue-log checkpoint (2026-10-14)
+
+ISS-015 through ISS-033 and Batches 4A, 4B, 5A, 5B and 6 are complete and were
+subsequently committed and pushed to `development` through `347b51f`. Unified
+Profile/Settings, explicit themes, content-shaped initial-loading skeletons,
+success/warning/error mutation feedback and account-directory finishing polish
+are implemented. Email-link security and public recovery privacy are preserved.
+See the [final checkpoint](../status.md#final-issue-log-checkpoint-2026-10-14)
+for full regression results and remaining manual boundaries.
+
+The dated verification records below retain their original scope and repository
+state. Historical "No commit or push" statements, working-tree references and
+later-batch deferrals describe the time of that verification; they do not describe
+the current implementation state. Earlier shell descriptions are superseded by
+Batch 5A. This checkpoint's documentation and test fixes remain uncommitted, with
+no new push. The two public-auth browser modes now wait for the existing
+event-driven theme update before asserting it; application code is unchanged.
+The older configuration browser mode now opens the account Actions menu and
+selects Manage specialties explicitly instead of assuming the first row button
+opens specialties. Its existing lifecycle, link, error and authority checks remain.
+Unrelated deferred roadmap work and manual verification requirements remain open.
+
 ## Account-directory finishing polish - Batch 6 (2026-10-13)
 
 ISS-030, ISS-031 and ISS-032 are complete. This supersedes their earlier deferrals

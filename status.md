@@ -1,5 +1,106 @@
 # Project Status
 
+## Final issue-log checkpoint (2026-10-14)
+
+ISS-015 through ISS-033 are implemented; Batches 4A, 4B, 5A, 5B and 6 are complete.
+The implementation was subsequently committed and pushed to `development`:
+HEAD, `origin/development` and live `git ls-remote origin refs/heads/development`
+matched `347b51fb4119c14c216341aabafd8a64e17ac8c9`. The starting worktree was clean.
+Historical "No commit or push" statements and later-batch deferrals below describe
+the state when each batch was verified, not today's implementation state.
+This checkpoint's documentation and three browser-test fixes remain uncommitted;
+no commit or push was performed for this checkpoint.
+
+Account security remains email-link based, with public password-recovery
+anti-enumeration, explicit sign-in and session invalidation preserved. Profile and
+Settings are unified at `/profile`; `/settings` redirects there. Explicit theme
+selection, content-shaped initial-loading skeletons with retained background-refresh
+content, success/warning/error mutation toasts and account-directory finishing
+polish are complete. Approved authorization and business rules are unchanged.
+
+Full regression passed, with the test-only corrections described below. Commands
+ran from the repository root using Node 24.12.0 / pnpm 11.9.0. PostgreSQL e2e used
+`TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/eds_stabilization_test`;
+Prisma used `DATABASE_URL` set to that same isolated database. No developer/production
+database reset, seed or migration was performed; the issue workbook was untouched.
+
+| Commands run | Final result |
+| --- | --- |
+| `pnpm.cmd install:apps` (both app installs with `--frozen-lockfile`) | Pass; lockfiles unchanged |
+| `pnpm.cmd --dir server lint`; `pnpm.cmd --dir server typecheck`; `pnpm.cmd --dir server build` | Pass |
+| `pnpm.cmd --dir server test --runInBand` | 20 suites / 255 tests pass, including auth/account-security/HTML email |
+| `pnpm.cmd --dir server test:e2e --runInBand` | 17 suites / 363 tests pass, including security, account lifecycle, sessions, authorization, notifications and migrations |
+| `pnpm.cmd --dir server test:dependencies` | 2 tests pass |
+| `pnpm.cmd --dir server manual-test:verify` | 5 script tests pass; no live seed/reset |
+| `pnpm.cmd --dir client lint`; `pnpm.cmd --dir client build` | Lint and TypeScript/Vite production build pass |
+| `pnpm.cmd --dir client test:phone` | 8 tests pass |
+| `pnpm.cmd --dir client test:browser` | Requester, operations, administration, all 16 session groups and manual-polish pass; 65 emitted PASS groups |
+| `pnpm.cmd --dir server exec prisma validate --config prisma7.config.ts` | Pass |
+| `pnpm.cmd --dir server exec prisma generate --config prisma7.config.ts` | Pass |
+| `pnpm.cmd --dir server exec prisma migrate status --config prisma7.config.ts` | 25 migrations; up to date |
+| `pnpm.cmd --dir server exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code --config prisma7.config.ts` | Zero drift |
+| `pnpm.cmd --dir server audit --prod --audit-level high`; `pnpm.cmd --dir client audit --prod --audit-level high` | Both pass; no known runtime vulnerabilities |
+| `pnpm.cmd --dir server audit --audit-level low`; `pnpm.cmd --dir client audit --audit-level low` | Informational failures: server 2 critical / 20 high / 6 moderate; client 7 high / 2 moderate, in development-inclusive dependencies |
+| `git diff --check` | Pass |
+
+All 16 supplementary Chromium modes also pass (28 emitted PASS groups), for
+21 successful browser invocations / 93 PASS groups across the final accepted runs.
+These are assertion groups, not individual test counts. Exact additional commands:
+
+```powershell
+node client/test/administration-flow.mjs --bootstrap
+node client/test/administration-flow.mjs --account-security
+node client/test/administration-flow.mjs --shell-profile
+node client/test/administration-flow.mjs --loading-feedback
+node client/test/administration-flow.mjs --account-directory
+node client/test/administration-flow.mjs --account-metadata
+node client/test/administration-flow.mjs --identity-lifecycle
+node client/test/employee-flow.mjs --ui-polish
+node client/test/operations-flow.mjs --ui-polish
+node client/test/administration-flow.mjs --ui-polish
+node client/test/session-flow.mjs --ui-polish
+node client/test/employee-flow.mjs --ticket-configuration
+node client/test/administration-flow.mjs --ticket-configuration
+node client/test/administration-flow.mjs --team-coverage
+node client/test/administration-flow.mjs --organization-maintenance
+node client/test/operations-flow.mjs --list-fallbacks
+```
+
+Initial failures and reruns:
+
+- Setup and account-security browser modes assumed an immediate CSS theme change.
+  Batch 5A applies live system preferences through a MediaQueryList event. Their
+  tests now use the existing bounded `until` helper for root/computed theme state,
+  retaining the original assertions; both affected modes pass on rerun.
+- The older administration configuration mode clicked the first account-row button,
+  now the Actions trigger. It now opens that menu and selects Manage specialties
+  explicitly. An intermediate rerun used a dialog-only helper and failed because
+  specialties expand inline; the final selector correction passes the entire mode.
+  These are stale harness assumptions, not application regressions. Only
+  `client/test/setup-polish.mjs`, `account-security.mjs` and
+  `administration-flow.mjs` changed; no assertions were removed or weakened.
+- The supplementary run was interrupted before completion. Completed modes without
+  captured exit results were repeated, and remaining modes ran after resumption.
+  Client lint was repeated after test edits. Full unit/e2e and the canonical browser
+  suite passed once; application/build inputs were unchanged by these test fixes.
+- Initial remote/Docker probes hit sandbox access/network restrictions and a stopped
+  Docker engine/container. Permitted access verified the remote; starting the
+  installed Docker Desktop and existing `enterprise-service-desk-db` restored the
+  test database. No PostgreSQL suite failed due to startup. Expected injected-error
+  logs and existing pg/VM warnings do not represent failed assertions.
+
+Remaining boundaries: browser acceptance uses isolated API/mail fixtures; PostgreSQL
+coverage is separate, not browser-to-live-backend validation. Real SMTP/Mailpit,
+mailbox-client rendering, manual screen-reader, Firefox/Safari/native zoom, real GCS
+and production deployment validation were not performed. ISS-012/ISS-013 still need
+the [manual Network evidence](docs/account-directory-verification.md#remaining-manual-reproduction).
+Development/manual database migration verification was not repeated. MFA/SMS/WhatsApp,
+ticket email notifications, durable mail queue/outbox, AI, outstanding deployment
+work and unrelated manual checks remain deferred. Development-tooling audit findings
+remain visible and unresolved. Local command evidence is in ignored `checkpoint-*.log`
+files; [account security](docs/account-security.md) and [UI polish](docs/frontend-polish.md)
+retain their historical verification records with current-state clarifications.
+
 ## Account-directory finishing polish - Batch 6 (2026-10-13)
 
 ISS-030 / ISS-031 / ISS-032 are complete. Failed account creation keeps an editable
@@ -64,7 +165,7 @@ Batch 5B skeleton/loading and mutation-toast work, and Batch 6 account-directory
 polish remain deferred. ISS-027, ISS-030, ISS-031, ISS-032 and ISS-033 are not marked
 complete. No commit or push.
 
-## Setup UX and branded security email ? Batch 4B (2026-10-13)
+## Setup UX and branded security email — Batch 4B (2026-10-13)
 
 ISS-018 / ISS-019 / ISS-020 and the remaining `/setup` portion of ISS-025 are
 implemented and focused-test verified. Batch 4A remains intact. Setup now has an
@@ -288,9 +389,11 @@ The [future public demo deployment plan](docs/demo-deployment-plan.md) records l
 
 ## Current Phase
 
-Account metadata and home organization editing is implemented; see the latest verification above. The full regression checkpoint remains deferred.
+ISS-015 through ISS-033 and Batches 4A, 4B, 5A, 5B and 6 are complete on the pushed
+`development` branch. The full regression checkpoint is complete; see the final
+checkpoint above for commands, test-only corrections and remaining boundaries.
 
-Email-based account activation and self-service password recovery are implemented on the verified pre-AI hardening, multi-tab, pagination/search and business-authorization baseline. Multiple devices/browsers remain supported; logout now revokes the current stable device session and its access/refresh credentials. AI and public-demo/deployment work remain deferred. No commit or push performed.
+Email-based account activation and self-service password recovery are implemented on the verified pre-AI hardening, multi-tab, pagination/search and business-authorization baseline. Multiple devices/browsers remain supported; logout now revokes the current stable device session and its access/refresh credentials. AI and public-demo/deployment work remain deferred. Only this checkpoint's documentation and browser-test fixes are uncommitted; no new commit or push was performed.
 
 ## Pre-AI hardening (2026-09-27)
 

@@ -985,7 +985,7 @@ try {
     await action('Remove specialty'); await confirm()
     accounts.find(a => a.id === 4).activatedAt = new Date().toISOString()
     await navigate('/admin/accounts'); await waitText('Agent Ali')
-    await evaluate(`document.querySelector('[data-account-id="4"] button').click()`)
+    await evaluate(`(() => { const row = document.querySelector('[data-account-id="4"]'); row.querySelector('button[popovertarget]').click(); [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Manage specialties').click() })()`)
     await waitText('Add specialty'); await action('Add specialty'); await fill('[aria-label="Specialty"]', '1'); await confirm(); await waitText('Remove specialty')
     await action('Remove specialty'); await confirm(); await waitText('No specialties linked')
     await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
