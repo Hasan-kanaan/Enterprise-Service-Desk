@@ -3,6 +3,26 @@
 Both implementation slices are complete. No commit or push was performed. Existing
 staged changes were preserved; subsequent edits remain in the working tree.
 
+## Frontend lifecycle follow-up verification (2026-10-16)
+
+ISS-039/040/041 are complete for the requested UI scope. Pending-account role
+changes now explain activation-link invalidation and the administrator's separate
+fresh-instructions action. Specialty additions visibly explain eligibility, retained
+links remain removable, and Agent/Manager role exits and deactivation use concise
+role-aware consequences. Deactivation's retained Agent memberships and completed/
+cancelled subtask assignments remain distinct from leaving AGENT. Neutral role
+transitions do not receive warning styling. All approved service behavior and
+authority rules described below remain unchanged; no backend code was edited.
+
+Focused `--identity-lifecycle`, `--lifecycle-ux` and `--ticket-configuration`
+administration browser modes pass, including pending transitions, role authority,
+specialty add/remove/retention, managerless Teams and light/dark/mobile UI.
+Client lint/build and `git diff --check` pass. These use API fixtures, not live
+account provisioning or database lifecycle verification; no backend suite ran in
+this frontend batch. See [the UX batch record](frontend-polish.md#account-lifecycle-follow-up-iss-039040041044048-2026-10-16)
+for directory/session verification, limitations and deferred issues. Historical
+verification entries below are unchanged. No commit or push.
+
 ## Migration and metadata
 
 `20261002120000_user_identity_metadata` adds nullable `User.displayName` and

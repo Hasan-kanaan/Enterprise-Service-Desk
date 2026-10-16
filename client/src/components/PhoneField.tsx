@@ -4,7 +4,7 @@ import {
   getCountryCallingCode,
   type CountryCode,
 } from 'libphonenumber-js/max'
-import { phoneParts, readPhone } from './phone'
+import { acceptsPhoneEdit, phoneParts, readPhone } from './phone'
 
 const names = new Intl.DisplayNames(['en'], { type: 'region' })
 const countries = getCountries().sort((a, b) =>
@@ -26,7 +26,7 @@ export function PhoneField({
   const result = readPhone(parts.text, parts.country || undefined)
   const update = (text: string, country: CountryCode | '') => {
     const parsed = readPhone(text, country || undefined)
-    if (text.trim().startsWith('+') && parsed.phone) {
+    if (text.trim().startsWith('+') && parsed.valid && parsed.phone) {
       country = parsed.phone.country ?? ''
       text = parsed.phone.country ? parsed.phone.formatNational() : text
     }
@@ -67,14 +67,17 @@ export function PhoneField({
           type="tel"
           autoComplete="tel-national"
           inputMode="tel"
-          maxLength={80}
           value={parts.text}
           placeholder={
             parts.country ? 'National number' : '+international number'
           }
           aria-invalid={touched && !result.valid}
           aria-describedby={`${id}-help${touched && !result.valid ? ` ${id}-error` : ''}`}
-          onChange={(e) => update(e.target.value, parts.country)}
+          onChange={(e) => {
+            if (acceptsPhoneEdit(parts.text, e.target.value, parts.country || undefined)) {
+              update(e.target.value, parts.country)
+            }
+          }}
           onBlur={() => {
             setTouched(true)
             if (result.valid && result.phone?.country)

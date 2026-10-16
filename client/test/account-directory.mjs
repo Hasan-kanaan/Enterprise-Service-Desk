@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { expectToast } from './loading-feedback.mjs'
 import { setTimeout as delay } from 'node:timers/promises'
 
-export async function accountDirectoryChecks({ accounts, root, securityMail, requests, navigate, click, fill, evaluate, waitText, until, delayNextList, failMail, send }) {
+export async function accountDirectoryChecks({ accounts, root, securityMail, requests, navigate, click, fill, evaluate, waitText, until, delayNextList, failMail, send, setPageSize }) {
   const rowIds = () => evaluate('[...document.querySelectorAll("[data-account-id]")].map(el => Number(el.dataset.accountId))')
   const settled = () => until(() => evaluate('!document.body.textContent.includes("Loading accounts...")'), 'directory settled')
   await navigate('/login')
@@ -95,6 +95,30 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
     assert.equal(await evaluate(`document.querySelector('[data-account-id="${id}"] .directory-state span').textContent`), wording)
   }
   assert.equal(await evaluate(`document.body.textContent.includes('Active · Activated')`), false)
+  const stripes = async () => {
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 })
+    const colors = await evaluate('[...document.querySelectorAll(".directory-row")].map(e => getComputedStyle(e).backgroundColor)')
+    assert(colors.length >= 2)
+    assert.notEqual(colors[0], colors[1], 'alternating row surfaces')
+    colors.forEach((color, index) => assert.equal(color, colors[index % 2], 'stable visible-row parity'))
+  }
+  for (const scheme of ['light', 'dark']) {
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] })
+    await until(() => evaluate(`document.documentElement.dataset.theme === '${scheme}'`), 'directory theme')
+    await stripes()
+    const beforeHover = await evaluate('getComputedStyle(document.querySelector(".directory-row")).backgroundColor')
+    const point = await evaluate('(() => { const r = document.querySelector(".directory-row").getBoundingClientRect(); return { x: r.x + 10, y: r.y + 10 } })()')
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point })
+    assert.notEqual(await evaluate('getComputedStyle(document.querySelector(".directory-row")).backgroundColor'), beforeHover)
+    await evaluate('document.querySelector(".directory-row .action-menu-trigger").focus()')
+    assert.notEqual(await evaluate('getComputedStyle(document.activeElement.closest(".directory-row")).boxShadow'), 'none')
+    await fill('[aria-label="Account status filter"]', 'INACTIVE')
+    await until(async () => (await rowIds()).length === 2, 'inactive rows')
+    await stripes()
+    await fill('[aria-label="Account status filter"]', '')
+    await until(async () => (await rowIds()).length === accounts.length, 'all rows restored')
+    await stripes()
+  }
   for (const width of [1440, 768, 320]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 320 })
     const layout = await evaluate(`(() => {
@@ -113,7 +137,21 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
     assert.equal(layout.rootControls, 0)
     assert.equal(layout.otherLabel, 'Actions for Correctable draft')
     assert.equal(layout.overflow, false)
+    await stripes()
   }
+  await send('Emulation.setEmulatedMedia', { features: [] })
+  setPageSize(2)
+  await click('Refresh accounts')
+  await until(async () => (await rowIds()).length === 2, 'first small page')
+  await stripes()
+  await click('Load more')
+  await until(async () => (await rowIds()).length === 4, 'second small page')
+  await stripes()
+  await click('Load more')
+  await until(async () => (await rowIds()).length === accounts.length, 'last small page')
+  await stripes()
+  assert.deepEqual(await rowIds(), accounts.map(a => a.id).sort((a, b) => b - a))
+  console.log('PASS: alternating directory surfaces through light/dark, hover/focus, filters, pagination and responsive layouts')
   console.log('PASS: correctable create conflict without duplicate recovery, separate verification/status wording, aligned noninteractive self-row and long identities at desktop/tablet/mobile')
   console.log('PASS: sole bootstrap root after login, identical reload, duplicate email unchanged, filters, out-of-order responses and truthful mail failure')
 }

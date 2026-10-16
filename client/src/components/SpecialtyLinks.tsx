@@ -1,14 +1,15 @@
 import { toast } from 'sonner'
-import { useCallback, useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import api from '@/services/api'
 import { useResource } from '@/hooks/useResource'
 import { AdminDialog } from './AdminDialog'
 import { ErrorState, LoadingState } from './TicketUI'
-import type { Reference } from '@/types/administration'
+import type { Account, Reference } from '@/types/administration'
 export function SpecialtyLinks({
   kind,
   id,
   canAdd,
+  unavailableReason,
   existing,
   choices,
   onReload,
@@ -16,6 +17,7 @@ export function SpecialtyLinks({
   kind: 'agents' | 'teams'
   id: number
   canAdd: boolean
+  unavailableReason?: string
   existing: Reference[]
   choices: Reference[]
   onReload: () => void
@@ -24,6 +26,11 @@ export function SpecialtyLinks({
     { remove: Reference } | { add: true } | null
   >(null)
   const [selected, setSelected] = useState('')
+  const explanationId = useId()
+  const available = choices.filter(item => !item.archivedAt && !existing.some(link => link.id === item.id))
+  const reason = !canAdd
+    ? unavailableReason ?? 'Reactivate this Team before adding specialties.'
+    : !available.length ? 'No active unlinked specialties are available.' : ''
   const reload = () => {
     setAction(null)
     setSelected('')
@@ -35,7 +42,8 @@ export function SpecialtyLinks({
         <h2>Specialties</h2>
         <button
           className="button secondary"
-          disabled={!canAdd}
+          disabled={!!reason}
+          aria-describedby={reason ? explanationId : undefined}
           onClick={() => {
             setSelected('')
             setAction({ add: true })
@@ -47,12 +55,18 @@ export function SpecialtyLinks({
       <p className="quiet-note">
         Specialties do not grant ticket authority or change team membership.
       </p>
+      {reason && <p className="quiet-note" id={explanationId}>{reason}</p>}
+      {kind === 'agents' && !canAdd && !!existing.length && <p className="quiet-note">
+        Retained specialties are shown below and may be removed. They do not
+        represent active Agent responsibilities.
+      </p>}
       {existing.length ? (
         existing.map((item) => (
           <div className="admin-row" key={item.id}>
             <span>
               {item.name}
               {item.archivedAt ? ' (ARCHIVED)' : ''}
+              {((kind === 'agents' && !canAdd) || item.archivedAt) && <span className="specialty-retained">Retained link</span>}
             </span>
             <button
               className="button secondary"
@@ -98,13 +112,7 @@ export function SpecialtyLinks({
                 onChange={(e) => setSelected(e.target.value)}
               >
                 <option value="">Choose specialty</option>
-                {choices
-                  .filter(
-                    (item) =>
-                      !item.archivedAt &&
-                      !existing.some((link) => link.id === item.id),
-                  )
-                  .map((item) => (
+                {available.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}
                     </option>
@@ -118,12 +126,16 @@ export function SpecialtyLinks({
   )
 }
 export function AgentSpecialties({
-  id,
-  canAdd,
+  account,
 }: {
-  id: number
-  canAdd: boolean
+  account: Account
 }) {
+  const { id } = account
+  const unavailableReason = account.role !== 'AGENT'
+    ? 'New specialties can only be added to active verified Agents.'
+    : account.status !== 'ACTIVE'
+      ? `Reactivate this Agent before adding specialties.${!account.activatedAt ? ' The account must also complete activation.' : ''}`
+      : !account.activatedAt ? "Activate this Agent's account before adding specialties." : ''
   const resource = useResource(
     useCallback(
       async (signal: AbortSignal) => {
@@ -145,7 +157,8 @@ export function AgentSpecialties({
     <SpecialtyLinks
       kind="agents"
       id={id}
-      canAdd={canAdd}
+      canAdd={!unavailableReason}
+      unavailableReason={unavailableReason}
       {...resource.data}
       onReload={resource.reload}
     />

@@ -81,7 +81,6 @@ export function SetupPage() {
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-700 dark:text-cyan-300">Initial configuration</p>
         <h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white">Create the root administrator.</h1>
         <p className="mt-5 max-w-md leading-7 text-slate-600 dark:text-slate-300">This creates the first/root Super Admin, with the role assigned automatically. You must verify your email and choose your own password through the activation link. Setup closes permanently after activation.</p>
-        <ReturnToSignIn />
       </div>
       <div className="min-w-0 rounded-2xl border border-white/70 bg-white/85 p-6 shadow-2xl shadow-slate-900/10 backdrop-blur sm:p-9 dark:border-slate-700/70 dark:bg-slate-900/80">
         <div className="mb-7 flex items-center gap-3">

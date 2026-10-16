@@ -1,5 +1,111 @@
 # Project Status
 
+## Administration refinement: ISS-042/043/045/046 (2026-10-16)
+
+Completed the four named issues, preserving prior follow-up changes:
+
+- ISS-042: Correctable 409 conflicts keep drafts editable; known stale/concurrency
+  conditions retain reload. Shared organization/configuration/account consumers
+  were audited; no HTTP status or backend error contract changes were needed.
+- ISS-043: Seven additive PostgreSQL expression indexes enforce case-insensitive
+  catalog names, including archived rows, while retaining display casing and
+  existing Team uniqueness within each Region or GLOBAL coverage.
+- ISS-045: Native stretched Team links cover non-action row areas, with hover,
+  pointer and keyboard focus treatment; Actions remain independent.
+- ISS-046: Categories/Tags use the established ActionMenu for row actions.
+
+Migration `20261016120000_catalog_case_insensitive_names` checks collisions and
+fails without repairing data. No collisions were found in `eds_stabilization_test`;
+only that isolated database was migrated. All 26 migrations are applied, schema
+diff is empty, and the seven expression indexes are separately verified. Normal
+developer/deployment databases still need migration deployment. No reset/db push.
+
+Passed: server lint/typecheck/build; 2 focused unit suites (16 tests); 3 existing
+PostgreSQL suites (41 tests) plus the corrected new catalog-name suite (13 tests);
+Prisma generate/validate/deploy/status/diff; client lint/build; 2 classifier tests;
+administration browser modes `--administration-refinement`,
+`--organization-maintenance`, `--team-coverage`, `--ticket-configuration` and
+`--account-metadata`; `git diff --check`. Final browser runs have no runtime errors.
+See [the exact file list, commands, results and migration concerns](docs/administration-refinement.md)
+for initial test-fixture corrections, CSS/keyboard checks and the resolved
+automatic-review usage-limit interruption.
+
+No backend application behavior beyond the requested DB uniqueness enforcement,
+authorization, lifecycle, schema fields or role-testing account seeds changed.
+Prior uncommitted work remains; this batch is also uncommitted, with new files
+untracked. No commit/push or complete full-repository regression. Deferred:
+ISS-047, ISS-049 through ISS-052, requester edit locks/ticket creation, manager
+statistics/dashboard, role-account seeding, MFA and AI.
+
+## Account lifecycle follow-up: ISS-039/040/041/044/048 (2026-10-16)
+
+Completed only the five issues named for this batch, preserving the previous
+ISS-034–038 changes. ISS-044/048 are explicit exceptions to the broad ISS-042+
+exclusion. Earlier dated deferrals remain historical.
+
+- ISS-039: Pending role-change copy explains old activation-link invalidation
+  and the administrator's obligation to send fresh instructions after the change.
+- ISS-040: Specialty eligibility and exhausted choices are explained; retained
+  links are labeled and removable, with active verified Agent additions preserved.
+- ISS-041: Scoped role-exit/deactivation callouts accurately distinguish Agent
+  cleanup rules, preserve neutral transitions and remove backend-oriented wording.
+  Deactivation's menu action is visually distinct without a global warning system.
+- ISS-044: Subtle alternating account rows preserve layout, hover/focus and actions.
+- ISS-048: Current-device logout gains an icon, spacing and responsive focus/hover
+  treatment; existing confirmation, remote controls and session behavior remain.
+
+Files: `client/src/components/ChangeRoleForm.tsx`, `DeactivationConsequences.tsx`,
+`SpecialtyLinks.tsx`, `SessionsPanel.tsx`; `client/src/pages/UsersPage.tsx`;
+`client/src/workspace.css`; `client/test/lifecycle-ux.mjs`,
+`administration-flow.mjs`, `account-directory.mjs`, `session-flow.mjs`;
+`docs/frontend-polish.md`, `docs/identity-lifecycle-verification.md`, and this file.
+
+Passed: `pnpm.cmd --dir client lint`, `pnpm.cmd --dir client build`;
+from `client`, `node test/administration-flow.mjs` with `--lifecycle-ux`,
+`--identity-lifecycle`, `--account-directory`, `--ticket-configuration`,
+`--shell-profile`; `node test/session-flow.mjs --session-ui`; `git diff --check`.
+Coverage includes authority/pending-role rules, specialties, light/dark/mobile,
+filtering/pagination striping, action alignment, keyboard focus and logout across
+tabs. Final browser modes pass without runtime errors. Session test startup/theme
+timeouts were resolved by bringing the tested tab to the foreground.
+
+No backend code, lifecycle/security semantics, schema, live role-testing accounts
+or seed data changed. No full regression or backend suite was run. Manual
+screen-reader validation remains unperformed. No commit or push.
+Deferred: ISS-042/043/045/046/047, ISS-049 onward, manager statistics/dashboard,
+role-testing account setup, MFA and AI.
+
+## Follow-up UX: ISS-034 through ISS-038 (2026-10-16)
+
+Completed only ISS-034, ISS-035, ISS-036, ISS-037 and ISS-038:
+
+- Active/pending Setup omits circular sign-in navigation; completed/error states
+  retain it. Bootstrap rules and Login redirects are unchanged.
+- Activation/reset show compact accessible requirements and negative guidance;
+  Save password tracks the existing character/UTF-8 byte/confirmation rules.
+- Login recovery links are visually secondary with visible focus and usable targets.
+- Activation recovery explains its pre-activation purpose and gives identical
+  conditional completion wording for pending, activated and unknown emails.
+- Phone edits use library possible-length checks, reject overlong paste whole,
+  preserve deletion/selection/country handling and retain full optional validation.
+
+Verification passed: `pnpm.cmd --dir client lint`, `pnpm.cmd --dir client build`,
+`pnpm.cmd --dir client test:phone` (13 tests), and from `client`,
+`node test/administration-flow.mjs --bootstrap`, `--account-security` and `--phone`;
+`git diff --check` passes. Browser modes include Login/public-auth, both password
+routes, Unicode boundaries, generic resend results, LB/US/CA/GB keyboard/paste
+behavior and no runtime/console errors. Initial sandbox browser startup failed;
+permitted execution passed. Tests use isolated API fixtures. No full regression,
+backend tests, real delivery or manual screen-reader verification was run.
+
+Files changed: `client/src/pages/{SetupPage,AccountSecurityPage,LoginPage}.tsx`,
+`client/src/components/{PhoneField.tsx,phone.ts}`, `client/src/public-auth.css`,
+`client/test/{setup-polish,account-security,administration-flow,phone-browser}.mjs`,
+`client/test/phone.test.mjs`, `docs/account-security.md`, `docs/frontend-polish.md`
+and this status file. No backend, schema, auth-contract or role-testing-account
+changes. ISS-039 through ISS-052 and manager statistics/dashboard work remain
+deferred. No seed, commit or push. Historical verification entries remain unchanged.
+
 ## Final issue-log checkpoint (2026-10-14)
 
 ISS-015 through ISS-033 are implemented; Batches 4A, 4B, 5A, 5B and 6 are complete.

@@ -351,6 +351,32 @@ textarea:disabled {
 .directory-row {
   display: grid;
   grid-template-columns: minmax(200px, 1.6fr) minmax(180px, 1fr) 100px;
+  background: var(--card);
+}
+.directory-row:nth-of-type(even) { background: color-mix(in srgb, var(--muted) 35%, var(--card)); }
+.directory-row:hover { background: color-mix(in srgb, var(--muted) 60%, var(--card)); }
+.directory-row:focus-within { box-shadow: inset 3px 0 var(--ring); }
+.account-lifecycle-warning {
+  padding: 14px 16px;
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warning) 7%, var(--card));
+  color: var(--foreground);
+  line-height: 1.65;
+}
+.account-lifecycle-warning > strong { display: flex; align-items: center; gap: 8px; }
+.account-lifecycle-warning > strong svg { flex-shrink: 0; color: var(--warning); }
+.account-lifecycle-warning p { margin-top: 8px; }
+.action-menu .button.account-deactivate { color: var(--danger); font-weight: 600; }
+.action-menu .button.account-deactivate:hover { background: color-mix(in srgb, var(--danger) 7%, var(--card)); }
+.account-deactivate:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.specialty-retained { display: block; font-size: 12px; color: var(--muted-foreground); }
+.button.session-current-logout { min-height: 44px; padding: 10px 16px; border-color: color-mix(in srgb, var(--primary) 30%, var(--border)); background: color-mix(in srgb, var(--primary) 5%, var(--card)); }
+.session-current-logout svg { flex-shrink: 0; }
+.button.session-current-logout:hover { background: color-mix(in srgb, var(--primary) 12%, var(--card)); }
+.session-current-logout:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+@media (max-width: 480px) {
+  .session-current-logout { width: 100%; }
 }
 .directory-actions {
   justify-self: end;
@@ -379,9 +405,17 @@ textarea:disabled {
   grid-template-columns: minmax(0, 1fr) 90px auto;
 }
 .team-row {
+  position: relative;
+  cursor: pointer;
   display: grid;
   grid-template-columns: minmax(180px, 1.5fr) minmax(160px, 1fr) 70px auto;
 }
+.admin-row.team-row:hover { background: color-mix(in srgb, var(--muted) 60%, var(--card)); }
+.team-row:has(.team-row-link:focus-visible) { outline: 2px solid var(--ring); outline-offset: -2px; }
+.team-row-link::after { content: ''; position: absolute; inset: 0; }
+/* The native link spans only the non-action area. Menus remain independent
+   siblings in the top layer; no nested link/button or bubbling navigation. */
+.team-row > .action-menu-trigger { position: relative; z-index: 1; }
 .team-row.needs-manager {
   border-left: 3px solid var(--warning);
   background: color-mix(in srgb, var(--warning) 4%, var(--card));

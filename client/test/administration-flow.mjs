@@ -1,4 +1,7 @@
 import { loadingFeedbackChecks } from './loading-feedback.mjs'
+import { phoneBrowserChecks } from './phone-browser.mjs'
+import { lifecycleUxChecks } from './lifecycle-ux.mjs'
+import { administrationRefinementChecks } from './administration-refinement.mjs'
 import { shellProfileChecks } from './shell-profile.mjs'
 import { setupPolishChecks } from './setup-polish.mjs'
 import { accountSecurityChecks } from './account-security.mjs'
@@ -68,6 +71,8 @@ const browserErrors = []
 const bootstrapMode = process.argv.includes('--bootstrap')
 const directoryMode = process.argv.includes('--account-directory')
 let directoryDelay = 0, creationMailFailure = false
+let directoryPageSize
+let refinementFailure
 let securityActionFailure = false
 let bootstrapComplete = false, bootstrapAccount = null, setupChecks = 0
 let setupDelay = 0, setupFailure = null, setupDeliveryFailed = false
@@ -288,6 +293,11 @@ function response(request) {
     return [403, { message: 'Forbidden' }]
   if (request.method !== 'GET') {
     mutations.push({ path, body, method: request.method })
+    if (refinementFailure) {
+      const message = refinementFailure
+      refinementFailure = undefined
+      return [409, { message }]
+    }
     if (rejectMutation) {
       rejectMutation = false
       return [
@@ -295,7 +305,7 @@ function response(request) {
         {
           message:
             failureCode === 409
-              ? 'Concurrent change; reload administration'
+              ? 'Data changed concurrently; reload before retrying'
               : 'Record unavailable or forbidden',
         },
       ]
@@ -320,7 +330,11 @@ function response(request) {
     specialtyLinks.set(key, request.method === 'DELETE' ? links.filter(id => id !== Number(specialty[3])) : [...links, Number(specialty[3])])
     return [request.method === 'DELETE' ? 200 : 201, { message: 'Updated' }]
   }
-  if (path === '/users') return [200, pageFixture(accounts, url, false)]
+  if (path === '/users') {
+    const pageUrl = new URL(url)
+    if (directoryPageSize) pageUrl.searchParams.set('limit', String(directoryPageSize))
+    return [200, pageFixture(accounts, pageUrl, false)]
+  }
   if (path === '/auth/accounts') {
     assert(body.role !== 'SUPER_ADMIN')
     assert(user.role === 'SUPER_ADMIN' || body.role !== 'ADMIN')
@@ -652,6 +666,17 @@ try {
     })
     assert.deepEqual(browserErrors, [])
     console.log('PASS: shell/profile mode has no runtime/console errors')
+  } else if (process.argv.includes('--administration-refinement')) {
+    await administrationRefinementChecks({ teams, navigate, click, fill, evaluate, waitText, until, send,
+      failNext: message => { refinementFailure = message },
+    })
+    assert.deepEqual(browserErrors, [])
+  } else if (process.argv.includes('--lifecycle-ux')) {
+    await lifecycleUxChecks({ accounts, catalogs, specialtyLinks, navigate, click, fill, evaluate, waitText, until, send, requests })
+    assert.deepEqual(browserErrors, [])
+  } else if (process.argv.includes('--phone')) {
+    await phoneBrowserChecks({ navigate, waitText, evaluate, fill, send, until })
+    assert.deepEqual(browserErrors, [])
   } else if (process.argv.includes('--account-security')) {
     securitySession = false
     await accountSecurityChecks({ accounts, requests, sendSecurityMail, navigate, click, fill, evaluate, waitText, until, send,
@@ -669,6 +694,7 @@ try {
     securityPasswords.set(root.email, 'ChosenPassword123!')
     securitySession = false
     await accountDirectoryChecks({ accounts, root, securityMail, requests, navigate, click, fill, evaluate, waitText, until, send,
+      setPageSize: value => { directoryPageSize = value },
       delayNextList: () => { directoryDelay = 900 },
       failMail: (value = true) => { creationMailFailure = value },
     })
@@ -967,7 +993,7 @@ try {
       await rowAction(`Renamed ${kind}`, 'Reactivate'); await confirm(); await waitText('Active')
     }
     rejectMutation = true; failureCode = 409
-    await action('Create category'); await fill('[aria-label="Configuration name"]', 'Duplicate'); await click('Confirm'); await waitText('Concurrent change')
+    await action('Create category'); await fill('[aria-label="Configuration name"]', 'Duplicate'); await click('Confirm'); await waitText('Data changed concurrently')
     await click('Reload administration'); await waitText('Renamed category')
     failure = true; await click('Refresh configuration'); await waitText('temporarily unavailable'); failure = false; await click('Try again'); await waitText('Renamed category')
     teams.push({ id: 1, name: 'Specialty team', scope: 'GLOBAL', regionId: null, teamLeadId: null, managerId: null, memberIds: [4] })
@@ -977,7 +1003,7 @@ try {
     assert(!(await evaluate(`document.querySelector('[aria-label="Specialty"]').textContent.includes('Archived specialty')`)))
     await fill('[aria-label="Specialty"]', '1'); await confirm(); await waitText('Remove specialty')
     await action('Remove specialty'); await confirm(); await waitText('No specialties linked')
-    await action('Remove member'); await waitText('clears the Agent'); rejectMutation = true; await click('Confirm'); await waitText('Concurrent change'); await click('Reload administration'); await waitText('Agent Ali')
+    await action('Remove member'); await waitText('clears the Agent'); rejectMutation = true; await click('Confirm'); await waitText('Data changed concurrently'); await click('Reload administration'); await waitText('Agent Ali')
     await action('Remove member'); await confirm(); await waitText('No members assigned')
     teams[0].archivedAt = new Date().toISOString(); specialtyLinks.set('teams/1', [2])
     await click('Refresh organization'); await waitText('Archived specialty (ARCHIVED)')
@@ -1002,8 +1028,9 @@ try {
     await action('Archive')
     await click('Confirm')
     await waitText("Archive the region's active teams first.")
-    assert(await evaluate(`[...document.querySelectorAll('button')].find(el => el.textContent === 'Confirm').disabled`))
-    await click('Reload administration')
+    assert.equal(await evaluate(`[...document.querySelectorAll('button')].find(el => el.textContent === 'Confirm').disabled`), false)
+    await absent('Reload administration')
+    await click('Cancel')
     await click('Teams')
     await action('Archive')
     await waitText('Current Team/Agent operational assignments may be cleared')

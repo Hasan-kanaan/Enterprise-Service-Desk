@@ -306,11 +306,34 @@ try {
     '\n',
   )[0]
   const [a, b] = await Promise.all([page(), page()])
+  await a.send('Page.bringToFront')
   await until(
     async () => (await state(a)).user && (await state(b)).user,
     'two authenticated pages',
   )
   await until(() => a.evaluate("document.body.innerText.includes('Your sessions') && document.body.innerText.includes('Other device')"), 'session management loaded')
+  for (const scheme of ['light', 'dark']) {
+    await a.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] })
+    await until(() => a.evaluate(`document.documentElement.dataset.theme === '${scheme}'`), 'session theme')
+    for (const width of [1440, 320]) {
+      await a.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 320 })
+      assert(await a.evaluate(`(() => {
+        const button = document.querySelector('.session-current-logout');
+        return button.textContent.trim() === 'Log out this device' &&
+          !!button.querySelector('svg[aria-hidden="true"]') &&
+          button.getBoundingClientRect().height >= 44 &&
+          document.documentElement.scrollWidth <= innerWidth &&
+          [...document.querySelectorAll('.session-list button')].filter(b => !b.classList.contains('session-current-logout')).every(b => !b.querySelector('svg'));
+      })()`))
+    }
+  }
+  await a.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  await a.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  await a.evaluate("document.querySelector('.session-current-logout').focus()")
+  assert(await a.evaluate("document.activeElement.matches('.session-current-logout:focus-visible') && getComputedStyle(document.activeElement).outlineStyle === 'solid'"))
+  await a.evaluate("window.confirm = () => false; document.querySelector('.session-current-logout').click()")
+  assert.equal(logouts, 0, 'existing current-device confirmation can still cancel')
+  await a.send('Emulation.setEmulatedMedia', { features: [] })
   await a.evaluate("window.confirm = () => false; [...document.querySelectorAll('button')].find(b => b.textContent === 'Log out').click()")
   assert.equal(sessionRows.length, 3)
   await a.evaluate("window.confirm = () => true; [...document.querySelectorAll('button')].find(b => b.textContent === 'Log out').click()")
@@ -333,7 +356,10 @@ try {
   await until(() => a.evaluate("document.body.innerText.includes('Your sessions')"), 'profile restored after current-device login')
   console.log('PASS: current-device session UI signs out both tabs and permits fresh login')
 
-  if (process.argv.includes('--ui-polish')) {
+  if (process.argv.includes('--session-ui')) {
+    assert.deepEqual(errors, [])
+    console.log('PASS: current-device logout styling/icon, keyboard focus, existing confirmation, remote controls and light/dark/mobile')
+  } else if (process.argv.includes('--ui-polish')) {
     await a.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false })
     const shot = await a.send('Page.captureScreenshot', { format: 'png' })
     writeFileSync(join(tmpdir(), 'eds-polish-profile-desktop.png'), Buffer.from(shot.data, 'base64'))

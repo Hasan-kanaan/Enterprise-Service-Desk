@@ -39,7 +39,10 @@
 .public-auth-guidance [data-met='true'] svg { color: var(--success); }
 .public-auth-guidance > p:last-child { color: var(--muted-foreground); line-height: 1.6; }
 .public-auth-feedback { font-size: 13px; color: var(--warning); line-height: 1.6; }
-.public-auth-feedback .is-valid { color: var(--success); }
+.public-auth-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.public-auth-helper { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; color: var(--muted-foreground); border-radius: 4px; }
+.public-auth-helper:hover { text-decoration: underline; text-underline-offset: 4px; }
+.public-auth-helper:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 .public-auth-error { margin-top: 16px; padding: 12px; border-radius: 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--card)); }
 .public-auth-navigation { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; }
 .public-auth-navigation a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 6px; padding: 8px; color: var(--primary); font-weight: 600; text-decoration: none; }

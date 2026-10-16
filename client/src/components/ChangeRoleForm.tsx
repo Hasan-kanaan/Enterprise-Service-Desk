@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { TriangleAlert } from 'lucide-react'
 import { AdminDialog } from './AdminDialog'
 import {
   manageableRoles,
@@ -55,12 +56,13 @@ export function ChangeRoleForm({
         </select>
       </label>
       {account.role === 'AGENT' && (
-        <div className="notice">
-          <strong>Leaving the Agent role</strong>
+        <div className="account-lifecycle-warning">
+          <strong><TriangleAlert size={18} aria-hidden="true" />Leaving the Agent role</strong>
           <ul className="consequence-list">
             <li>
-              Current Agent assignments and all current-cycle Agent subtask
-              links will be cleared, including completed and cancelled work.
+              Current primary Agent assignments will be cleared. Subtask
+              assignments in the current work cycle will also be cleared,
+              including completed and cancelled subtasks.
             </li>
             <li>Team Lead and Team memberships will be removed.</li>
           </ul>
@@ -71,12 +73,12 @@ export function ChangeRoleForm({
         </div>
       )}
       {account.role === 'MANAGER' && (
-        <div className="notice">
-          <strong>Leaving the Manager role</strong>
+        <div className="account-lifecycle-warning">
+          <strong><TriangleAlert size={18} aria-hidden="true" />Leaving the Manager role</strong>
           <ul className="consequence-list">
             <li>Current Manager-owned operational tickets return to intake.</li>
             <li>
-              TeamManager relationships are removed. Affected active regional
+              Team Manager responsibilities are removed. Affected active regional
               Teams may require a new Manager.
             </li>
           </ul>
@@ -85,12 +87,13 @@ export function ChangeRoleForm({
       )}
       <p className="muted">
         All sessions and unused activation/reset links will be revoked. The user
-        must sign in again. No replacement responsibilities are assigned.
+        must sign in again. No replacement person is selected automatically.
       </p>
       {!account.activatedAt && (
         <p className="notice">
-          This account is pending activation. After the change, use Resend
-          activation to issue fresh instructions.
+          This account has not been activated yet. Changing the role will
+          invalidate its current activation link. After the role change, send
+          new activation instructions to the user using Resend activation.
         </p>
       )}
     </AdminDialog>

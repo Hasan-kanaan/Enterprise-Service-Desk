@@ -12,6 +12,10 @@ export async function accountSecurityChecks({ accounts, requests, sendSecurityMa
     assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'), 'no horizontal overflow')
     assert(await evaluate('[...document.querySelectorAll(".public-auth-card input, .public-auth-card button, .public-auth-card a")].every(e => e.getBoundingClientRect().height >= 44)'), 'touch targets')
   }
+  await navigate('/login')
+  await waitText("Didn't receive your activation email?")
+  assert.equal(await evaluate('document.querySelectorAll(".public-auth-helper").length'), 2)
+  assert(await evaluate('[...document.querySelectorAll(".public-auth-helper")].every(e => e.getBoundingClientRect().height >= 44)'))
   const account = accounts.find(a => a.role === 'ADMIN')
   const activation = sendSecurityMail(account, 'activation')
   await navigate(`/activate#token=${activation}`)
@@ -21,21 +25,38 @@ export async function accountSecurityChecks({ accounts, requests, sendSecurityMa
   assert((await text()).includes('At least 8 characters'))
   assert((await text()).includes('At most 72 UTF-8 bytes'))
   assert.equal(await evaluate('document.querySelectorAll("input[autocomplete=new-password]").length'), 2)
-  const count = posts('activate')
-  for (const [value, confirmation, feedback] of [
-    ['short', 'short', 'Use at least 8 characters.'],
-    ['é'.repeat(37), 'é'.repeat(37), 'Use at most 72 UTF-8 bytes.'],
-    ['ChosenPassword123!', 'Mismatch', 'Both password fields must match.'],
-  ]) {
-    await passwords(value, confirmation)
-    assert((await evaluate('document.querySelector(".public-auth-feedback").innerText')).includes(feedback), 'live inline feedback')
-    await click('Save password')
-    assert.equal(posts('activate'), count, 'invalid form never submits')
-    assert(await evaluate('!!document.querySelector("[data-sonner-toast][data-type=warning]")'))
-    assert(await evaluate('document.activeElement.getAttribute("aria-invalid") === "true"'))
+  const validityChecks = async action => {
+    const count = posts(action)
+    const disabled = () => evaluate('document.querySelector("button[type=submit]").disabled')
+    assert(await disabled(), 'empty passwords are disabled')
+    for (const [value, confirmation, feedback] of [
+      ['short', 'short', 'Use at least 8 characters.'],
+      ['\u00e9'.repeat(37), '\u00e9'.repeat(37), 'Use at most 72 UTF-8 bytes.'],
+      ['\u{1F600}'.repeat(7), '\u{1F600}'.repeat(7), 'Use at least 8 characters.'],
+      ['ChosenPassword123!', 'Mismatch', 'Both password fields must match.'],
+    ]) {
+      await passwords(value, confirmation)
+      assert((await evaluate('document.querySelector(".public-auth-feedback").innerText')).includes(feedback))
+      assert(await disabled(), 'invalid form disables submit')
+      await evaluate('document.querySelector("button[type=submit]").click()')
+      assert.equal(posts(action), count)
+      assert.equal(await evaluate('document.querySelectorAll("[data-sonner-toast][data-type=warning]").length'), 0, 'typing does not toast')
+    }
+    for (const value of ['\u00e9'.repeat(36), '\u{1F600}'.repeat(18), 'ChosenPassword123!']) {
+      await passwords(value)
+      assert.equal(await disabled(), false)
+      assert(await evaluate('document.querySelectorAll("[data-met=true]").length === 3'))
+      assert.equal(await evaluate('document.querySelector(".public-auth-feedback").innerText.trim()'), '')
+      assert(!/Passwords match|Password meets|Both passwords match/i.test(await text()))
+    }
+    await fill('#confirm-password', 'Changed')
+    assert(await disabled(), 'editing confirmation disables submit again')
+    await passwords('short')
+    assert(await disabled(), 'editing password disables submit again')
+    await passwords('ChosenPassword123!')
   }
-  await passwords('ChosenPassword123!')
-  assert(await evaluate('document.querySelectorAll("[data-met=true]").length === 3'))
+  const count = posts('activate')
+  await validityChecks('activate')
   delayNext()
   await click('Save password')
   assert(await evaluate('document.querySelector("fieldset").disabled'))
@@ -63,7 +84,8 @@ export async function accountSecurityChecks({ accounts, requests, sendSecurityMa
   await until(() => evaluate("document.documentElement.dataset.theme === 'dark' && getComputedStyle(document.documentElement).colorScheme === 'dark'"), 'dark account-security theme')
   assert.equal(await evaluate('getComputedStyle(document.documentElement).colorScheme'), 'dark')
   await mobile()
-  await passwords('é'.repeat(36)) // Exactly 72 UTF-8 bytes is accepted.
+  await validityChecks('reset-password')
+  await passwords('\u00e9'.repeat(36)) // Exactly 72 UTF-8 bytes.
   failNetwork()
   await click('Save password')
   await waitText('Unable to connect. Please try again.')
@@ -109,13 +131,14 @@ export async function accountSecurityChecks({ accounts, requests, sendSecurityMa
   for (const action of ['forgot-password', 'resend-activation']) {
     const submit = action === 'forgot-password' ? 'Send reset instructions' : 'Send activation instructions'
     let completion
-    for (const email of [account.email, 'unknown@example.test']) {
+    for (const email of [account.email, accounts.find(a => a.id !== account.id && !a.activatedAt).email, 'unknown@example.test']) {
       await navigate(`/${action}`)
       await fill('#email', email)
       await mobile()
       await click(submit)
-      await waitText('If this email is associated with an eligible Kino Service Desk account')
+      await waitText(action === 'resend-activation' ? 'If this email belongs to an account that still needs activation' : 'If this email is associated with an eligible Kino Service Desk account')
       const result = await text()
+      if (action === 'resend-activation') assert(!/email sent|instructions have been sent|check your inbox/i.test(await evaluate('document.body.innerText')))
       assert(!/does not exist|no account was found|inactive|not been activated|delivery failed/i.test(result))
       if (completion) assert.equal(result, completion, 'existing and unknown emails get identical copy')
       completion = result
@@ -134,7 +157,7 @@ export async function accountSecurityChecks({ accounts, requests, sendSecurityMa
     await click(submit)
     await waitText('Too many requests. Please wait and try again.')
     await click(submit)
-    await waitText('Check your inbox')
+    await waitText(action === 'resend-activation' ? 'Request received' : 'Check your inbox')
   }
   await send('Emulation.setEmulatedMedia', { features: [] })
   console.log('PASS: guidance, Unicode limits, mismatch, duplicate submit, completion, generic recovery, server-confirmed unusable links, navigation, 320px mobile and dark theme')

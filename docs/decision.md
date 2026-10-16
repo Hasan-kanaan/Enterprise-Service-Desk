@@ -1,5 +1,28 @@
 # Project Decisions
 
+## Case-insensitive administration catalog names (2026-10-16)
+
+Region, Department, Specialty, TicketCategory and TicketTag names are unique
+case-insensitively across active and archived records. Preserve administrator
+display casing and existing whitespace trimming. PostgreSQL unique expression
+indexes on `lower(btrim(name))` enforce this for concurrent writes; existing Prisma
+unique keys remain. No title-casing, accent folding or record merging is added.
+
+Team keeps its approved logical key: name within a Region, and name among Teams
+with NULL regionId (GLOBAL). Apply the same case-insensitive name key within those
+boundaries only. Different Regions and GLOBAL may still share a name. Coverage,
+authority, archival and routing rules are unchanged.
+
+Migration `20261016120000_catalog_case_insensitive_names` locks the catalogs,
+checks for existing normalized collisions and aborts clearly rather than repairing
+data. Expression indexes are migration-owned and separately verified because the
+Prisma schema cannot express them. See [migration assumptions and verification](administration-refinement.md).
+
+Administration dialogs classify 409 recovery from known stale-state contracts,
+not HTTP status alone. Duplicate/input/business conflicts retain editable drafts;
+explicit concurrency/obsolete-eligibility and 403/404 recovery remain. Server
+validation and locking remain authoritative. No API error contract change.
+
 ## Initial loading and mutation feedback - Batch 5B (2026-10-13)
 
 Use shared, noninteractive skeleton compositions for initial unresolved content and

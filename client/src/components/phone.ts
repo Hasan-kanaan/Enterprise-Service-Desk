@@ -1,7 +1,15 @@
 import {
   parsePhoneNumberFromString,
+  validatePhoneNumberLength,
   type CountryCode,
 } from 'libphonenumber-js/max'
+
+// Reject the entire overlong edit, never truncate a pasted number into another
+// number. Retained overlong values (e.g. after changing country) can be shortened.
+export function acceptsPhoneEdit(previous: string, next: string, country?: CountryCode) {
+  if (next.replace(/\D/g, '').length < previous.replace(/\D/g, '').length) return true
+  return validatePhoneNumberLength(next, country) !== 'TOO_LONG'
+}
 
 export function readPhone(text: string, country?: CountryCode) {
   if (!text.trim()) return { value: '', valid: true }

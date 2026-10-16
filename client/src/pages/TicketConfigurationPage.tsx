@@ -4,6 +4,7 @@ import { useState } from 'react'
 import api from '@/services/api'
 import { useResource } from '@/hooks/useResource'
 import { AdminDialog } from '@/components/AdminDialog'
+import { ActionMenu } from '@/components/ActionMenu'
 import { ErrorState, LoadingState, EmptyState } from '@/components/TicketUI'
 import type { Reference } from '@/types/administration'
 type Catalog = 'categories' | 'tags'
@@ -62,7 +63,7 @@ export function TicketConfigurationPage() {
               <article className="admin-row catalog-row" key={record.id}>
                 <span>{record.name}</span>
                 <span>{record.archivedAt ? 'Archived' : 'Active'}</span>
-                <div className="button-row">
+                <ActionMenu label={`Actions for ${catalog === 'categories' ? 'category' : 'tag'} ${record.name}`}>
                   <button
                     className="button secondary"
                     onClick={() =>
@@ -83,7 +84,7 @@ export function TicketConfigurationPage() {
                   >
                     {record.archivedAt ? 'Reactivate' : 'Archive'}
                   </button>
-                </div>
+                </ActionMenu>
               </article>
             ))
           ) : (

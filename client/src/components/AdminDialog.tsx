@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import { useRef, useState, type ReactNode } from 'react'
 import { Modal } from './Modal'
 import { getApiErrorMessage, getApiStatus } from '@/services/api'
+import { requiresAdministrationReload } from './admin-conflict'
 export function AdminDialog({
   title,
   children,
@@ -24,8 +25,8 @@ export function AdminDialog({
   const submitting = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
-  // Creation has no existing record to reload; keep its draft editable on rejection.
-  const stale = !!onReload && [403, 404, 409].includes(getApiStatus(error) ?? 0)
+  // A conflict needs explicit stale-state evidence before locking the draft.
+  const stale = !!onReload && requiresAdministrationReload(getApiStatus(error), getApiErrorMessage(error, ''))
   return (
     <Modal
       title={title}
@@ -63,9 +64,7 @@ export function AdminDialog({
                     ? 'This account or organization record is no longer available.'
                     : getApiErrorMessage(
                         error,
-                        onReload
-                          ? 'We could not confirm the change. Reload before trying again.'
-                          : 'We could not create the account. Check the details and try again.',
+                        'Could not save the change. Check the details and try again.',
                       )}
               </p>
               {stale && (

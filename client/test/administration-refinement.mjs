@@ -1,0 +1,123 @@
+import assert from 'node:assert/strict'
+
+export async function administrationRefinementChecks({ teams, navigate, click, fill, evaluate, waitText, until, send, failNext }) {
+  const settled = () => until(() => evaluate('!document.querySelector("dialog")'), 'dialog closed')
+  const rowAction = async (name, action) => {
+    await evaluate(`(() => {
+      const row = [...document.querySelectorAll('.admin-row')].find(r => r.textContent.includes(${JSON.stringify(name)}));
+      row.querySelector('button[popovertarget]').click();
+      [...row.querySelectorAll('[popover] button')].find(b => b.textContent.trim() === ${JSON.stringify(action)}).click();
+    })()`)
+  }
+  const correctConflict = async (selector, replacement) => {
+    const original = await evaluate(`document.querySelector(${JSON.stringify(selector)}).value`)
+    failNext('This name is already reserved, including archived records')
+    await click('Confirm')
+    await waitText('This name is already reserved')
+    assert.equal(await evaluate('document.querySelector("dialog fieldset").disabled'), false)
+    assert.equal(await evaluate(`document.querySelector(${JSON.stringify(selector)}).value`), original)
+    assert(!(await evaluate('document.querySelector("dialog").innerText')).includes('Reload administration'))
+    await fill(selector, replacement)
+    await click('Confirm')
+    await settled()
+    await waitText(replacement)
+  }
+  await navigate('/admin/organization')
+  await waitText('Create team')
+  for (const [tab, kind] of [['Regions', 'region'], ['Departments', 'department'], ['Specialties', 'specialty']]) {
+    await click(tab)
+    await click(`Create ${kind}`)
+    await fill('[aria-label="Organization name"]', 'Duplicate')
+    await correctConflict('[aria-label="Organization name"]', `Fresh ${kind}`)
+    await rowAction(`Fresh ${kind}`, 'Rename')
+    await fill('[aria-label="Organization name"]', 'Duplicate')
+    await correctConflict('[aria-label="Organization name"]', `Renamed ${kind}`)
+  }
+  await click('Teams')
+  await click('Create team')
+  await fill('[aria-label="Organization name"]', 'Duplicate')
+  await fill('[aria-label="Team coverage"]', 'GLOBAL')
+  await correctConflict('[aria-label="Organization name"]', 'Refinement Team')
+  const team = teams.find(t => t.name === 'Refinement Team')
+  await rowAction(team.name, 'Rename')
+  await correctConflict('[aria-label="Organization name"]', 'Refined Team')
+  await click('Refined Team')
+  await waitText('Change coverage')
+  for (const text of ['Team members', 'Add member', 'Team Lead', 'TeamManager', 'Specialties']) await waitText(text)
+  await click('Change coverage')
+  failNext('A team with this name and coverage already exists')
+  await click('Confirm')
+  await waitText('A team with this name and coverage already exists')
+  assert.equal(await evaluate('document.querySelector("fieldset").disabled'), false)
+  await fill('[aria-label="Team coverage"]', 'REGION')
+  await fill('[aria-label="Team region"]', '1')
+  await click('Confirm'); await settled()
+  await click('Change coverage')
+  failNext('Data changed concurrently; reload before retrying')
+  await click('Confirm')
+  await waitText('Reload administration')
+  assert(await evaluate('document.querySelector("fieldset").disabled'))
+  await click('Reload administration'); await settled()
+
+  for (const scheme of ['light', 'dark']) {
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] })
+    await send('Emulation.setDeviceMetricsOverride', { width: scheme === 'dark' ? 320 : 1440, height: 900, deviceScaleFactor: 1, mobile: scheme === 'dark' })
+    await navigate('/admin/organization')
+    await waitText('Refined Team')
+    await until(() => evaluate(`document.documentElement.dataset.theme === '${scheme}'`), 'theme')
+    const row = '.team-row'
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 })
+    const before = await evaluate(`getComputedStyle(document.querySelector('${row}')).backgroundColor`)
+    const point = await evaluate(`(() => { const r = document.querySelector('${row}').getBoundingClientRect(); return { x: r.x + 8, y: r.bottom - 8 } })()`)
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point })
+    assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('${row}')).backgroundColor`), before)
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('${row}')).cursor`), 'pointer')
+    for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 })
+    await waitText('Change coverage')
+    assert.equal(await evaluate('location.pathname'), `/admin/organization/teams/${team.id}`)
+    await navigate('/admin/organization'); await waitText('Refined Team')
+    await evaluate('document.querySelector(".team-row .action-menu-trigger").focus()')
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) })
+    assert(await evaluate('!!document.querySelector(".team-row [popover]:popover-open")'))
+    assert.equal(await evaluate('location.pathname'), '/admin/organization')
+    await click('Rename'); await waitText('Rename Refined Team')
+    assert.equal(await evaluate('location.pathname'), '/admin/organization')
+    await click('Cancel')
+    assert(await evaluate('document.activeElement.matches(".action-menu-trigger")'))
+    await rowAction('Refined Team', 'Archive')
+    assert.equal(await evaluate('location.pathname'), '/admin/organization')
+    await click('Cancel')
+    await evaluate('document.querySelector(".team-row-link").focus()')
+    assert.equal(await evaluate('getComputedStyle(document.querySelector(".team-row")).outlineStyle'), 'solid')
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) })
+    await waitText('Change coverage')
+    assert.equal(await evaluate('location.pathname'), `/admin/organization/teams/${team.id}`)
+    assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'))
+  }
+
+  await navigate('/admin/ticket-configuration')
+  for (const kind of ['category', 'tag']) {
+    await click(`Create ${kind}`)
+    await fill('[aria-label="Configuration name"]', 'Duplicate')
+    await correctConflict('[aria-label="Configuration name"]', `Fresh ${kind}`)
+    assert(await evaluate(`!!document.querySelector('button[aria-label="Actions for ${kind} Fresh ${kind}"]')`))
+    assert.equal(await evaluate('[...document.querySelectorAll(".catalog-row > button")].filter(b => /Rename|Archive|Reactivate/.test(b.textContent)).length'), 0)
+    await rowAction(`Fresh ${kind}`, 'Rename')
+    await correctConflict('[aria-label="Configuration name"]', `Renamed ${kind}`)
+    for (const [action, state] of [['Archive', 'Archived'], ['Reactivate', 'Active']]) {
+      await rowAction(`Renamed ${kind}`, action)
+      await click('Confirm'); await settled(); await waitText(state)
+    }
+    await evaluate(`document.querySelector('button[aria-label="Actions for ${kind} Renamed ${kind}"]').focus()`)
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) })
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    assert.equal(await evaluate('document.activeElement.textContent.trim()'), 'Rename')
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) })
+    await waitText(`Rename Renamed ${kind}`)
+    await click('Cancel')
+    assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'), `Actions for ${kind} Renamed ${kind}`)
+    assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'))
+  }
+  await send('Emulation.setEmulatedMedia', { features: [] })
+  console.log('PASS: editable create/rename/coverage conflicts, stale reload, whole-row Team links and independent actions, configuration menus, keyboard/focus/light/dark/mobile')
+}

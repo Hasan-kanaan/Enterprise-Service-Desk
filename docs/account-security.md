@@ -1,5 +1,52 @@
 # Account activation and password recovery
 
+## Follow-up UX: ISS-034 through ISS-038 (2026-10-16)
+
+Active first-run/pending Setup omits the circular Return to sign in link.
+Completed/unavailable Setup and status-error recovery retain sign-in navigation;
+bootstrap availability and Login redirects are unchanged.
+
+Activation and reset retain the accessible requirement checklist, check icons,
+Unicode code-point minimum of eight characters and maximum of 72 UTF-8 bytes.
+Save password is disabled until both fields satisfy those rules and match, and
+disables again when edited out of validity. Negative inline feedback remains;
+redundant positive prose is removed. Browser/password-manager autocomplete,
+server validation, fragment-token removal and explicit sign-in remain unchanged.
+
+Login recovery links use smaller theme-aware secondary text, hover underline,
+keyboard focus and 44px targets. Activation recovery now explains that it is for
+provisioned accounts that have not completed activation and have lost a usable
+email/link. Already-activated users have a separate Forgot password link.
+Completion says: "If this email belongs to an account that still needs activation,
+new instructions will be sent if eligible." The toast says "Request received."
+No public result claims definite delivery. Backend eligibility, cooldown, minimum
+response timing, anti-enumeration and session semantics are unchanged.
+
+Phone editing uses libphonenumber-js/max's possible-length check to reject an
+overlong edit as a whole, including paste, without truncating into another number.
+Deletion remains possible for retained values that become overlong on country
+change. Separators do not consume a character budget; valid international input
+still recognizes its country and formats nationally. Invalid international input
+is retained for validation rather than reformatted. Full validation remains;
+blank is optional. Phone remains unverified informational data, not authentication.
+
+Focused verification passed: client lint, TypeScript/Vite build, 13 phone unit
+tests, and administration browser modes `--bootstrap`, `--account-security` and
+`--phone`, plus `git diff --check`. Both password routes cover Unicode boundaries,
+disabled/enabled transitions, mismatch removal, valid completion, unusable links
+and no auto-login. Recovery fixtures compare activated, pending and unknown emails.
+Phone browser checks cover LB/US/CA/GB typing limits, deletion, selection edits,
+paste, formatting, recognition, country changes and optional blank. Browser modes
+reported no runtime/console errors and use isolated API fixtures, not live accounts.
+Sandbox Chromium initialization failed; permitted execution outside the sandbox
+passed. A new Unicode test fixture was corrected to use explicit escapes after
+the shell replaced literal characters. No backend files/tests, live mail delivery,
+manual screen-reader verification or full regression run were involved.
+
+Only ISS-034 through ISS-038 are complete in this batch. ISS-039 through ISS-052,
+manager dashboards/statistics, role-testing accounts, MFA and AI remain deferred.
+No schema or auth contract changes, account seeding, commit or push.
+
 ## Final issue-log checkpoint (2026-10-14)
 
 ISS-015 through ISS-033, including Batches 4A, 4B, 5A, 5B and 6, are implemented

@@ -1,4 +1,5 @@
 import { SkeletonState } from './Skeleton'
+import { LogOut } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import api from '@/services/api'
@@ -115,10 +116,11 @@ export function SessionsPanel() {
             </div>
             <button
               type="button"
-              className="button secondary"
+              className={`button secondary${session.current ? ' session-current-logout' : ''}`}
               disabled={busy}
               onClick={() => void revoke(session)}
             >
+              {session.current && <LogOut size={18} aria-hidden="true" />}
               Log out{session.current ? ' this device' : ''}
             </button>
           </li>

@@ -23,9 +23,9 @@ const copy = {
     message: 'If this email is associated with an eligible Kino Service Desk account, reset instructions have been sent. Check your inbox.',
   },
   'resend-activation': {
-    title: 'Resend activation', description: 'Enter your company email to request a new account activation link.',
-    submit: 'Send activation instructions', done: 'Check your inbox',
-    message: 'If this email is associated with an eligible Kino Service Desk account, activation instructions have been sent. Check your inbox.',
+    title: 'Recover your activation email', description: 'For a provisioned account you have not activated yet: enter your company email if your original activation email is missing or its link no longer works.',
+    submit: 'Send activation instructions', done: 'Request received',
+    message: 'If this email belongs to an account that still needs activation, new instructions will be sent if eligible.',
   },
 }
 
@@ -77,7 +77,7 @@ export function AccountSecurityPage({ action }: { action: keyof typeof copy }) {
       else await api.post(`/auth/${action}`, { email })
       setSuccess(true)
       setToken(''); setPassword(''); setConfirm(''); setEmail('')
-      toast.success(consume ? content.done : 'Request received. Check your inbox for instructions.')
+      toast.success(consume ? content.done : 'Request received.')
     } catch (failure) {
       // Only this explicit server response establishes that the link is unusable.
       // Other 400s, conflicts, rate limits and network failures remain retryable.
@@ -137,16 +137,17 @@ export function AccountSecurityPage({ action }: { action: keyof typeof copy }) {
               <p>Some characters use more than one byte. You can use your password manager’s suggested password.</p>
             </div>
             <div className="public-auth-feedback" aria-live="polite" aria-atomic="true">
-              <p id="password-feedback" className={password && !passwordError ? 'is-valid' : undefined}>{passwordError || (password ? 'Password meets the length requirements.' : 'Use a unique password you don’t use elsewhere.')}</p>
-              <p id="confirm-feedback" className={matches ? 'is-valid' : undefined}>{confirmError || (matches ? 'Passwords match.' : '')}</p>
+              <p id="password-feedback">{passwordError}</p>
+              <p id="confirm-feedback">{confirmError}</p>
             </div>
           </> : <label className="field" htmlFor="email">Company email
             <input id="email" name="email" required type="email" autoComplete="email" placeholder="you@company.com" value={email} onChange={e => setEmail(e.target.value)} />
           </label>}
-          <button type="submit" className="button primary public-auth-primary">{busy ? 'Please wait…' : content.submit}</button>
+          <button type="submit" disabled={busy || (consume && (!longEnough || !withinLimit || !matches))} className="button primary public-auth-primary">{busy ? 'Please wait…' : content.submit}</button>
         </fieldset>
         {error && <p className="public-auth-error" role="alert">{error}</p>}
       </form>
+      {action === 'resend-activation' && <p className="public-auth-note">Already activated your account? <Link className="public-auth-helper" to="/forgot-password">Forgot password?</Link></p>}
       <ReturnToSignIn />
     </>}
   </PublicAuthCard>

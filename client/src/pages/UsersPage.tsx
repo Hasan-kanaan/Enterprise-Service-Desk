@@ -3,6 +3,7 @@ import { RefreshSurface } from '@/components/RefreshSurface'
 import { ActionMenu } from '@/components/ActionMenu'
 import { Link } from 'react-router-dom'
 import { ChangeRoleForm } from '@/components/ChangeRoleForm'
+import { DeactivationConsequences } from '@/components/DeactivationConsequences'
 import type { Reference } from '@/types/administration'
 import { AgentSpecialties } from '@/components/SpecialtyLinks'
 import api, { getApiErrorMessage } from '@/services/api'
@@ -232,7 +233,7 @@ export function UsersPage() {
                     )}
                   {manageableRoles(role).includes(account.role) && (
                     <button
-                      className="button secondary"
+                      className={`button secondary${account.status === 'ACTIVE' ? ' account-deactivate' : ''}`}
                       onClick={() => setTarget(account)}
                     >
                       {account.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
@@ -244,12 +245,7 @@ export function UsersPage() {
               {manageableRoles(role).includes(account.role) &&
                 specialties === account.id && (
                   <AgentSpecialties
-                    id={account.id}
-                    canAdd={
-                      account.role === 'AGENT' &&
-                      account.status === 'ACTIVE' &&
-                      !!account.activatedAt
-                    }
+                    account={account}
                   />
                 )}
             </article>
@@ -319,19 +315,7 @@ export function UsersPage() {
           }}
         >
           {target.status === 'ACTIVE' ? (
-            <>
-              <p className="notice">
-                This user will lose authenticated access. Deactivation
-                administratively offboards their current operational
-                responsibilities.
-              </p>
-              <p className="muted">
-                The backend may return their active managed work to intake,
-                clear current agent assignments, and remove Team Lead and
-                TeamManager responsibilities. Historical work remains attributed
-                to them. No replacement people are selected.
-              </p>
-            </>
+            <DeactivationConsequences role={target.role} />
           ) : (
             <p className="notice">
               ACTIVE status permits sign-in only after account activation.

@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { getSetupStatus, login } from '@/services/auth.service'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { getApiErrorMessage } from '@/services/api'
+import '@/public-auth.css'
 
 const loginSchema = z.object({ email: z.string().email('Enter a valid company email'), password: z.string().min(1, 'Enter your password') })
 type LoginForm = z.infer<typeof loginSchema>
@@ -55,8 +56,8 @@ export function LoginPage() {
           <label className="block text-sm font-medium">Company email<input {...register('email')} className="mt-2 h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 text-sm outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-600/10" placeholder="you@company.com" autoComplete="username" />{errors.email && <span className="mt-1 block text-xs text-red-600">{errors.email.message}</span>}</label>
           <label className="block text-sm font-medium">Password<div className="relative mt-2"><input {...register('password')} className="h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 pr-11 text-sm outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-600/10" type={showPassword ? 'text' : 'password'} placeholder="Enter your password" autoComplete="current-password" /><button type="button" className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div>{errors.password && <span className="mt-1 block text-xs text-red-600">{errors.password.message}</span>}</label>
           <button className="flex h-11 w-full items-center justify-center rounded-lg bg-cyan-700 text-sm font-semibold text-white shadow-sm shadow-cyan-950/15 transition hover:bg-cyan-800 focus:outline-none focus:ring-4 focus:ring-cyan-600/20 disabled:cursor-not-allowed disabled:opacity-60" type="submit" disabled={isSubmitting}>{isSubmitting ? 'Signing in…' : 'Sign in'}</button>
-        <p><Link to="/forgot-password">Forgot password?</Link></p>
-          <p><Link to="/resend-activation">Resend activation email</Link></p>
+        <p><Link className="public-auth-helper" to="/forgot-password">Forgot password?</Link></p>
+          <p><Link className="public-auth-helper" to="/resend-activation">Didn't receive your activation email?</Link></p>
           </form>
       </div>
     </section>

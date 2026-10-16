@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { phoneParts, readPhone } from '../src/components/phone.ts'
+import { acceptsPhoneEdit, phoneParts, readPhone } from '../src/components/phone.ts'
 
 for (const [country, national, expected] of [
   ['LB', '71 123 456', '+96171123456'],
@@ -27,4 +27,26 @@ test('changing country revalidates the retained national digits', () => {
   assert.equal(readPhone('71123456', 'LB').valid, true)
   assert.equal(readPhone('71123456', 'US').valid, false)
   assert.equal(readPhone('2025550123', 'CA').valid, false)
+})
+
+for (const [country, number] of [
+  ['LB', '71 123 456'], ['US', '(202) 555-0123'],
+  ['CA', '(416) 555-0123'], ['GB', '020 7946 0018'],
+]) test(`${country}: metadata length budget and edits`, () => {
+  assert(acceptsPhoneEdit('', number, country))
+  assert(!acceptsPhoneEdit(number, number + '9', country))
+  assert(!acceptsPhoneEdit('', number + '999999', country), 'overlong paste is rejected whole')
+  assert(acceptsPhoneEdit(number, number.slice(0, -1), country))
+  assert(acceptsPhoneEdit(number, number.slice(0, -1) + '2', country))
+  assert(acceptsPhoneEdit(number, number + ' - ', country), 'separators cost no digits')
+  assert(acceptsPhoneEdit(number, '', country))
+})
+test('international paste uses its own plan and country changes recalculate length', () => {
+  assert(acceptsPhoneEdit('', '+44 20 7946 0018', 'LB'))
+  assert(!acceptsPhoneEdit('', '+44 20 7946 00189999', 'LB'))
+  assert(!acceptsPhoneEdit('', '2025550123', 'LB'))
+  assert(acceptsPhoneEdit('', '2025550123', 'US'))
+  assert(acceptsPhoneEdit('2025550123', '202555012', 'LB'), 'can shorten retained overlong input')
+  assert(acceptsPhoneEdit('', '71', 'LB'), 'too short can be typed but remains invalid')
+  assert.equal(readPhone('71', 'LB').valid, false)
 })

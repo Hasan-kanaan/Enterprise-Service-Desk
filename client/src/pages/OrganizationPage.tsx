@@ -312,7 +312,7 @@ export function OrganizationPage() {
                   {tab === 'teams' ? (
                     <div>
                       <Link
-                        className="text-button"
+                        className="text-button team-row-link"
                         to={`/admin/organization/teams/${item.id}`}
                       >
                         {item.name}

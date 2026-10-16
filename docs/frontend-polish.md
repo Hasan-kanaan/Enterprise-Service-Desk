@@ -1,5 +1,91 @@
 # Frontend UI/UX polish — 2026-10-04
 
+## Administration refinement: ISS-042/043/045/046 (2026-10-16)
+
+These four issues are complete; earlier dated deferrals below remain historical.
+AdminDialog keeps correctable conflicts editable with draft/error retention and
+immediate resubmission. Explicit concurrency/obsolete-eligibility and 403/404
+recovery still offer reload. Database case-insensitive catalog uniqueness preserves
+display casing, archived-name reservation and the existing Team coverage keys.
+
+Team rows use a native stretched link over their non-action area with subtle
+hover/focus treatment. Independent Actions controls do not navigate. Categories
+and Tags reuse the existing ActionMenu for Rename and Archive/Reactivate, retaining
+separate create actions and existing confirmation/toast/refresh behavior.
+
+Client lint/build, two conflict-classifier tests and focused administration
+refinement, organization-maintenance, team-coverage, ticket-configuration and
+account-metadata browser modes pass. Backend unit/PostgreSQL and Prisma verification
+also pass; see [exact commands, files, migration limits and test corrections](administration-refinement.md).
+Light/dark/mobile, keyboard/focus, duplicate create/rename/coverage correction and
+genuine stale recovery are covered. No completed row-striping/logout behavior was
+changed. No full repository regression, commit or push. ISS-047 and ISS-049 onward,
+requester/ticket creation, dashboards and role-account seeding remain deferred.
+
+## Account lifecycle follow-up: ISS-039/040/041/044/048 (2026-10-16)
+
+These five issues are implemented and focused-browser verified. This supersedes
+only their deferral in the earlier batch below; historical verification is intact.
+
+- Pending role-change copy explicitly says that the current activation link will
+  be invalidated and the administrator must send fresh instructions afterward.
+  Pending role changes remain allowed; no automatic resend was introduced.
+- Specialty additions explain pending, inactive (including inactive/pending),
+  non-Agent and exhausted-active-choice states. Retained/archived links are visibly
+  labeled; authorized removal remains available. Eligible active verified Agents
+  can add active unlinked specialties and receive the existing success feedback.
+  The statement that specialties grant no ticket authority/membership remains.
+- Agent/Manager role exits have compact, scoped consequence callouts with a text
+  heading and decorative warning icon. Neutral transitions retain ordinary notes.
+  Deactivation has a restrained distinct menu action and one role-aware callout.
+  Agent deactivation retains memberships and completed/cancelled subtask assignments;
+  leaving AGENT removes memberships and all current-cycle subtask assignments.
+  History, completion credit and requester history remain; no replacement is chosen.
+- Directory rows alternate card and subtly muted surfaces using `:nth-of-type`,
+  with separate hover/focus treatment and unchanged action-column geometry.
+- The current-device logout button has a decorative Lucide icon, 44px minimum
+  height, restrained border/background, visible focus and full width on small
+  screens. Existing confirmation and logout behavior are preserved; remote-session
+  buttons and the rest of Account settings are unchanged.
+
+Passed: client lint and TypeScript/Vite build; administration browser modes
+`--lifecycle-ux`, `--identity-lifecycle`, `--account-directory`,
+`--ticket-configuration` (existing specialty coverage), `--shell-profile`;
+`node test/session-flow.mjs --session-ui`; and `git diff --check`.
+Checks cover light/dark/mobile, authority boundaries, pending role changes,
+specialty state/add/remove flows, actual cursor pagination/filter striping,
+action alignment, focus, current/remote logout, cross-tab sign-out and fresh login.
+All final browser runs reported no runtime errors. The first session attempt
+timed out waiting for fixture UI; a retry exposed background-tab theme timing.
+Foregrounding the tested tab before UI checks resolved it. Tests use isolated API
+fixtures, including the existing role fixtures; no live role-testing accounts or
+seeding were used. No backend files, lifecycle contracts or schema changed.
+
+No full repository/backend regression or manual screen-reader check ran. No commit
+or push. ISS-042/043/045/046/047 and ISS-049 onward, manager statistics/dashboard,
+role-testing account setup, MFA and AI remain deferred. ISS-044/048 were explicit
+exceptions to the request's broad ISS-042+ exclusion.
+
+## Follow-up UX: ISS-034 through ISS-038 (2026-10-16)
+
+Completed the focused Setup, password, public recovery and phone-input batch.
+Active Setup removes circular sign-in navigation; other Setup states retain it.
+Activation/reset keep accessible checklists and negative feedback, omit positive
+prose and gate submit on existing password/confirmation rules. Login helper links
+use restrained 13px theme-aware text, hover underline, visible focus and 44px
+targets. Activation recovery explains its pending-account purpose and uses a
+generic accepted-request result without promising delivery.
+
+Phone input rejects library-confirmed overlong edits/pastes without truncation;
+country recognition, national formatting, full validation, selection replacement,
+deletion and optional blank remain. Country changes revalidate retained input.
+See [security behavior and verification](account-security.md#follow-up-ux-iss-034-through-iss-038-2026-10-16).
+
+Client lint/build, 13 phone tests, focused bootstrap/account-security/phone browser
+modes and diff whitespace validation pass. Browser checks use API fixtures; no
+live accounts were created or changed. Historical records below remain intact.
+ISS-039+ and manager dashboards/statistics remain deferred. No commit or push.
+
 ## Final issue-log checkpoint (2026-10-14)
 
 ISS-015 through ISS-033 and Batches 4A, 4B, 5A, 5B and 6 are complete and were

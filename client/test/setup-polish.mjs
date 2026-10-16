@@ -17,7 +17,7 @@ export async function setupPolishChecks({ navigate, click, fill, evaluate, waitT
   const checks = getSetupChecks()
   await delay(700)
   assert.equal(getSetupChecks(), checks, 'no setup redirect loop')
-  assert.equal(await evaluate('document.querySelector(".public-auth-navigation a").textContent.trim()'), 'Return to sign in')
+  assert.equal(await evaluate('!!document.querySelector(".public-auth-navigation a")'), false)
   for (const [name, value] of Object.entries({ ...firstIdentity, setupSecret: 'wrong' })) await fill(`input[name="${name}"]`, value)
   await click('Send activation email')
   await waitText('Invalid setup credentials')
@@ -86,7 +86,7 @@ export async function setupPolishChecks({ navigate, click, fill, evaluate, waitT
   assert(await disabled(), 'FAILED delivery still establishes the saved baseline')
   assert((await evaluate('document.querySelector(".setup-delivery").innerText')).includes('pending identity was saved'))
   await click('Request another activation email')
-  await waitText('Enter your company email to request a new account activation link.')
+  await waitText('For a provisioned account you have not activated yet')
 
   // Reload boundaries are deliberately truthful: status returns availability only.
   await navigate('/setup')
@@ -114,8 +114,9 @@ export async function setupPolishChecks({ navigate, click, fill, evaluate, waitT
     assert(await evaluate('document.querySelector(".setup-restart").getBoundingClientRect().width <= innerWidth'))
     assert(await evaluate('document.querySelector("button[type=submit]").getBoundingClientRect().height >= 44'))
   }
-  await click('Return to sign in')
-  await waitText('Create the root administrator.') // Login correctly routes back while pending.
+  assert(!(await evaluate('document.body.innerText')).includes('Return to sign in'))
+  await navigate('/login')
+  await waitText('Create the root administrator.') // Login still routes back while pending.
   await send('Emulation.setEmulatedMedia', { features: [] })
   console.log('PASS: setup confirmation, normalized identity guards, duplicate-submit prevention, delivery toasts, failure recovery, secret storage, reload boundary, keyboard, mobile and dark mode')
 }

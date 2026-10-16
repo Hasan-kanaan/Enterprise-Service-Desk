@@ -222,6 +222,9 @@ model Specialty {
   teams     TeamSpecialty[]
 }
 
+// Catalog case-insensitive expression indexes are maintained in migration
+// 20261016120000_catalog_case_insensitive_names (not expressible in Prisma).
+// Team retains its existing (name, regionId) key and NULL-region global key.
 model Team {
   archivedAt       DateTime?
   id               Int             @id @default(autoincrement())
