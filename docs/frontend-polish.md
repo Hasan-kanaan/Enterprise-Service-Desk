@@ -1,5 +1,33 @@
 # Frontend UI/UX polish — 2026-10-04
 
+## Later operational wrap-up (2026-10-16)
+
+The final checkpoint documentation and test corrections are included in the
+subsequent wrap-up commit and pushed to `origin/development`. Normal local
+`enterprise_service_desk` now has all 26 migrations applied, zero Prisma drift
+and seven separately verified valid unique catalog expression indexes. See the
+[wrap-up results](final-followup-checkpoint.md#later-operational-wrap-up-2026-10-16).
+Pending migration and no-commit/no-push statements below retain their original
+checkpoint timing. No new product work or business-rule changes occurred.
+
+## Final follow-up checkpoint (2026-10-16)
+
+ISS-034 through ISS-053, including ISS-048, are complete and comprehensively
+verified. Client lint/build, all 13 phone tests, the canonical browser command
+(65 emitted PASS groups) and 21 supplementary modes (36 groups) pass. Full backend,
+Prisma and production dependency gates also pass. See the
+[final report](final-followup-checkpoint.md) for exact commands/counts, issue
+coverage, stale-test corrections and remaining manual boundaries. PASS groups
+are not individual assertion counts.
+
+Only browser/backend test expectations and checkpoint documentation changed;
+approved UX and security behavior remain. Prior follow-up implementation is
+committed/pushed through `28639e4`; this checkpoint remains uncommitted and no
+push was performed. Historical entries below retain their original context.
+Role-testing account seeding is not outstanding product work; manager dashboards,
+AI, MFA and other excluded features remain deferred. Manual assistive technology,
+Firefox/Safari/native zoom and live mail rendering remain unverified.
+
 ## Requester follow-up: ISS-047/049/050/051/052/053 (2026-10-16)
 
 New Request has concise Tag/Priority guidance, an accessible native-dialog picker

@@ -1,5 +1,36 @@
 ﻿# Requester follow-up verification (2026-10-16)
 
+## Later operational wrap-up (2026-10-16)
+
+The final checkpoint documentation and test corrections are included in the
+subsequent wrap-up commit and pushed to `origin/development`. Normal local
+`enterprise_service_desk` now has all 26 migrations applied, zero Prisma drift
+and seven separately verified valid unique catalog expression indexes. See the
+[wrap-up results](final-followup-checkpoint.md#later-operational-wrap-up-2026-10-16).
+Pending migration and no-commit/no-push statements below retain their original
+checkpoint timing. No new product work or business-rule changes occurred.
+
+## Final follow-up checkpoint (2026-10-16)
+
+The [final comprehensive checkpoint](final-followup-checkpoint.md) passes:
+ISS-034 through ISS-053, including ISS-048, are complete. Full backend verification
+passes 21 unit suites/269 tests and 18 PostgreSQL suites/386 tests. Canonical
+browser acceptance and the combined `--request-followup`, ticket-configuration,
+session/logout and operational regression checks pass. NEW/ASSIGNED-only requester
+editing, stale rejection with unchanged stored metadata and recoverable UI text,
+conversation replies, independent support authority and terminal freezes remain.
+Picker limits/reselection, active-only editable home defaults and memory-only
+non-file drafts pass; session checks verify clearing across logout, definitive
+invalidation and account replacement.
+
+The implementation is already committed/pushed in
+`28639e4803b075fac59e5b40d008721f033b4855`, matching local and live
+`origin/development`. This final checkpoint's documentation and two stale-test
+corrections remain uncommitted; no commit/push or application changes occurred.
+The prior batch's uncommitted/full-regression deferrals below are historical.
+Role-testing account seeding is not outstanding product work. The report retains
+the development migration and manual-verification boundaries.
+
 Implemented ISS-047, ISS-049, ISS-050, ISS-051, ISS-052 and ISS-053.
 
 ## Behavior and contract

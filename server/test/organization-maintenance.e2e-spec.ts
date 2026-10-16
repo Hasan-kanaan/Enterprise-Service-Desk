@@ -428,11 +428,25 @@ describe('Organization maintenance (focused PostgreSQL and HTTP)', () => {
         affectedDepartmentIds: [departmentId],
       };
       await post('/tickets', 'employee', payload).expect(404);
-      await patch(`/tickets/${owned.id}`, 'employee', {
+      // Active support work blocks requester edits, including retained scope.
+      const retainedScope = {
         title: 'Retain scope',
         affectedRegionIds: [regionId],
         affectedDepartmentIds: [departmentId],
-      }).expect(200);
+      };
+      const rejected = await patch(
+        `/tickets/${owned.id}`,
+        'employee',
+        retainedScope,
+      ).expect(409);
+      expect(rejected.body).toMatchObject({
+        message: expect.stringContaining('conversation') as unknown,
+      });
+      expect(
+        (await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).title,
+      ).toBe(owned.title);
+      // The responsible Manager independently retains metadata authority.
+      await patch(`/tickets/${owned.id}`, 'manager', retainedScope).expect(200);
       const visible = (
         await get(`/tickets/${owned.id}`, 'employee').expect(200)
       ).body;

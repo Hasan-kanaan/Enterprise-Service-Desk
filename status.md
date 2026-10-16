@@ -1,5 +1,83 @@
 # Project Status
 
+## Operational follow-up wrap-up (2026-10-16)
+
+The final follow-up regression checkpoint passed; **ISS-034 through ISS-053
+are complete, including ISS-048.** This later operational wrap-up applies the
+three pending migrations to normal local development, `enterprise_service_desk`
+on `localhost:5432`, verified against `server/.env` (development environment)
+and the existing PostgreSQL 17 Docker container/project configuration.
+
+Applied `20261002120000_user_identity_metadata`,
+`20261011120000_remove_username`, and
+`20261016120000_catalog_case_insensitive_names` using the approved Prisma
+`migrate deploy` command. All **26 repository migrations are applied**;
+status is current, validate/generate pass, and the documented schema diff reports
+**zero drift** (exit 0). Read-only PostgreSQL inspection separately confirms all
+**seven unique expression indexes are valid**, including Team Region/GLOBAL
+boundaries. Read-only queries against User identity fields and all six catalogs
+pass. No collisions or migration warnings occurred; Prisma only advertised an
+available version update, which was not installed. Full regression was not rerun.
+
+The final checkpoint's documentation and two test-expectation corrections are
+included in this wrap-up commit, `chore: finalize follow-up regression checkpoint`,
+pushed to `origin/development`. Earlier dated no-commit/no-push and pending-DB
+statements below describe their original checkpoints. See the
+[checkpoint report](docs/final-followup-checkpoint.md) for verification details.
+
+Role-testing seed-account work is not active product work; ordinary accounts can
+be created through the real provisioning flow for manual testing. Manager
+statistics/dashboard, AI and other future work remain deferred. No reset, seed,
+`db push`, migration-file edit, arbitrary data repair, production/demo/cloud DB
+change, new feature or business-rule change occurred.
+
+## Final follow-up regression checkpoint (2026-10-16)
+
+Final follow-up regression checkpoint passed. **ISS-034 through ISS-053 are
+complete, including ISS-048.** Approved architecture, security and business rules
+remain unchanged. Two test files were reconciled with current expectations;
+no application code or dependencies changed. Historical entries below retain
+their original verification, deferral and commit/push context.
+
+Branch `development`, HEAD `28639e4803b075fac59e5b40d008721f033b4855`, local
+`origin/development` and the live remote matched. The starting tree was clean:
+requester follow-up is already committed/pushed in `28639e4`, following `da04bbd`.
+Only this final checkpoint's documentation and two test corrections are uncommitted.
+No commit or push was performed.
+
+Passed: frozen app installs with unchanged manifest/lockfile hashes; server
+lint/typecheck/Nest build; **21 unit suites / 269 tests**; **18 PostgreSQL/e2e
+suites / 386 tests**; Prisma validate/generate/deploy/status/diff against only
+`eds_stabilization_test` (**26 migrations current, zero schema drift, seven
+expression indexes separately verified**); client lint/TypeScript/Vite build;
+**13 phone tests**, 2 dependency checks, 2 conflict-classifier tests and 5 manual
+script tests. Canonical browser: **65 emitted PASS groups**; 21 supplementary
+modes: **36 PASS groups**. These groups are not individual assertion counts.
+
+Production audits pass with zero known vulnerabilities. Informational tooling
+audits retain server 2 critical/20 high/6 moderate and client 7 high/2 moderate.
+Requester edits are verified only in NEW/ASSIGNED; stale edits preserve stored
+metadata, conversation updates remain available, and independent support authority
+and terminal freezes remain. Memory-only drafts clear on success/logout/definitive
+invalidation/account replacement; files are not restored.
+
+Normal development was checked read-only and is behind three migrations:
+`20261002120000_user_identity_metadata`, `20261011120000_remove_username`, and
+`20261016120000_catalog_case_insensitive_names`. Deploy migrations there before
+manual catalog testing; this checkpoint did not deploy them, reset or seed it.
+Full commands, failure classifications, browser counts, migration guidance,
+exact changed files and manual boundaries are in the
+[final follow-up report](docs/final-followup-checkpoint.md).
+
+Remaining boundaries: real SMTP/Mailpit/mailbox rendering, manual screen reader,
+Firefox/Safari/native zoom, real GCS/public deployment and ISS-012/ISS-013 manual
+Network evidence. The issue workbook is present but was not edited; its status
+reconciliation is separate. Role-testing account seeding/setup is not outstanding
+product work: ordinary provisioning plus local Mailpit supports manual testing.
+Manager statistics/dashboard, AI, MFA and other explicitly excluded features
+remain deferred. Final diff check passes; six tracked files are modified and one
+new checkpoint report is untracked, with nothing staged.
+
 ## Requester follow-up: ISS-047/049/050/051/052/053 (2026-10-16)
 
 Completed and focused-verified: optional Tag/Priority guidance, accessible picker
