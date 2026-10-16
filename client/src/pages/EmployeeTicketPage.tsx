@@ -21,7 +21,6 @@ import {
   canReopen,
   cycleLabel,
   formatDate,
-  isTerminal,
 } from '@/types/ticketPresentation'
 import { ErrorState, LoadingState, StatusBadge } from '@/components/TicketUI'
 import { TicketForm } from '@/components/TicketForm'
@@ -157,6 +156,9 @@ function TicketContent({ id }: { id: number }) {
     setReturnToIntake(false)
     setAction(next)
   }
+  const requesterEditable = ticket.status === 'NEW' || ticket.status === 'ASSIGNED'
+  const workStarted = ['IN_PROGRESS', 'WAITING_FOR_EMPLOYEE', 'BLOCKED'].includes(ticket.status)
+  const editWorkStarted = getApiStatus(error) === 409 && getApiErrorMessage(error, '').startsWith('Support work has started.')
   const conflict = getApiStatus(actionError) === 409
   const routingConflict =
     conflict && getApiErrorMessage(actionError, '').includes('returnToIntake')
@@ -232,7 +234,7 @@ function TicketContent({ id }: { id: number }) {
           <section className="panel">
             <div className="list-heading">
               <h2>{editing ? 'Edit request' : 'Request details'}</h2>
-              {!isTerminal(ticket.status) && !editing && (
+              {requesterEditable && !editing && (
                 <button
                   className="text-button"
                   disabled={!options.data}
@@ -243,6 +245,8 @@ function TicketContent({ id }: { id: number }) {
                 </button>
               )}
             </div>
+            {workStarted && <p className="notice">Support work has started. Add new information in the <a href="#ticket-conversation">conversation</a> so the support team can see the update.</p>}
+            {editWorkStarted && <div className="notice" role="alert">Support work has started. Add new information in the <a href="#ticket-conversation">conversation</a> so the support team can see the update. Copy any unsaved changes before reloading.</div>}
             {!!error && (
               <ErrorState
                 error={error}

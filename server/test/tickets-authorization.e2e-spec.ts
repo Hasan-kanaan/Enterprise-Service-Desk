@@ -244,6 +244,136 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       clientRequestId: randomUUID(),
     });
 
+  it.each(Object.values(TicketStatus))(
+    'enforces requester metadata current state: %s',
+    async (status) => {
+      await db.ticket.update({ where: { id: owned.id }, data: { status } });
+      const payloads = [
+        { title: 'Changed title' },
+        { description: 'Changed description' },
+        { categoryId },
+        { priority: 'HIGH' },
+        { tagIds: [] },
+        { allRegions: false, affectedRegionIds: [regionId] },
+        { allDepartments: false, affectedDepartmentIds: [departmentId] },
+        { allRegions: true },
+        { allDepartments: true },
+      ];
+      const allowed = status === 'NEW' || status === 'ASSIGNED';
+      const before = await db.ticket.findUnique({
+        where: { id: owned.id },
+        include: {
+          tags: true,
+          affectedRegions: true,
+          affectedDepartments: true,
+        },
+      });
+      for (const payload of payloads) {
+        await patch(`/tickets/${owned.id}`, 'employee', payload).expect(
+          allowed ? 200 : 409,
+        );
+      }
+      if (!allowed)
+        expect(
+          await db.ticket.findUnique({
+            where: { id: owned.id },
+            include: {
+              tags: true,
+              affectedRegions: true,
+              affectedDepartments: true,
+            },
+          }),
+        ).toEqual(before);
+    },
+  );
+
+  it('rejects an ASSIGNED edit after support starts and preserves independent support edits', async () => {
+    await db.ticket.update({
+      where: { id: owned.id },
+      data: { status: 'ASSIGNED' },
+    });
+    await get(`/tickets/${owned.id}`, 'employee').expect(200);
+    await patch(`/tickets/${owned.id}/status`, 'agent', {
+      status: 'IN_PROGRESS',
+    }).expect(200);
+    const result = await patch(`/tickets/${owned.id}`, 'employee', {
+      title: 'Stale edit',
+      priority: 'CRITICAL',
+    }).expect(409);
+    expect((result.body as unknown as { message: string }).message).toContain(
+      'Support work has started',
+    );
+    expect(
+      await db.ticket.findUnique({ where: { id: owned.id } }),
+    ).toMatchObject({
+      title: owned.title,
+      priority: owned.priority,
+      status: 'IN_PROGRESS',
+    });
+    for (const name of ['agent', 'lead', 'manager']) {
+      await patch(`/tickets/${owned.id}`, name, {
+        description: `Support ${name}`,
+      }).expect(200);
+      const hints = await get(
+        `/ticket-workspace/tickets/${owned.id}`,
+        name,
+      ).expect(200);
+      expect(hints.body.permissions.edit).toBe(true);
+    }
+    await patch(`/tickets/${owned.id}`, 'admin', {
+      title: 'No authority',
+    }).expect(403);
+    await patch(`/tickets/${owned.id}`, 'superAdmin', {
+      title: 'No authority',
+    }).expect(403);
+    await patch(`/tickets/${owned.id}/status`, 'agent', {
+      status: 'WAITING_FOR_EMPLOYEE',
+    }).expect(200);
+    expect((await communicate('employee')).status).toBe(201);
+    expect(
+      await db.ticket.findUnique({ where: { id: owned.id } }),
+    ).toMatchObject({ status: 'IN_PROGRESS' });
+  });
+
+  it('exposes only caller home IDs and keeps archived choices out of options', async () => {
+    await request(app.getHttpServer()).get('/ticket-options').expect(401);
+    const active = await get('/ticket-options', 'employee').expect(200);
+    expect(active.body.requesterDefaults).toEqual({ regionId, departmentId });
+    await db.user.update({
+      where: { id: users.otherEmployee.id },
+      data: { regionId: null, departmentId: null },
+    });
+    const absent = await get('/ticket-options', 'otherEmployee').expect(200);
+    expect(absent.body.requesterDefaults).toEqual({
+      regionId: null,
+      departmentId: null,
+    });
+    await db.region.update({
+      where: { id: regionId },
+      data: { archivedAt: new Date() },
+    });
+    await db.department.update({
+      where: { id: departmentId },
+      data: { archivedAt: new Date() },
+    });
+    const archived = await get('/ticket-options', 'employee').expect(200);
+    expect(archived.body.requesterDefaults).toEqual({ regionId, departmentId });
+    expect(archived.body.regions).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: regionId })]),
+    );
+    expect(archived.body.departments).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: departmentId })]),
+    );
+    expect(Object.keys(archived.body).sort()).toEqual([
+      'categories',
+      'departments',
+      'regions',
+      'requesterDefaults',
+      'tags',
+    ]);
+    await get(`/tickets/${owned.id}`, 'otherEmployee').expect(404);
+  });
+
   it('grants current collaborators parent context but no ownership or ticket mutations', async () => {
     await get(`/tickets/${owned.id}`, 'otherAgent').expect(200);
     await get(`/tickets/${owned.id}/history`, 'otherAgent').expect(200);
@@ -691,6 +821,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         'categories',
         'departments',
         'regions',
+        'requesterDefaults',
         'tags',
       ]);
       expect(response.body.categories).toContainEqual({
@@ -705,7 +836,12 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
         id: departmentId,
         name: expect.any(String) as unknown,
       });
-      for (const values of Object.values(response.body)) {
+      for (const values of [
+        response.body.categories,
+        response.body.tags,
+        response.body.regions,
+        response.body.departments,
+      ]) {
         for (const value of values)
           expect(Object.keys(value).sort()).toEqual(['id', 'name']);
       }

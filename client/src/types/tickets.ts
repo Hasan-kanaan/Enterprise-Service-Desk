@@ -86,6 +86,7 @@ export type TicketHistory = {
   cycles: WorkCycle[]
 }
 export type TicketOptions = {
+  requesterDefaults?: { regionId: number | null; departmentId: number | null }
   categories: NamedOption[]
   tags: NamedOption[]
   regions: NamedOption[]

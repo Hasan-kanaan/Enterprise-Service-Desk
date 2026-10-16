@@ -59,7 +59,7 @@ describe('TicketAuthorizationService', () => {
       const actor = user(10, role);
       expect(() => service.assertCanCreateTicket(actor)).not.toThrow();
       expect(() =>
-        service.assertCanMutateTicket(actor, ticket()),
+        service.assertCanMutateTicket(actor, ticket({ status: 'NEW' })),
       ).not.toThrow();
       expect(() =>
         service.assertCanCancel(actor, ticket({ status: 'NEW' })),
@@ -91,6 +91,40 @@ describe('TicketAuthorizationService', () => {
       expect(() =>
         service.assertCanTransitionStatus(actor, own, 'RESOLVED'),
       ).not.toThrow();
+    },
+  );
+
+  it.each(Object.values(TicketStatus))(
+    'restricts requester metadata in %s for every role',
+    (status) => {
+      for (const role of Object.values(UserRole)) {
+        const action = () =>
+          service.assertCanMutateTicket(user(10, role), ticket({ status }));
+        if (status === 'NEW' || status === 'ASSIGNED')
+          expect(action).not.toThrow();
+        else expect(action).toThrow(ConflictException);
+      }
+    },
+  );
+
+  it.each(['IN_PROGRESS', 'WAITING_FOR_EMPLOYEE', 'BLOCKED'] as TicketStatus[])(
+    'preserves independent support metadata authority in %s, including own requests',
+    (status) => {
+      for (const actor of [
+        user(20, UserRole.AGENT),
+        user(21, UserRole.AGENT),
+        user(31, UserRole.MANAGER),
+      ]) {
+        expect(() =>
+          service.assertCanMutateTicket(actor, ticket({ status })),
+        ).not.toThrow();
+        expect(() =>
+          service.assertCanMutateTicket(
+            actor,
+            ticket({ status, requesterId: actor.id }),
+          ),
+        ).not.toThrow();
+      }
     },
   );
 

@@ -311,6 +311,15 @@ try {
     async () => (await state(a)).user && (await state(b)).user,
     'two authenticated pages',
   )
+  const putDraft = async page => page.evaluate(`import('/src/store/requestDraftSlice.ts').then(({saveRequestDraft}) => store.dispatch(saveRequestDraft({ownerId: 10, values: {title:'Sensitive draft',description:'Private',categoryId:4,priority:'HIGH',tagIds:[7],allRegions:true,allDepartments:true,affectedRegionIds:[],affectedDepartmentIds:[]}})))`)
+  const draft = page => page.evaluate('store.getState().requestDraft.values')
+  await putDraft(a); await putDraft(b)
+  await refresh(a)
+  assert.equal((await draft(a)).title, 'Sensitive draft', 'same-user refresh preserves draft')
+  // Exercise account replacement through the real store without persisting private text.
+  await a.evaluate(`import('/src/store/authSlice.ts').then(({signedIn}) => { const auth=store.getState().auth; store.dispatch(signedIn({accessToken:auth.accessToken,user:{...auth.user,id:999}})); })`)
+  assert.equal(await draft(a), null, 'another account cannot inherit draft')
+  await refresh(a); await putDraft(a)
   await until(() => a.evaluate("document.body.innerText.includes('Your sessions') && document.body.innerText.includes('Other device')"), 'session management loaded')
   for (const scheme of ['light', 'dark']) {
     await a.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] })
@@ -348,6 +357,7 @@ try {
   console.log('PASS: session UI identifies current device, confirms remote logout, logs out other sessions and fits mobile')
   await a.evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Log out this device').click()")
   await until(async () => !(await state(a)).user && !(await state(b)).user, 'current-device UI logout clears siblings')
+  assert.equal(await draft(a), null); assert.equal(await draft(b), null)
   await until(() => logouts === 1, 'current-device logout reaches server')
   logouts = 0
   await until(() => a.evaluate("document.body.innerText.includes('Welcome back')"), 'login page after current-device logout')
@@ -447,11 +457,13 @@ try {
   await a.evaluate('auth.login({email:"maya@example.test",password:"fixture"})')
   await until(async () => (await state(b)).user, 'login propagation')
   assert.equal(await probe(b), true)
+  await putDraft(a); await putDraft(b)
   rejection = true
   await refresh(a)
   await until(async () => !(await state(b)).user, 'deactivation propagation')
+  assert.equal(await draft(a), null); assert.equal(await draft(b), null)
   console.log(
-    'PASS: login propagates; backend session rejection/deactivation clears both tabs',
+    'PASS: login propagates; backend session rejection/deactivation clears both tabs and drafts',
   )
   await a.evaluate('auth.login({email:"maya@example.test",password:"fixture"})')
   await until(async () => (await state(b)).user, 'login')

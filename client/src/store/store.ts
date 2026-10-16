@@ -1,7 +1,8 @@
 import { configureStore } from '@reduxjs/toolkit'
 import authReducer, { signedIn, signedOut } from '@/store/authSlice'
 import { onSessionChange, setAccessToken } from '@/services/api'
-export const store = configureStore({ reducer: { auth: authReducer } })
+import requestDraftReducer from './requestDraftSlice'
+export const store = configureStore({ reducer: { auth: authReducer, requestDraft: requestDraftReducer } })
 store.subscribe(() => setAccessToken(store.getState().auth.accessToken))
 onSessionChange((session) =>
   store.dispatch(session ? signedIn(session) : signedOut()),

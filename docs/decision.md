@@ -1,5 +1,43 @@
 # Project Decisions
 
+## Request creation and requester metadata follow-up (2026-10-16)
+
+A requester may edit the structured details of their own ticket only while it is
+NEW or ASSIGNED. Once active support work begins (IN_PROGRESS,
+WAITING_FOR_EMPLOYEE or BLOCKED), requester updates must be communicated through
+the public ticket conversation. Authorized support metadata authority remains
+independent, including separately authorized support users working their own
+requests. Terminal ticket metadata remains frozen under existing lifecycle rules.
+This supersedes earlier nonterminal requester metadata-edit permissions only.
+
+The metadata policy is checked after the existing Ticket FOR UPDATE lock and
+current-state read in the Serializable update transaction. Operational action hints
+reuse that policy. A stale requester edit returns 409 with conversation guidance;
+there is no automatic retry, conversion to a message, audit event or notification.
+Requester cancellation/reopening and new public replies while WAITING_FOR_EMPLOYEE
+retain their existing rules (a new requester reply resumes IN_PROGRESS).
+
+GET /ticket-options adds requesterDefaults: { regionId: number|null,
+departmentId: number|null }, selected only from the authenticated caller. No user
+parameter, directory fields or organization authority is added. New requests use
+these IDs only if present in the active options arrays. Missing/archived home IDs
+remain descriptive and never become selectable by virtue of this projection.
+Existing drafts take precedence over defaults, and defaults remain freely editable.
+
+New Request drafts live only in Redux application memory, scoped to the signed-in
+user. Preserve all non-file form values across SPA navigation. Clear on successful
+creation, signedOut (including definitive invalidation), or changed signed-in user;
+same-user token refresh preserves the draft. No localStorage/sessionStorage draft
+or File objects are stored. Reload/browser close may discard drafts. A real
+submission attempt's request key survives navigation with the draft, preserving
+server hash/replay checks; files must be reselected unchanged for an interrupted
+multipart retry. No automatic replay or payload transformation is added.
+
+Tags remain optional descriptive labels. Priority remains requester-selectable
+LOW/MEDIUM/HIGH/CRITICAL, default MEDIUM, with urgency/impact guidance. The accessible
+file picker reports application-selected counts and retains all validation,
+immutability and authenticated-download rules. See [verification](request-followup.md).
+
 ## Case-insensitive administration catalog names (2026-10-16)
 
 Region, Department, Specialty, TicketCategory and TicketTag names are unique

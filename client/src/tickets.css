@@ -775,3 +775,9 @@ button:disabled {
 .attachment-picker input {
   max-width: 100%;
 }
+
+.file-picker-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.file-picker-control { position: relative; overflow: hidden; }
+.file-picker-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.file-picker-control:focus-within { outline: 2px solid var(--ring); outline-offset: 3px; }
+.file-picker-control:has(input:disabled) { opacity: .6; cursor: not-allowed; }

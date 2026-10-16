@@ -1,5 +1,31 @@
 # Project Status
 
+## Requester follow-up: ISS-047/049/050/051/052/053 (2026-10-16)
+
+Completed and focused-verified: optional Tag/Priority guidance, accessible picker
+counts, memory-only navigation drafts, eligible requester-home scope defaults,
+and server-enforced requester metadata editing only in NEW/ASSIGNED. Independent
+support authority and terminal freezes remain unchanged. Stale edits return 409
+inside existing locked transactions and guide requesters to the conversation.
+
+Passed server lint/typecheck/build, 44 focused unit tests and all 125 ticket
+PostgreSQL/HTTP tests against the existing isolated eds_stabilization_test database.
+Passed client lint/build, requester follow-up/configuration/full requester browser
+flows, operational browser regression and multi-tab session flow with draft reset
+checks. Git diff check passes. See [exact files, commands, retries and limits](docs/request-followup.md).
+No schema/migration changes or developer-database migration deployment occurred.
+
+Current-state clarification: prior follow-up work is now included in local commit
+da04bbd; development and the locally recorded origin/development point to that
+commit. Earlier uncommitted/no-push entries describe their historical checkpoints.
+This batch is uncommitted and has not been pushed. Role-testing account seeding is
+not active product development work; manual Mailpit activation is sufficient for
+the user's testing workflow. No new role accounts were seeded.
+
+Deferred: final comprehensive repository checkpoint, manager statistics/dashboard,
+AI, MFA, deployment and the other explicitly excluded features. Manual assistive
+technology and Firefox/Safari verification remain unperformed.
+
 ## Administration refinement: ISS-042/043/045/046 (2026-10-16)
 
 Completed the four named issues, preserving prior follow-up changes:

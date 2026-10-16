@@ -1,5 +1,5 @@
 import { toast } from 'sonner'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AttachmentPicker } from './Attachments'
 import { useForm, useWatch } from 'react-hook-form'
 import type {
@@ -19,6 +19,7 @@ type Props = {
     affectedDepartments?: NamedOption[]
   }
   initial?: TicketInput
+  onDraftChange?: (values: TicketInput) => void
   onSave: (values: TicketInput, files?: File[]) => Promise<void>
   allowAttachments?: boolean
   onCancel: () => void
@@ -40,6 +41,7 @@ export function TicketForm({
   options: activeOptions,
   existingReferences,
   initial,
+  onDraftChange,
   onSave,
   onCancel,
   submitLabel,
@@ -92,6 +94,7 @@ export function TicketForm({
   const [files, setFiles] = useState<File[]>([])
   const {
     register,
+    subscribe,
     control,
     handleSubmit,
     setValue,
@@ -99,6 +102,13 @@ export function TicketForm({
     clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<TicketInput>({ defaultValues: initial ?? blank })
+  useEffect(() => {
+    if (!onDraftChange) return
+    return subscribe({
+      formState: { values: true },
+      callback: ({ values }) => onDraftChange(values),
+    })
+  }, [subscribe, onDraftChange])
   const values = useWatch({ control })
   const selections = (
     field: 'tagIds' | 'affectedRegionIds' | 'affectedDepartmentIds',
@@ -240,7 +250,11 @@ export function TicketForm({
             </div>
             <label className="field" htmlFor="ticket-priority">
               Priority
-              <select id="ticket-priority" {...register('priority')}>
+              <select
+                aria-describedby="priority-guidance"
+                id="ticket-priority"
+                {...register('priority')}
+              >
                 {ticketPriorities.map((priority: TicketPriority) => (
                   <option key={priority} value={priority}>
                     {priority[0] + priority.slice(1).toLowerCase()}
@@ -249,6 +263,10 @@ export function TicketForm({
               </select>
             </label>
           </div>
+          <p id="priority-guidance" className="small muted">
+            Choose the urgency and impact of the issue from your perspective.
+            Most requests should remain Medium.
+          </p>
         </div>
         <div className="form-section">
           <h2>Where is this happening?</h2>
@@ -307,6 +325,11 @@ export function TicketForm({
                 <legend>
                   Tags <span className="muted">(optional)</span>
                 </legend>
+                <p className="small muted">
+                  Tags are optional labels that help describe and organize the
+                  request. They do not determine who can access or work the
+                  ticket.
+                </p>
                 {selections('tagIds', options.tags)}
               </fieldset>
             </details>

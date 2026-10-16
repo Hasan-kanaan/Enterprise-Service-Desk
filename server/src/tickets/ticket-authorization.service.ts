@@ -75,12 +75,21 @@ export class TicketAuthorizationService {
     this.assertServiceDeskUser(user);
     this.assertActive(ticket);
     if (
-      ticket.requesterId === user.id ||
       (user.role === UserRole.AGENT && ticket.assignedAgentId === user.id) ||
       this.isTeamLead(user, ticket.assignedTeam) ||
       this.isResponsibleManager(user, ticket)
     )
       return;
+    if (ticket.requesterId === user.id) {
+      if (
+        ticket.status === TicketStatus.NEW ||
+        ticket.status === TicketStatus.ASSIGNED
+      )
+        return;
+      throw new ConflictException(
+        'Support work has started. Add new information in the conversation so the support team can see the update.',
+      );
+    }
     throw new ForbiddenException(
       'You do not have permission to modify this ticket',
     );

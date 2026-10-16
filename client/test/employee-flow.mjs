@@ -1,3 +1,4 @@
+import { requestFollowup } from './request-followup.mjs'
 import { requesterPolish } from './ui-polish.mjs'
 import { pageFixture, historyFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
@@ -60,6 +61,7 @@ const browser = spawn(
   ],
   { windowsHide: true, stdio: 'ignore' },
 )
+let fileDialogs = 0
 let socket
 let serial = 0
 const pending = new Map()
@@ -262,6 +264,7 @@ function response(request) {
         },
       ]
     if (request.method === 'GET') return [200, ticket]
+    if (!match[2] && request.method === 'PATCH' && !['NEW', 'ASSIGNED'].includes(ticket.status)) return [409, { message: 'Support work has started. Add new information in the conversation so the support team can see the update.' }]
     mutations.push({ path, body })
     if (conflict) {
       conflict = false
@@ -333,6 +336,7 @@ try {
         : entry.accept(data.result)
       return
     }
+    if (data.method === 'Page.fileChooserOpened') fileDialogs++
     if (data.method === 'Runtime.exceptionThrown')
       browserErrors.push(data.params.exceptionDetails)
     if (data.method === 'Fetch.requestPaused') {
@@ -382,7 +386,9 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   })
-  if (process.argv.includes('--ui-polish')) {
+  if (process.argv.includes('--request-followup')) {
+    await requestFollowup({ fileDialogs: () => fileDialogs, send, evaluate, navigate, waitText, click, fill, checkLabel, selectAttachment, tickets, options, browserErrors, original, setCycles: value => { cycles = value } })
+  } else if (process.argv.includes('--ui-polish')) {
     await requesterPolish({ send, evaluate, navigate, waitText, click, fill, checkLabel, tickets, cycles, requests, browserErrors })
   } else if (process.argv.includes('--ticket-configuration')) {
     cycles = [original(142)]

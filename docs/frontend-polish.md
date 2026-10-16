@@ -1,5 +1,26 @@
 # Frontend UI/UX polish — 2026-10-04
 
+## Requester follow-up: ISS-047/049/050/051/052/053 (2026-10-16)
+
+New Request has concise Tag/Priority guidance, an accessible native-dialog picker
+with application file counts, and memory-only non-file drafts across SPA routes.
+Eligible caller-home scope defaults apply only without a draft. Requester details
+can be edited in NEW/ASSIGNED; active-work states explain the conversation update
+path, and stale edit rejection preserves unsaved form values until explicit reload.
+Support policy and all attachment/conversation security remain independent.
+See [the contract, exact files and verification](request-followup.md).
+
+## Requester follow-up: ISS-047/049/050/051/052/053 (2026-10-16)
+
+New Request has concise Tag/Priority guidance, an accessible native-dialog picker
+with application file counts, and memory-only non-file drafts across SPA routes.
+Eligible caller-home scope defaults apply only without a draft. Requester details
+can be edited in NEW/ASSIGNED; active-work states explain the conversation update
+path, and stale edit rejection preserves unsaved form values until explicit reload.
+Support policy and all attachment/conversation security remain independent.
+See [the contract, exact files and verification](request-followup.md) and
+[the durable rule](decision.md#request-creation-and-requester-metadata-follow-up-2026-10-16).
+
 ## Administration refinement: ISS-042/043/045/046 (2026-10-16)
 
 These four issues are complete; earlier dated deferrals below remain historical.

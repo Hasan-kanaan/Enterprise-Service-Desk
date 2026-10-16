@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/services/api'
-import { useCallback, useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import api from '@/services/api'
 import {
   type Attachment,
@@ -31,12 +31,18 @@ export function AttachmentPicker({
   onChange: (files: File[]) => void
   disabled?: boolean
 }) {
+  const pickerId = useId()
   const [error, setError] = useState('')
   return (
     <div className="attachment-picker">
-      <label className="field">
-        Attachments (optional)
+      <p id={`${pickerId}-label`} className="field">Attachments (optional)</p>
+      <div className="file-picker-row">
+      <label className="button secondary file-picker-control">
+        Choose files
         <input
+          className="file-picker-input"
+          aria-labelledby={`${pickerId}-label`}
+          aria-describedby={`${pickerId}-status`}
           type="file"
           multiple
           accept={accept}
@@ -72,6 +78,8 @@ export function AttachmentPicker({
           }}
         />
       </label>
+      <span id={`${pickerId}-status`} role="status">{files.length === 0 ? 'No files selected' : `${files.length} ${files.length === 1 ? 'file' : 'files'} selected`}</span>
+      </div>
       <p className="small muted">
         Up to 5 files, 10 MB each. PNG, JPEG, WebP, PDF, TXT, LOG, JSON or CSV.
       </p>

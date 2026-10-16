@@ -1,5 +1,11 @@
+import { useAppDispatch, useAppSelector } from '@/hooks/storeHooks'
+import {
+  saveRequestDraft,
+  clearRequestDraft,
+  beginRequestAttempt,
+} from '@/store/requestDraftSlice'
 import { getApiErrorMessage } from '@/services/api'
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
@@ -10,19 +16,38 @@ import { createTicket, getTicketOptions } from '@/services/tickets.service'
 import type { TicketInput } from '@/types/tickets'
 
 export function CreateTicketPage() {
-  const requestKey = useRef(crypto.randomUUID())
+  const dispatch = useAppDispatch()
+  const userId = useAppSelector((state) => state.auth.user?.id ?? 0)
+  const draft = useAppSelector((state) => state.requestDraft.values)
+  const preserveDraft = useCallback(
+    (values: TicketInput) => {
+      dispatch(
+        saveRequestDraft({ ownerId: userId, values: structuredClone(values) }),
+      )
+    },
+    [dispatch, userId],
+  )
+  const priorKey = useAppSelector((state) => state.requestDraft.requestKey)
+  const requestKey = useRef(priorKey ?? crypto.randomUUID())
   const navigate = useNavigate()
   const options = useResource(getTicketOptions)
   const [error, setError] = useState<unknown>()
   const save = async (input: TicketInput, files: File[] = []) => {
     setError(undefined)
+    dispatch(beginRequestAttempt({ ownerId: userId, key: requestKey.current }))
     try {
       const ticket = await createTicket(input, requestKey.current, files)
+      dispatch(clearRequestDraft(userId))
       toast.success(`Ticket #${ticket.id} submitted`)
       navigate(`/tickets/${ticket.id}`, { replace: true })
     } catch (failure) {
       setError(failure)
-      toast.error(getApiErrorMessage(failure, 'Could not save the ticket. Please try again.'))
+      toast.error(
+        getApiErrorMessage(
+          failure,
+          'Could not save the ticket. Please try again.',
+        ),
+      )
     }
   }
   return (
@@ -52,6 +77,12 @@ export function CreateTicketPage() {
                   administrator before submitting a request.
                 </div>
               )}
+              {priorKey && !error && (
+                <p className="notice">
+                  A submission was previously attempted. Retry with the same
+                  content and reselect any original files to confirm it safely.
+                </p>
+              )}
               {error && (
                 <ErrorState
                   error={error}
@@ -59,6 +90,31 @@ export function CreateTicketPage() {
                 />
               )}
               <TicketForm
+                initial={
+                  draft ?? {
+                    title: '',
+                    description: '',
+                    categoryId: 0,
+                    priority: 'MEDIUM',
+                    tagIds: [],
+                    allRegions: false,
+                    allDepartments: false,
+                    affectedRegionIds: options.data.regions
+                      .filter(
+                        (item) =>
+                          item.id === options.data?.requesterDefaults?.regionId,
+                      )
+                      .map((item) => item.id),
+                    affectedDepartmentIds: options.data.departments
+                      .filter(
+                        (item) =>
+                          item.id ===
+                          options.data?.requesterDefaults?.departmentId,
+                      )
+                      .map((item) => item.id),
+                  }
+                }
+                onDraftChange={preserveDraft}
                 allowAttachments
                 options={options.data}
                 onSave={save}
