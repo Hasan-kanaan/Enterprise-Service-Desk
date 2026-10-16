@@ -89,8 +89,12 @@ export class OrganizationService {
     query: ListQuery,
   ) {
     await this.requireActiveTeam(this.prisma, teamId);
-    const { search } = listWindow(query, false);
-    if (!search) return [];
+    const {
+      search,
+      position,
+      limit: requestedLimit,
+    } = listWindow(query, false);
+    const limit = Math.min(requestedLimit, 20);
     const eligibility: Prisma.UserWhereInput =
       purpose === 'manager'
         ? { role: UserRole.MANAGER }
@@ -104,21 +108,30 @@ export class OrganizationService {
               ? { OR: [{ ledTeam: null }, { ledTeam: { id: teamId } }] }
               : {}),
           };
-    return this.prisma.user.findMany({
+    const rows = await this.prisma.user.findMany({
       where: {
         AND: [
           eligibility,
+          after(position),
           {
             status: 'ACTIVE',
             activatedAt: { not: null },
-            displayName: { contains: search, mode: 'insensitive' },
+            ...(search
+              ? {
+                  displayName: {
+                    contains: search,
+                    mode: 'insensitive' as const,
+                  },
+                }
+              : {}),
           },
         ],
       },
       select: { id: true, displayName: true },
-      orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
-      take: 20,
+      orderBy: { id: 'desc' },
+      take: limit + 1,
     });
+    return listPage(rows, limit, false);
   }
 
   async createTeam(data: CreateTeamDto) {

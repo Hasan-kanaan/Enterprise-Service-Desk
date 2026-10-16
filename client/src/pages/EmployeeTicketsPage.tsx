@@ -1,6 +1,6 @@
 import { SkeletonState } from '@/components/Skeleton'
 import { RefreshSurface } from '@/components/RefreshSurface'
-import { Plus, Search, RefreshCw, ArrowRight } from 'lucide-react'
+import { Plus, Search, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { useResource } from '@/hooks/useResource'
@@ -91,14 +91,6 @@ export function EmployeeTicketsPage({
       <section className="panel">
         <div className="list-heading">
           <h2>{overview ? 'Recent requests' : 'Your requests'}</h2>
-          <button
-            className="icon-button"
-            onClick={reload}
-            disabled={loading}
-            aria-label="Refresh tickets"
-          >
-            <RefreshCw size={18} />
-          </button>
         </div>
         {!overview && (
           <>

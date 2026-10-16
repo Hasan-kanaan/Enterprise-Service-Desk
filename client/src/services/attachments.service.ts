@@ -19,12 +19,16 @@ export async function postWithAttachments<T>(
   files.forEach((file) => form.append('files', file))
   return api.post<T>(path, form, { headers: { 'Content-Type': undefined } })
 }
-export async function downloadAttachment(file: Attachment) {
+export async function attachmentBytes(file: Pick<Attachment, 'id' | 'contentType'>, signal?: AbortSignal) {
   const response = await api.get<Blob>(
     `/tickets/attachments/${file.id}/download`,
-    { responseType: 'blob' },
+    { responseType: 'blob', signal },
   )
-  const url = URL.createObjectURL(response.data)
+  if (response.data.type.split(';', 1)[0].trim().toLowerCase() !== file.contentType) throw new Error('Attachment type could not be verified.')
+  return response.data
+}
+export async function downloadAttachment(file: Attachment) {
+  const url = URL.createObjectURL(await attachmentBytes(file))
   const link = document.createElement('a')
   link.href = url
   link.download = file.filename ?? 'download'

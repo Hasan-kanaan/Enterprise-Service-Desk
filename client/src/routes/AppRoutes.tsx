@@ -1,4 +1,5 @@
 import { TicketConfigurationPage } from '@/pages/TicketConfigurationPage'
+import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { AccountSecurityPage } from '@/pages/AccountSecurityPage'
 import { WorkHistoryPage } from '@/pages/WorkHistoryPage'
 import { OperationalWorkspacePage } from '@/pages/OperationalWorkspacePage'
@@ -121,6 +122,7 @@ export function AppRoutes() {
               />
             </Route>
             <Route element={<ProtectedRoute roles={['MANAGER']} />}>
+              <Route path="/analytics" element={<AnalyticsPage />} />
               <Route
                 path="/work/intake"
                 element={<OperationalWorkspacePage view="intake" />}

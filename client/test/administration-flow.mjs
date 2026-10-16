@@ -1,3 +1,4 @@
+import { revalidatePage } from './revalidation.mjs'
 import { loadingFeedbackChecks } from './loading-feedback.mjs'
 import { phoneBrowserChecks } from './phone-browser.mjs'
 import { lifecycleUxChecks } from './lifecycle-ux.mjs'
@@ -156,6 +157,7 @@ const accounts = [
     department: null,
   },
 ]
+accounts.forEach(account => { account.activatedAt = '2026-01-01T00:00:00Z' })
 const catalogs = {
   regions: [{ id: 1, name: 'Beirut' }],
   departments: [{ id: 1, name: 'Operations' }],
@@ -423,7 +425,7 @@ function response(request) {
     if (!team) return [404, { message: 'Team not found' }]
     if (lookup[2] === 'members') return [200, pageFixture(team.memberIds.map(id => member(id).user), url, false)]
     const purpose = url.searchParams.get('purpose'), search = (url.searchParams.get('search') ?? '').toLowerCase()
-    return [200, search ? accounts.filter(a => a.status === 'ACTIVE' && a.displayName.toLowerCase().includes(search) && (purpose === 'manager' ? a.role === 'MANAGER' : a.role === 'AGENT' && (purpose === 'member' ? !team.memberIds.includes(a.id) : team.memberIds.includes(a.id) && !teams.some(t => t.id !== team.id && t.teamLeadId === a.id)))).slice(0, 20).map(({id, displayName}) => ({id, displayName})) : []]
+    return [200, pageFixture(accounts.filter(a => a.status === 'ACTIVE' && a.activatedAt && a.displayName.toLowerCase().includes(search) && (purpose === 'manager' ? a.role === 'MANAGER' : a.role === 'AGENT' && (purpose === 'member' ? !team.memberIds.includes(a.id) : team.memberIds.includes(a.id) && !teams.some(t => t.id !== team.id && t.teamLeadId === a.id)))).map(({id, displayName}) => ({id, displayName})), url, false)]
   }
   if (path === '/organization/teams') {
     if (request.method === 'GET') return [200, teams.map(viewTeam)]
@@ -534,9 +536,10 @@ async function click(text) {
 }
 async function fill(selector, value) {
   await until(() => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`), `input ready: ${selector}`)
-  if (value && selector === '[aria-label="Organization assignee"]') {
-    await fill('[aria-label="Organization assignee search"]', accounts.find(a => a.id === Number(value)).displayName)
-    await until(() => evaluate(`[...document.querySelector(${JSON.stringify(selector)}).options].some(o => o.value === ${JSON.stringify(value)} && !o.disabled)`), 'lookup choice')
+  if (value && selector === '.people-picker') {
+    await until(() => evaluate(`!!document.querySelector('.people-picker input[type="radio"][value="${value}"]')`), 'eligible candidate')
+    await evaluate(`document.querySelector('.people-picker input[type="radio"][value="${value}"]').click()`)
+    return
   }
   await evaluate(
     `(() => { const el = document.querySelector(${JSON.stringify(selector)}); const prototype = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
@@ -961,7 +964,7 @@ try {
     await waitText('REGION - Beirut')
     assert.deepEqual(teams[0].memberIds, [4]); assert.equal(teams[0].teamLeadId, 4); assert.equal(teams[0].managerId, 5)
     teams[0].archivedAt = new Date().toISOString(); catalogs.regions[0].archivedAt = new Date().toISOString()
-    await click('Refresh organization'); await waitText('Archived')
+    await revalidatePage(evaluate); await waitText('Archived')
     await action('Change coverage')
     assert.equal(await evaluate(`document.querySelector('[aria-label="Team region"]').value`), '')
     assert.equal(await evaluate(`document.querySelector('[aria-label="Team region"]').options.length`), 2)
@@ -995,7 +998,7 @@ try {
     rejectMutation = true; failureCode = 409
     await action('Create category'); await fill('[aria-label="Configuration name"]', 'Duplicate'); await click('Confirm'); await waitText('Data changed concurrently')
     await click('Reload administration'); await waitText('Renamed category')
-    failure = true; await click('Refresh configuration'); await waitText('temporarily unavailable'); failure = false; await click('Try again'); await waitText('Renamed category')
+    failure = true; await revalidatePage(evaluate); await waitText('temporarily unavailable'); failure = false; await click('Try again'); await waitText('Renamed category')
     teams.push({ id: 1, name: 'Specialty team', scope: 'GLOBAL', regionId: null, teamLeadId: null, managerId: null, memberIds: [4] })
     catalogs.specialties.push({ id: 2, name: 'Archived specialty', archivedAt: new Date().toISOString() })
     await navigate('/admin/organization/teams/1'); await waitText('Specialty team')
@@ -1006,7 +1009,7 @@ try {
     await action('Remove member'); await waitText('clears the Agent'); rejectMutation = true; await click('Confirm'); await waitText('Data changed concurrently'); await click('Reload administration'); await waitText('Agent Ali')
     await action('Remove member'); await confirm(); await waitText('No members assigned')
     teams[0].archivedAt = new Date().toISOString(); specialtyLinks.set('teams/1', [2])
-    await click('Refresh organization'); await waitText('Archived specialty (ARCHIVED)')
+    await revalidatePage(evaluate); await waitText('Archived specialty (ARCHIVED)')
     assert(await evaluate(`[...document.querySelectorAll('button')].find(el=>el.textContent==='Add specialty').disabled`))
     await action('Remove specialty'); await confirm()
     accounts.find(a => a.id === 4).activatedAt = new Date().toISOString()
@@ -1171,17 +1174,39 @@ try {
   await click('Regional support')
   await waitText('Team members')
   await waitText('REGION - Beirut')
+  const extraIds = new Set(Array.from({length: 30}, (_, i) => 9000 + i))
+  accounts.push(...[...extraIds].map(id => ({ id, displayName: `Candidate ${id}`, role: 'AGENT', status: 'ACTIVE', activatedAt: '2026-01-01T00:00:00Z' })))
+  await action('Add member')
+  await until(() => evaluate(`document.querySelectorAll('.people-result').length === 20`), 'bounded initial Agent page without search')
+  assert(!await evaluate(`document.querySelector('.people-picker').textContent.includes('Unassigned') || document.querySelector('.people-picker').textContent.includes('Manager Sara')`))
+  await click('Load more')
+  await until(() => evaluate(`document.querySelectorAll('.people-result').length > 20`), 'candidate continuation')
+  await fill('.people-picker input[type="search"]', 'Agent Ali')
+  await until(() => evaluate(`document.querySelectorAll('.people-result').length === 1`), 'candidate search narrows')
+  await fill('.people-picker input[type="search"]', 'No matching Agent')
+  await waitText('No eligible matches.')
+  await fill('.people-picker input[type="search"]', '')
+  await until(() => evaluate(`document.querySelectorAll('.people-result').length === 20`), 'cleared search restores first bounded page')
+  await evaluate(`document.querySelector('.people-result input').focus()`)
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 })
+  assert(await evaluate(`!!document.querySelector('.people-result input:checked') && !!document.activeElement.closest('dialog')`))
+  await click('Cancel')
+  for (let i=accounts.length-1;i>=0;i--) if (extraIds.has(accounts[i].id)) accounts.splice(i,1)
+  await waitText('Team specialties')
+  await waitText('Team specialty coverage is separate from individual Agent specialties.')
+  console.log('PASS: immediate bounded Agents, load more, search/empty, native keyboard selection and separate Team specialty explanation')
   await action('Add member')
   await absent('Inactive agent')
-  await fill('[aria-label="Organization assignee"]', '4')
+  await fill('.people-picker', '4')
   await confirm()
   await waitText('Agent Ali')
   await action('Add member')
-  await fill('[aria-label="Organization assignee"]', '5')
+  await fill('.people-picker', '5')
   await confirm()
   await waitText('Agent Maya')
   await action('Assign Team Lead')
-  await fill('[aria-label="Organization assignee"]', '4')
+  await fill('.people-picker', '4')
   await confirm()
   await waitText('Remove Team Lead')
   assert(
@@ -1191,7 +1216,7 @@ try {
   )
   await action('Assign TeamManager')
   await waitText('organizational only')
-  await fill('[aria-label="Organization assignee"]', '6')
+  await fill('.people-picker', '6')
   await confirm()
   await waitText('Manager Sara')
   assert(
@@ -1202,18 +1227,18 @@ try {
   await navigate('/admin/organization/teams/2')
   await waitText('GLOBAL - all regions')
   await action('Add member')
-  await fill('[aria-label="Organization assignee"]', '4')
+  await fill('.people-picker', '4')
   await confirm()
   await waitText('Agent Ali')
   await action('Assign Team Lead')
   assert(
     !(await evaluate(
-      `[...document.querySelector('[aria-label="Organization assignee"]').options].some(o=>o.value==='4')`,
+      `!!document.querySelector('.people-picker input[type=radio][value="4"]')`,
     )),
   )
   await click('Cancel')
   await action('Assign TeamManager')
-  await fill('[aria-label="Organization assignee"]', '6')
+  await fill('.people-picker', '6')
   await confirm()
   await waitText('Manager Sara')
   assert.equal(teams[0].managerId, teams[1].managerId)
@@ -1224,7 +1249,7 @@ try {
   await navigate('/admin/organization/teams/1')
   await waitText('Regional support')
   await action('Assign Team Lead')
-  await fill('[aria-label="Organization assignee"]', '5')
+  await fill('.people-picker', '5')
   await confirm()
   assert.equal(teams[0].teamLeadId, 5)
   await action('Remove Team Lead')
@@ -1243,7 +1268,7 @@ try {
     'PASS: all exposed catalog/team creation, coverage, multiple memberships, Team Lead constraints/replacement/removal, organizational manager assignment/removal',
   )
   await action('Add member')
-  await fill('[aria-label="Organization assignee"]', '4')
+  await fill('.people-picker', '4')
   rejectMutation = true
   await click('Confirm')
   await waitText('Reload administration')
@@ -1256,7 +1281,7 @@ try {
   await waitText('Regional support')
   for (const code of [403, 404]) {
     await action('Add member')
-    await fill('[aria-label="Organization assignee"]', '4')
+    await fill('.people-picker', '4')
     failureCode = code
     rejectMutation = true
     await click('Confirm')
@@ -1266,7 +1291,7 @@ try {
   }
   failureCode = 409
   failure = true
-  await click('Refresh organization')
+  await revalidatePage(evaluate)
   await waitText('Administration temporarily unavailable')
   failure = false
   await click('Try again')

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRevalidation } from './useRevalidation'
 
 // Keep loaders stable (module functions or useCallback). An aborted/obsolete request
 // cannot replace data after navigation or a newer reload.
@@ -32,6 +33,7 @@ export function useResource<T>(
     return () => controller.abort()
   }, [loader, attempt, refreshKey])
   const reload = useCallback(() => setAttempt((value) => value + 1), [])
+  useRevalidation(reload, state.loading || state.attempt !== attempt)
   return {
     ...(state.loader === loader &&
     state.attempt === attempt &&

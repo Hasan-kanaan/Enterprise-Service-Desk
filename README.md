@@ -1,5 +1,43 @@
 # Enterprise Service Desk
 
+## UX/security follow-up: ISS-054–065 (2026-10-17)
+
+Team relationship pickers now open with bounded, searchable eligible results;
+Team specialties remain independent of Agent specialties. Analytics uses a compact
+period toolbar and accessible open-status composition. Ticket actions are near the
+header, Intake navigation context is preserved, and routine Refresh buttons are
+replaced by normal loading, mutation updates and restrained focus revalidation.
+
+Private attachment cards support on-demand PNG/JPEG/WebP and MP4/WebM previews
+through the authorized download API. Limits are **10 MiB non-video / 25 MiB video,
+five files and 50 MiB total**. Video MIME and container structure are validated.
+Apply migration `20261016180000_video_attachment_limits` before using larger videos
+outside the migrated test database. Browser storage contains only theme preference
+and non-secret tab-coordination metadata. Access tokens and ticket drafts stay in
+memory; refresh tokens stay in HttpOnly cookies. See the [complete implementation/security/verification report](docs/ux-security-054-065.md).
+
+Earlier dated limits and deferrals below describe their historical phases.
+
+## Service / Operations Analytics (2026-10-16)
+
+Managers now have **Analytics** at `/analytics`, backed by `GET /analytics?days=7|30|90`
+(30 days by default). Company-wide grouped counts cover volume, Categories, Tags,
+affected scopes, backlog age, recorded resolution/reopen activity, Team workload
+and configured Specialty coverage. Activity uses a rolling UTC period; current
+backlog includes older open work. The page preserves its range in the URL.
+
+Only authenticated MANAGER accounts may use analytics. Aggregates contain no
+ticket/user IDs or private content. My Work and all ticket detail/history APIs
+retain their existing authorization; TeamManager and Region/GLOBAL coverage grant
+no new detail access. ADMIN/SUPER_ADMIN do not gain operational visibility.
+There is no employee scoring, ranking, gamification, AI inference or supplier
+attribution. Structured patterns are investigation signals, not root causes.
+
+See [analytics design and verification](docs/service-analytics.md) for definitions,
+overlapping scope rules, historical timing eligibility, response caps, measured
+query plans, exact changed files, tests and limitations. No schema migration,
+GCS operational setup or AI integration is included in this phase.
+
 ## Identity and navigation (2026-10-11)
 
 Username has been removed from the Enterprise Service Desk identity model.
@@ -1577,7 +1615,7 @@ AI recommendations include categorization, priority and agent suggestions, confi
 
 ### Optional Deferred Features
 
-Realtime transport, generic audit infrastructure, SSO/SCIM, notification preferences and retention, analytics, SLA tracking, advanced permissions, and further AI automation remain deferred.
+Realtime transport, generic audit infrastructure, SSO/SCIM, notification preferences and retention, SLA tracking, advanced permissions, and further AI automation remain deferred. Manager operational analytics is implemented as documented at the top of this README.
 
 
 ---

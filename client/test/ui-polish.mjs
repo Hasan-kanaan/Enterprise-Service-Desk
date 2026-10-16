@@ -108,11 +108,30 @@ export async function operationsPolish(context) {
   const { send, evaluate, navigate, waitText, click, browserErrors } = context
   await navigate('/work/intake'); await waitText('VPN intake')
   assert(await evaluate(`document.querySelector('.queue-tabs [aria-current="page"]').getAttribute('href') === '/work/intake'`))
-  await navigate('/work/tickets/142'); await waitText('Take responsibility')
+  await evaluate(`document.querySelector('a.ticket-row[href="/work/tickets/142"]').click()`); await waitText('Shared intake.')
+  assert(await evaluate(`document.querySelector('.desktop-sidebar a[href="/work/intake"]').getAttribute('aria-current') === 'page' && document.querySelector('.back-link').getAttribute('href') === '/work/intake'`))
+  assert(await evaluate(`document.querySelector('.responsibility-banner button').getBoundingClientRect().bottom < innerHeight && [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Take responsibility').length === 1`))
+  await viewport(send, 390)
+  assert(await evaluate(`document.querySelector('.responsibility-banner button').getBoundingClientRect().bottom < innerHeight`))
+  await viewport(send, 1440)
   await click('Take responsibility'); await waitText('Confirm'); await click('Confirm')
-  await waitText('Current responsibility')
+  await waitText('Back to My Work')
+  assert(await evaluate(`document.querySelector('.back-link').textContent.includes('My Work') && document.querySelector('.desktop-sidebar a[href="/work/tickets"]').getAttribute('aria-current') === 'page'`))
   await navigate('/work/tickets/143'); await waitText('Internal notes')
   assert(await evaluate(`!!document.querySelector('.internal-notes')`))
+  assert(await evaluate(`document.querySelector('.breadcrumb')?.textContent.includes('Support workspace') || document.querySelector('.eyebrow').textContent.includes('Support workspace')`))
+  assert(await evaluate(`![...document.querySelectorAll('.desktop-sidebar a')].some(a => ['/work/intake', '/work/tickets'].includes(a.getAttribute('href')) && a.getAttribute('aria-current') === 'page')`))
+  assert(await evaluate(`!Array.from(document.querySelectorAll('button')).some(b => /^Refresh/.test(b.textContent.trim()))`))
+  for (const width of [1440, 768, 390]) {
+    await viewport(send, width)
+    for (const theme of ['light', 'dark']) {
+      await evaluate(`document.documentElement.dataset.theme = '${theme}'`)
+      await fits(evaluate)
+      assert(await evaluate(`parseFloat(getComputedStyle(document.querySelector('.ticket-detail .panel h2')).fontWeight) > parseFloat(getComputedStyle(document.querySelector('.ticket-detail .small')).fontWeight)`))
+    }
+  }
+  await viewport(send, 1440)
+  console.log('PASS: Intake origin, above-fold claim, owned context after claim, neutral deep link, typography and light/dark desktop/tablet/mobile')
   await evaluate(`document.querySelector('[aria-label="Manage responsibility"]').click()`)
   assert(await evaluate(`!!document.querySelector(':popover-open')`))
   await escape(send)

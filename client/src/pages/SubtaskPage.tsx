@@ -56,9 +56,6 @@ function SubtaskContent({ id }: { id: number }) {
           <h1>{task.title}</h1>
           <p className="muted">{task.status.replaceAll('_', ' ')}</p>
         </div>
-        <button className="button secondary" disabled={resource.loading} onClick={reload}>
-          Refresh subtask
-        </button>
       </header>
       {resource.data.parentVisible && (
         <Link

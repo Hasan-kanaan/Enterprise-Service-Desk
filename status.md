@@ -1,5 +1,94 @@
 # Project Status
 
+## ISS-054 through ISS-065 UX/security cleanup (2026-10-17)
+
+Implemented bounded, purpose-specific Team relationship pickers; clearer Team
+specialties; compact aggregate analytics with accessible open-status composition;
+primary ticket actions near the header; Intake/My Work navigation context; removal
+of all 12 routine Refresh controls with event-driven revalidation; and ticket-detail
+typography. Existing error/stale recovery remains explicit.
+
+Private attachment cards offer authorized, opt-in image and MP4/WebM previews.
+Server limits are 10 MiB/non-video, 25 MiB/video, five files and 50 MiB aggregate,
+with bounded stream counting and conservative container validation. The necessary
+Attachment size CHECK migration was applied only to the isolated local test DB;
+other databases require `20261016180000_video_attachment_limits` before larger
+videos can be used. No storage adapter or authority model changed.
+
+The storage audit confirms only non-secret coordination metadata and theme
+preferences in application-owned durable browser storage. Access tokens and drafts
+remain in memory; refresh tokens remain in HttpOnly cookies. Existing uncommitted
+Manager analytics and its privacy/security review remain preserved.
+
+Passed 145 tests across eight focused unit suites, 257 distinct tests across six
+PostgreSQL suites (including all 39 analytics tests with live-browser and scale
+modes), focused requester/support/organization/analytics/session browser checks,
+server lint/typecheck/build, client lint/production build and Prisma validation/
+generation. See the [full completion report](docs/ux-security-054-065.md) for exact
+browser counts, Refresh inventory, security evidence, changed files and limitations.
+
+All changes remain unstaged on `development`. No commit, push, reset, stash, GCS
+setup, AI work or final full repository regression occurred. Earlier entries
+below remain historical.
+
+## Focused analytics privacy/security review (2026-10-16)
+
+No exposed person identifiers, ticket identifiers/private content, person-level
+activity dimensions, authorization widening or caching leaks were found in the
+reviewed analytics path. Analytics exposes aggregate operational information only
+and grants no new ticket-record or user-record authority. Company-wide employee
+directory access is explicitly excluded; Team/Specialty capacity stays aggregated
+in PostgreSQL. No production code, metric definitions, DTOs or UI behavior changed.
+
+Strengthened exact recursive field allowlists and sensitive-field/value assertions
+against Nest's serialized JSON; added direct HTTP malformed-parameter, approved
+range, directory/Team-member denial, live role/account recheck and no-store tests.
+The optional browser review uses a loopback Nest server and the isolated test DB
+to inspect the actual JSON delivered to the browser, then runs existing analytics
+UI checks. It logs pass labels only, not payloads or credentials.
+
+Passed server lint/typecheck/build; 4 focused unit suites / 80 tests; all 39
+analytics PostgreSQL tests with scale and live browser modes enabled; existing
+125 ticket authorization tests; client lint; 5 analytics browser PASS groups;
+diff check. Initial combined run passed 163/164: the browser expected the small
+fixture after scale expansion. Running browser inspection before expansion fixed
+the test order; final analytics suite passes. No application defect was involved.
+
+See [complete response inventory, evidence, exact review files and limits](docs/analytics-privacy-review.md).
+All work remains unstaged on `development`; no commit/push or full regression.
+The implementation and earlier verification entries below remain historical.
+
+## Service / Operations Analytics (2026-10-16)
+
+Implemented the approved Manager analytics phase. `/analytics` and its dedicated
+`GET /analytics?days=7|30|90` API expose company-wide aggregates without ticket/user
+IDs or private content. Existing ticket detail, queue, history, routing and
+lifecycle authority is unchanged. All four other roles are denied on both API and
+route. Historical analytics/dashboard deferrals below describe earlier phases.
+
+Delivered current status/backlog and age buckets; period creation, resolution,
+closure and reopen activity; median/p90 cycle duration; Category/Tag/affected
+Region/Department groups; recurring Category + Tag signals; Team workload/capacity;
+and conservative configured Specialty coverage signals. URL range state, loading,
+stale-response protection, retry/empty states, accessible tables and responsive
+light/dark layouts are included. No per-person scoring, AI inference or GCS work.
+
+Passed server lint/typecheck/build; 4 focused unit suites / 78 tests; analytics
+PostgreSQL verification (16 standard tests plus the separately executed scale test) and the
+existing 125 ticket authorization tests on isolated `eds_stabilization_test`;
+Prisma validate/generate; client lint/build; focused analytics browser mode
+(4 PASS groups) and operational browser regression (19 PASS groups); diff check.
+The 12,070-ticket scale fixture verifies exact counts, all seven section caps,
+overlapping scopes/Tags and real cycle aggregates. Its final EXPLAIN ANALYZE
+returned one aggregate row in 52.682 ms locally with no temporary-file spill.
+Group workload once per Team/Specialty; no evidence justified new indexes.
+
+No migration, development DB reset/db push/seed, full-repository regression,
+commit or push. Changes remain on `development`, unstaged. See
+[the exact files, metrics, commands, query plans and limitations](docs/service-analytics.md).
+GCS operational setup, AI integration and the later full regression remain pending
+separate phases. Manual screen-reader and non-Chromium checks remain unperformed.
+
 ## Operational follow-up wrap-up (2026-10-16)
 
 The final follow-up regression checkpoint passed; **ISS-034 through ISS-053

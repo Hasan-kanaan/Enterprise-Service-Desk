@@ -1,0 +1,29 @@
+﻿{
+    "branch":  "development",
+    "head":  "90e45936743300dc6c398cf08262bc677b81bfc7",
+    "modified":  [
+                     "README.md",
+                     "client/src/layouts/AppLayout.tsx",
+                     "client/src/routes/AppRoutes.tsx",
+                     "client/test/operations-flow.mjs",
+                     "docs/decision.md",
+                     "server/src/app.module.ts",
+                     "status.md"
+                 ],
+    "untracked":  [
+                      "client/src/analytics.css",
+                      "client/src/pages/AnalyticsPage.tsx",
+                      "client/src/services/analytics.service.ts",
+                      "client/src/types/analytics.ts",
+                      "client/test/analytics-browser.mjs",
+                      "docs/analytics-privacy-review.md",
+                      "docs/service-analytics.md",
+                      "server/src/analytics/analytics.controller.ts",
+                      "server/src/analytics/analytics.dto.ts",
+                      "server/src/analytics/analytics.module.ts",
+                      "server/src/analytics/analytics.query.ts",
+                      "server/src/analytics/analytics.service.spec.ts",
+                      "server/src/analytics/analytics.service.ts",
+                      "server/test/analytics.e2e-spec.ts"
+                  ]
+}

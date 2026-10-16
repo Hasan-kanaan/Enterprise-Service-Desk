@@ -109,13 +109,6 @@ export function OperationalWorkspacePage({
                 : 'Tickets assigned to you and work you collaborate on.'}
           </p>
         </div>
-        <button
-          className="button secondary"
-          onClick={reload}
-          disabled={loading}
-        >
-          Refresh workspace
-        </button>
       </header>
       <nav className="queue-tabs" aria-label="Work queues">
         {manager && <NavLink to="/work/intake">New ticket intake</NavLink>}
@@ -209,6 +202,7 @@ export function OperationalWorkspacePage({
             tickets={visible}
             categories={options.data?.categories}
             basePath="/work/tickets"
+            origin={view === 'intake' ? 'intake' : view === 'team' ? 'team' : view === 'mine' ? 'mine' : undefined}
           />
         ) : (
           <EmptyState title="No tickets in this queue">

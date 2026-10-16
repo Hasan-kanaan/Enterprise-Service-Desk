@@ -3,7 +3,8 @@ import { RefreshSurface } from '@/components/RefreshSurface'
 import { ActionMenu } from '@/components/ActionMenu'
 import { TicketAttachments } from '@/components/Attachments'
 import { useCallback, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { workOrigin, workPaths, workLabels } from '@/types/workNavigation'
 import { toast } from 'sonner'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { useResource } from '@/hooks/useResource'
@@ -38,6 +39,8 @@ export function OperationalTicketPage() {
 function OperationalTicket({ id }: { id: number }) {
   const user = useAppSelector((state) => state.auth.user)!
   const navigate = useNavigate()
+  const location = useLocation()
+  const origin = workOrigin(location.state)
   // Fetch one authorized snapshot per endpoint, then refresh all views after writes.
   const resource = useResource(
     useCallback(
@@ -70,8 +73,8 @@ function OperationalTicket({ id }: { id: number }) {
   if (resource.error || !resource.data)
     return (
       <div className="ticket-workspace">
-        <Link className="back-link" to="/work/tickets">
-          Back to work
+        <Link className="back-link" to={origin ? workPaths[origin] : '/dashboard'}>
+          {origin ? `Back to ${workLabels[origin]}` : 'Back to support workspace'}
         </Link>
         <ErrorState error={resource.error} onRetry={reload} />
       </div>
@@ -87,13 +90,13 @@ function OperationalTicket({ id }: { id: number }) {
       )
       .join(', ') || 'None selected'
   return (
-    <RefreshSurface busy={!!(resource.loading && resource.data)}><div className="ticket-workspace">
-      <Link className="back-link" to="/work/tickets">
-        Back to work
+    <RefreshSurface busy={!!(resource.loading && resource.data)}><div className="ticket-workspace ticket-detail">
+      <Link className="back-link" to={origin ? workPaths[origin] : '/dashboard'}>
+        {origin ? `Back to ${workLabels[origin]}` : 'Back to support workspace'}
       </Link>
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Ticket #{id}</p>
+          <p className="eyebrow">{origin ? workLabels[origin] : 'Support workspace'} / Ticket #{id}</p>
           <h1>{ticket.title}</h1>
           {ticket.requesterStatus === 'INACTIVE' && (
             <p className="notice" role="alert">
@@ -110,15 +113,12 @@ function OperationalTicket({ id }: { id: number }) {
             </span>
           </div>
         </div>
-        <button className="button secondary" disabled={busy || resource.loading} onClick={reload}>
-          Refresh ticket
-        </button>
       </header>
       {p.take && (
-        <p className="notice">
-          Shared intake. Take responsibility before editing, routing, or
-          creating subtasks.
-        </p>
+        <div className="notice responsibility-banner">
+          <p>Shared intake. Take responsibility before editing, routing, or creating subtasks.</p>
+          <button className="button primary" disabled={busy || resource.loading} onClick={() => setAction('take')}>Take responsibility</button>
+        </div>
       )}
       {isTerminal(ticket.status) && (
         <p className="notice">
@@ -128,6 +128,10 @@ function OperationalTicket({ id }: { id: number }) {
             : 'Operational changes are unavailable.'}
         </p>
       )}
+      {!p.take && (p.statuses.length > 0 || p.reopen) && <div className="button-row primary-ticket-actions">
+        {p.statuses.length > 0 && <button className="button primary" disabled={busy || resource.loading} onClick={() => setAction('status')}>Change status</button>}
+        {p.reopen && <button className="button secondary" disabled={busy || resource.loading} onClick={() => setAction('reopen')}>Reopen ticket</button>}
+      </div>}
       <nav className="detail-jumps" aria-label="Request sections">
         <a href="#ticket-conversation">Conversation</a>
         <a href="#ticket-information">Details &amp; actions</a>
@@ -338,47 +342,6 @@ function OperationalTicket({ id }: { id: number }) {
               </div>
             )}
           </section>
-          <section className="panel detail-body">
-            <h2>Ticket actions</h2>
-            <div className="ticket-actions">
-              {p.take && (
-                <button
-                  className="button primary"
-                  disabled={busy}
-                  onClick={() => setAction('take')}
-                >
-                  Take responsibility
-                </button>
-              )}
-              {p.statuses.length > 0 && (
-                <button
-                  className="button primary"
-                  disabled={busy}
-                  onClick={() => setAction('status')}
-                >
-                  Change status
-                </button>
-              )}
-              {p.reopen && (
-                <button
-                  className="button secondary"
-                  disabled={busy}
-                  onClick={() => setAction('reopen')}
-                >
-                  Reopen ticket
-                </button>
-              )}
-              {!p.take &&
-                !p.assignAgent &&
-                !p.transfer &&
-                !p.statuses.length &&
-                !p.reopen && (
-                  <p className="muted">
-                    No lifecycle or assignment actions are available.
-                  </p>
-                )}
-            </div>
-          </section>
         </aside>
       </div>
       {action && (
@@ -391,6 +354,7 @@ function OperationalTicket({ id }: { id: number }) {
           onReload={reload}
           onDone={(left) => {
             toast.success('Ticket updated')
+            if (action === 'take' && !left) navigate(location.pathname, { replace: true, state: { workOrigin: 'mine' } })
             if (left) navigate('/work/tickets', { replace: true })
             else reload()
           }}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PeopleLookup } from './PeopleLookup'
+import { OrganizationPeoplePicker } from './OrganizationPeoplePicker'
 import { AdminDialog } from './AdminDialog'
 import type { Catalog, Reference, Team } from '@/types/administration'
 import {
@@ -234,17 +234,17 @@ export function TeamActionForm({
           selected.
         </p>
       ) : (
-        <PeopleLookup
-          label="Organization assignee"
+        <OrganizationPeoplePicker
+          teamId={team.id}
+          purpose={action.kind as 'member' | 'lead' | 'manager'}
           value={person}
           onChange={setPerson}
-          url={`/organization/teams/${team.id}/people?purpose=${action.kind}`}
         />
       )}
       {action.kind.includes('manager') && (
         <p className="notice">
           TeamManager is organizational only. This does not assign tickets or
-          grant service-desk authority. Remove an existing TeamManager before
+          grant service-desk authority. Managers do not need Team membership. Remove an existing TeamManager before
           assigning another.
         </p>
       )}

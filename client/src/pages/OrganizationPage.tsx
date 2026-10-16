@@ -91,9 +91,6 @@ export function OrganizationPage() {
               : 'Regions, departments, specialties and team coverage.'}
           </p>
         </div>
-        <button className="button secondary" disabled={resource.loading} onClick={reload}>
-          Refresh organization
-        </button>
       </header>
       {needsManager && (
         <p className="notice warning">

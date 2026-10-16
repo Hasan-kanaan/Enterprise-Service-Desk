@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import api from '@/services/api'
+import { useRevalidation } from './useRevalidation'
 
 export type Page<T> = {
   items: T[]
@@ -92,6 +93,7 @@ export function usePagedList<T extends { id: number }>(
       })
     return () => controller.abort()
   }, [key, cursor, request.attempt])
+  useRevalidation(() => setRequest({ key, cursor: null, attempt: request.attempt + 1 }), loading)
   return {
     items: state.key === key ? state.items : [],
     loading: loading && !cursor,

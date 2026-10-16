@@ -1,3 +1,5 @@
+import { mp4Fixture, webmFixture } from './video-fixtures';
+import { readFileSync } from 'node:fs';
 import { MailProvider } from '../src/auth/mail.provider';
 import { FakeMailProvider } from './fake-mail.provider';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -585,6 +587,81 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
     await download(record.attachments[0].id, 'collaborator').expect(404);
   });
 
+  it('accepts private MP4/WebM evidence and retains download authorization and headers', async () => {
+    for (const [name, bytes] of [
+      ['evidence.mp4', mp4Fixture(11 * 1024 * 1024)],
+      ['evidence.webm', webmFixture()],
+      [
+        'browser.mp4',
+        readFileSync(join(__dirname, 'fixtures/browser-evidence.mp4')),
+      ],
+      [
+        'browser.webm',
+        readFileSync(join(__dirname, 'fixtures/browser-evidence.webm')),
+      ],
+    ] as const) {
+      const result = await upload(
+        'employee',
+        'messages',
+        randomUUID(),
+        name,
+        bytes,
+      ).expect(201);
+      const id = result.body.attachments[0].id;
+      expect(result.body.attachments[0].byteSize).toBe(bytes.length);
+      const response = await download(id).expect(200);
+      expect(response.headers['cache-control']).toBe('private, no-store');
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(response.headers['content-disposition']).toContain('attachment;');
+      expect(response.headers['content-security-policy']).toContain('sandbox');
+      for (const who of ['outsider', 'admin', 'superAdmin', 'historical'])
+        await download(id, who).expect(404);
+      await download(id, 'agent').expect(200);
+      await assign(null).expect(200);
+      await download(id, 'agent').expect(404);
+      await assign('agent').expect(200);
+    }
+  });
+
+  it('rejects oversized videos and aggregate multipart payloads without storing parents', async () => {
+    await upload(
+      'employee',
+      'messages',
+      randomUUID(),
+      'too-large.mp4',
+      Buffer.alloc(25 * 1024 * 1024 + 1),
+    ).expect(413);
+    const call = request(app.getHttpServer())
+      .post(`/tickets/${ticketId}/messages`)
+      .set('Authorization', `Bearer ${token('employee')}`)
+      .field(
+        'payload',
+        JSON.stringify({
+          content: 'video evidence',
+          expectedCycleId: cycleId,
+          clientRequestId: randomUUID(),
+        }),
+      );
+    const bytes = mp4Fixture(25 * 1024 * 1024);
+    await call
+      .attach('files', bytes, 'first.mp4')
+      .attach('files', bytes, 'second.mp4')
+      .attach('files', Buffer.from('x'), 'extra.txt')
+      .expect(413);
+    expect(await db.ticketMessage.count({ where: { ticketId } })).toBe(0);
+    expect(
+      await db.attachment.count({ where: { uploaderId: users.employee.id } }),
+    ).toBe(0);
+  });
+
+  it('coordination revision cannot authenticate an attachment request', async () => {
+    const result = await upload().expect(201);
+    await request(app.getHttpServer())
+      .get(`/tickets/attachments/${result.body.attachments[0].id}/download`)
+      .set('Authorization', `Bearer ${randomUUID()}`)
+      .expect(401);
+  });
+
   it('rejects file limits, unsupported/mismatched content and unauthorized multipart DTO fields', async () => {
     for (const filename of [
       'program.exe',
@@ -592,6 +669,8 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       'script.js',
       'archive.zip',
       'fake.png',
+      'fake.mp4',
+      'fake.webm',
       'bad.json',
     ])
       await upload('employee', 'messages', randomUUID(), filename).expect(400);

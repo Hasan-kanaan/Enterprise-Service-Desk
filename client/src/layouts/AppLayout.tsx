@@ -1,3 +1,4 @@
+import { workOrigin, workPaths, workLabels } from '@/types/workNavigation'
 import { Suspense } from 'react'
 import { SkeletonState } from '@/components/Skeleton'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -16,7 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { BrandMark } from '@/components/BrandMark'
 import { NotificationBell } from '@/components/NotificationBell'
@@ -46,6 +47,7 @@ const navigation = {
     },
   ],
   MANAGER: [
+    { label: 'Analytics', to: '/analytics', icon: LayoutDashboard },
     { label: 'Intake', to: '/work/intake', icon: Ticket },
     { label: 'My Work', to: '/work/tickets', icon: Ticket },
     { label: 'Subtasks', to: '/work/subtasks', icon: Ticket },
@@ -114,7 +116,10 @@ export function AppLayout() {
       : userRole === 'ADMIN' || userRole === 'SUPER_ADMIN'
         ? 'Administration'
         : 'Support workspace'
-  const pageLabel = location.pathname.startsWith('/profile') || location.pathname.startsWith('/settings')
+  const ticketDetail = /^\/work\/tickets\/\d+$/.test(location.pathname)
+  const origin = workOrigin(location.state)
+  const contextPath = origin ? workPaths[origin] : null
+  const pageLabel = ticketDetail ? (origin ? workLabels[origin] : 'Support workspace') : location.pathname.startsWith('/profile') || location.pathname.startsWith('/settings')
     ? 'Account settings'
     : ([...userNavigation]
         .reverse()
@@ -155,7 +160,11 @@ export function AppLayout() {
             {index === 1 && userRole !== 'EMPLOYEE' && (
               <p className="nav-section-label">{viewLabel}</p>
             )}
-            <NavLink
+            {ticketDetail ? <Link to={to} onClick={closeNavigation}
+              aria-current={to === contextPath ? 'page' : undefined}
+              className={`nav-item ${to === contextPath ? 'active' : ''}`}>
+              <Icon size={17} aria-hidden="true" />{label}
+            </Link> : <NavLink
               end={to === '/admin'}
               to={to}
               onClick={closeNavigation}
@@ -165,7 +174,7 @@ export function AppLayout() {
             >
               <Icon size={17} aria-hidden="true" />
               {label}
-            </NavLink>
+            </NavLink>}
           </div>
         ))}
       </nav>

@@ -92,13 +92,6 @@ export function NotificationBell({ role }: { role: UserRole }) {
           <RefreshSurface busy={resource.loading && !!resource.data}><div className="button-row">
             <button
               className="button secondary"
-              disabled={busy || resource.loading}
-              onClick={refresh}
-            >
-              Refresh notifications
-            </button>
-            <button
-              className="button secondary"
               disabled={busy || !resource.data?.unread}
               onClick={() => void mark()}
             >

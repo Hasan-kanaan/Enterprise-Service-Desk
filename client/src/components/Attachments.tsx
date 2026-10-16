@@ -1,3 +1,4 @@
+import { AttachmentCard } from './AttachmentCard'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/services/api'
 import { useCallback, useId, useState } from 'react'
@@ -10,8 +11,10 @@ import { useResource } from '@/hooks/useResource'
 import { ErrorState, LoadingState } from './TicketUI'
 import { formatDate } from '@/types/ticketPresentation'
 
-const accept = '.png,.jpg,.jpeg,.webp,.pdf,.txt,.log,.json,.csv'
+const accept = '.png,.jpg,.jpeg,.webp,.pdf,.txt,.log,.json,.csv,.mp4,.webm'
 const contentTypes: Record<string, string[]> = {
+  mp4: ['video/mp4'],
+  webm: ['video/webm'],
   png: ['image/png'],
   jpg: ['image/jpeg'],
   jpeg: ['image/jpeg'],
@@ -54,8 +57,12 @@ export function AttachmentPicker({
               setError('Choose at most 5 files.')
               return
             }
-            if (next.some((file) => file.size > 10 * 1024 * 1024)) {
-              setError('Each file must be at most 10 MB.')
+            if (next.some((file) => file.size > (/\.(mp4|webm)$/i.test(file.name) ? 25 : 10) * 1024 * 1024)) {
+              setError('Each file must be at most 10 MiB, or 25 MiB for video.')
+              return
+            }
+            if (next.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024) {
+              setError('Attachments must total at most 50 MiB.')
               return
             }
             if (
@@ -64,6 +71,7 @@ export function AttachmentPicker({
                   contentTypes[file.name.split('.').pop()?.toLowerCase() ?? '']
                 return (
                   !types ||
+                  (/\.(mp4|webm)$/i.test(file.name) && !types.includes(file.type)) ||
                   (file.type &&
                     file.type !== 'application/octet-stream' &&
                     !types.includes(file.type))
@@ -81,7 +89,7 @@ export function AttachmentPicker({
       <span id={`${pickerId}-status`} role="status">{files.length === 0 ? 'No files selected' : `${files.length} ${files.length === 1 ? 'file' : 'files'} selected`}</span>
       </div>
       <p className="small muted">
-        Up to 5 files, 10 MB each. PNG, JPEG, WebP, PDF, TXT, LOG, JSON or CSV.
+        Up to 5 files, 50 MiB total. Images/documents: 10 MiB each; MP4/WebM video: 25 MiB each. PNG, JPEG, WebP, PDF, TXT, LOG, JSON, CSV, MP4 or WebM.
       </p>
       {error && (
         <p role="alert" className="field-error">
@@ -139,7 +147,7 @@ export function AttachmentList({
   return (
     <>
       {!!error && <ErrorState error={error} />}
-      <ul className="attachment-list">
+      <ul className="attachment-cards">
         {files.map((file) => (
           <li key={file.id}>
             {file.deletedAt ? (
@@ -147,37 +155,12 @@ export function AttachmentList({
                 Attachment deleted · {formatDate(file.deletedAt, true)}
               </span>
             ) : (
-              <>
-                <span>
-                  {file.filename} · {((file.byteSize ?? 0) / 1024).toFixed(1)}{' '}
-                  KB
-                </span>
-                <button
-                  type="button"
-                  className="text-button"
-                  disabled={disabled || busy}
-                  onClick={() => void action(() => downloadAttachment(file))}
-                >
-                  Download {file.filename}
-                </button>
-                {onDelete && (
-                  <button
-                    type="button"
-                    className="text-button"
-                    disabled={disabled || busy}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          'Delete this attachment? It will no longer be downloadable.',
-                        )
-                      )
-                        void action(() => onDelete(file), true)
-                    }}
-                  >
-                    Delete attachment
-                  </button>
-                )}
-              </>
+              <AttachmentCard file={file} disabled={disabled || busy}
+                onDownload={() => void action(() => downloadAttachment(file))}
+                onDelete={onDelete ? () => {
+                  if (window.confirm('Delete this attachment? It will no longer be downloadable.')) void action(() => onDelete(file), true)
+                } : undefined}
+              />
             )}
           </li>
         ))}

@@ -1,3 +1,4 @@
+import { revalidatePage } from './revalidation.mjs'
 import assert from 'node:assert/strict'
 
 export async function expectToast(evaluate, until, type, message) {
@@ -22,7 +23,7 @@ export async function loadingFeedbackChecks({ send, navigate, click, fill, evalu
   await waitText('Employee Eve')
   assert.equal(await evaluate('document.querySelectorAll(".skeleton-state").length'),0)
   delayList()
-  await click('Refresh accounts')
+  await revalidatePage(evaluate)
   assert(await evaluate('!!document.querySelector("[data-account-id]")'))
   assert.equal(await evaluate('document.querySelectorAll(".skeleton-state").length'),0)
   await until(() => evaluate('!document.querySelector(".refresh-status")'), 'refresh complete')

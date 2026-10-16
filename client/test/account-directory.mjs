@@ -1,3 +1,4 @@
+import { revalidatePage } from './revalidation.mjs'
 import assert from 'node:assert/strict'
 import { expectToast } from './loading-feedback.mjs'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -15,7 +16,7 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
   await waitText(root.email)
   assert.deepEqual(await rowIds(), [root.id], 'sole root visible on initial navigation after login')
   const first = await rowIds()
-  await click('Refresh accounts')
+  await revalidatePage(evaluate)
   await settled()
   assert.deepEqual(await rowIds(), first)
 
@@ -36,7 +37,7 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
     assert.equal(securityMail.length, count)
     assert.deepEqual(await rowIds(), first)
     await expectToast(evaluate, until, 'error', 'User with this email already exists')
-    assert.equal(await evaluate(`[...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Refresh accounts').length`), 1)
+    assert.equal(await evaluate(`[...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Refresh accounts').length`), 0)
     assert.equal(await evaluate(`document.querySelectorAll('dialog .error-state button').length`), 0)
     assert.equal(await evaluate(`document.querySelector('dialog fieldset').disabled`), false)
     await click('Cancel')
@@ -72,7 +73,7 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
   assert.equal((await rowIds()).length, 2)
   assert.equal(accounts.find(a => a.email === 'mailfailure@example.test').activatedAt, null)
   assert.deepEqual(new Set(await rowIds()), new Set(accounts.map(a => a.id)))
-  await click('Refresh accounts')
+  await revalidatePage(evaluate)
   await settled()
   assert.deepEqual(new Set(await rowIds()), new Set(accounts.map(a => a.id)))
   await create('Correctable draft', root.email)
@@ -90,7 +91,7 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
   const verifiedInactive = { ...pending, id: 8001, email: 'verified.inactive@example.test', status: 'INACTIVE', activatedAt: root.activatedAt }
   const pendingInactive = { ...pending, id: 8002, email: 'verylong'.repeat(15) + '@example.test', displayName: 'Long identity '.repeat(12), status: 'INACTIVE' }
   accounts.push(verifiedInactive, pendingInactive)
-  await click('Refresh accounts'); await waitText(verifiedInactive.email)
+  await revalidatePage(evaluate); await waitText(verifiedInactive.email)
   for (const [id, wording] of [[root.id, 'Active · Verified'], [pending.id, 'Active · Pending verification'], [8001, 'Inactive · Verified'], [8002, 'Inactive · Pending verification']]) {
     assert.equal(await evaluate(`document.querySelector('[data-account-id="${id}"] .directory-state span').textContent`), wording)
   }
@@ -141,7 +142,7 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
   }
   await send('Emulation.setEmulatedMedia', { features: [] })
   setPageSize(2)
-  await click('Refresh accounts')
+  await revalidatePage(evaluate)
   await until(async () => (await rowIds()).length === 2, 'first small page')
   await stripes()
   await click('Load more')

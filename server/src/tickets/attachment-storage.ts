@@ -3,6 +3,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { validateCsv } from './csv-validation';
+import { validVideo } from './video-validation';
+
+export const NON_VIDEO_LIMIT = 10 * 1024 * 1024;
+export const VIDEO_LIMIT = 25 * 1024 * 1024;
+export const ATTACHMENT_BATCH_LIMIT = 50 * 1024 * 1024;
+export function uploadLimit(name: string) {
+  return /\.(mp4|webm)$/i.test(name) ? VIDEO_LIMIT : NON_VIDEO_LIMIT;
+}
 
 export type Upload = {
   originalname: string;
@@ -49,10 +57,14 @@ const types: Record<string, string> = {
   '.log': 'text/plain',
   '.json': 'application/json',
   '.csv': 'text/csv',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
 };
 export function validateUpload(file: Upload): Omit<StoredUpload, 'storageKey'> {
-  if (file.buffer.length > 10 * 1024 * 1024)
-    throw new BadRequestException('Maximum file size is 10 MB');
+  if (file.buffer.length > uploadLimit(file.originalname))
+    throw new BadRequestException(
+      'Maximum file size is 10 MiB, or 25 MiB for video',
+    );
   const filename = file.originalname
     .replace(/\\/g, '/')
     .split('/')
@@ -63,9 +75,11 @@ export function validateUpload(file: Upload): Omit<StoredUpload, 'storageKey'> {
     .slice(-200);
   const extension = extname(filename).toLowerCase();
   const contentType = types[extension];
+  const video = extension === '.mp4' || extension === '.webm';
   if (
     !contentType ||
     !filename ||
+    (video && file.mimetype !== contentType) ||
     (file.mimetype !== contentType &&
       file.mimetype !== 'application/octet-stream' &&
       !(extension === '.csv' && file.mimetype === 'application/vnd.ms-excel'))
@@ -73,7 +87,9 @@ export function validateUpload(file: Upload): Omit<StoredUpload, 'storageKey'> {
     throw new BadRequestException('Unsupported attachment type');
   const b = file.buffer;
   let valid = true;
-  if (extension === '.png')
+  if (extension === '.mp4' || extension === '.webm')
+    valid = validVideo(b, extension);
+  else if (extension === '.png')
     valid = b
       .subarray(0, 8)
       .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
@@ -163,6 +179,11 @@ export class AttachmentUploads {
   ): Promise<T> {
     if (uploads.length > 5)
       throw new BadRequestException('Maximum 5 attachments');
+    if (
+      uploads.reduce((total, upload) => total + upload.buffer.length, 0) >
+      ATTACHMENT_BATCH_LIMIT
+    )
+      throw new BadRequestException('Maximum total attachment size is 50 MiB');
     const files = uploads.map((upload) => ({
       ...validateUpload(upload),
       storageKey: randomUUID(),

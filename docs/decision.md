@@ -1,5 +1,106 @@
 # Project Decisions
 
+## UX/security follow-up: ISS-054–065 (2026-10-17)
+
+Team member, Team Lead and TeamManager selectors are distinct purpose-scoped,
+admin-only, cursor-paginated lookups. Blank search returns at most 20 eligible
+identities. Membership admits active activated Agents outside the Team; Lead
+selection requires eligible existing members and the one-led-team rule; Manager
+selection requires active activated Managers without membership. Responses expose
+only ID/displayName. Mutations retain every existing eligibility recheck.
+TeamSpecialty describes Team coverage separately from UserSpecialty; neither
+relationship creates membership or grants authority.
+
+Routine manual Refresh controls are avoided. Initial/navigation loads, successful
+mutations, visible-page focus/pageshow revalidation and explicit failure/conflict
+recovery keep data current without polling or automatic write retries. Support
+detail carries only an allowlisted navigation-origin enum; it never derives
+permissions from navigation or administrative role. Backend hints determine visible
+primary actions. Deep links use neutral support context.
+
+Private image/video previews reuse the authorized attachment-download endpoint
+and temporary revocable Blob URLs. Preview is opt-in, including video, with bounded
+display, native controls and no autoplay. No public storage URL, durable bytes or
+weaker preview authorization is introduced. MP4/WebM are the only newly approved
+containers, with exact video MIME and bounded structural validation; no transcoding
+stack is introduced. Non-video remains 10 MiB/file; video is 25 MiB/file; five files
+and 50 MiB aggregate remain hard server bounds. The existing PostgreSQL size CHECK
+requires the narrowly scoped `20261016180000_video_attachment_limits` migration.
+
+Browser persistent storage contains only theme and non-secret coordination
+revision/state/deadline metadata. `service-desk:auth:v1.id` is a client-generated
+revision, not a credential or database session identifier. Tokens stay in memory
+and HttpOnly cookies respectively; drafts, PII, ticket/message/file content are
+not persisted. BroadcastChannel handoff is transient. See the
+[audit, format limitations, inventory and verification](ux-security-054-065.md).
+All prior ticket/user/support/lifecycle authority and aggregate analytics privacy
+rules remain in force. Earlier dated limits below are historical.
+
+## Analytics privacy review (2026-10-16)
+
+Company-wide Manager analytics is aggregate-only and grants no company-wide
+employee-directory access, person-level performance/activity access, or new
+ticket-record or user-record authority. Team capacity and Specialty coverage are
+server-side aggregate counts; member/Manager/Team Lead identities, individual
+Specialty assignments, home organization, account state and contact/security
+information must not enter aggregate responses. Existing user/account,
+organization/Team-detail/member and ticket authorization remains unchanged.
+
+Small Team/category/tag/Region/Department counts remain approved organizational
+aggregates. No person dimension or person-specific activity metric is added,
+including for one-Agent Teams; no new suppression policy is introduced. The
+existing authenticated API `Cache-Control: no-store` policy applies. Exact
+serialized-field allowlists, direct API authorization tests and real test-server
+browser payload inspection verify these boundaries. See the
+[focused privacy review](analytics-privacy-review.md). No runtime behavior changed.
+
+## Manager Service / Operations Analytics (2026-10-16)
+
+This approved phase supersedes earlier analytics/dashboard deferrals. The five
+roles and all ticket/lifecycle predicates remain unchanged. `/analytics` and
+`GET /analytics` are MANAGER-only, using current authenticated account/session
+authority. EMPLOYEE, AGENT (including Team Leads), ADMIN and SUPER_ADMIN are denied.
+
+Managers may read company-wide **aggregate statistics**, including outside their
+ticket responsibility. The dedicated SQL projection contains only counts, catalog
+names, scope labels and aggregate durations; never ticket IDs/titles/descriptions,
+requester identities, communication, attachments, user directories or individual
+Agent statistics. Aggregate access grants no ticket authority. This phase provides
+no analytics detail endpoint or group-to-ticket drill-down. My Work links to the
+existing queue, whose backend authorization remains authoritative. A managed Team,
+Specialty or affected Region/GLOBAL coverage still grants no independent detail
+visibility. Existing own-request, shared intake and responsible-Manager access
+remain unchanged.
+
+Activity ranges are rolling 7/30/90 elapsed days (default 30), `[from,to)` in UTC.
+Current backlog/status/capacity sections intentionally include older operational
+work. Persisted Ticket.status drives current workload. Resolution/closure events
+use recorded TicketWorkCycle endedAt/closedAt so later reopenings cannot erase
+past activity. Durations include only resolved/closed cycles with a recorded end
+at or after their recorded start. Missing historical timing is never inferred.
+Reopened ticket counts are distinct tickets with REOPENED cycle starts in range;
+event counts retain repeated reopenings. No ambiguous reopen-rate denominator is
+introduced.
+
+All-regions/all-departments tickets contribute once to separate All groups, never
+to each concrete scope. Explicit multiple scopes and Tags contribute once per
+link and may overlap; shares need not sum to 100%. No home scope is inferred.
+Archived catalog references retain their current name and archived label. Each
+group section returns at most 50 rows with its full group count; no raw tickets
+are loaded into Node for aggregation.
+
+Team capacity counts active, activated AGENT members of active Teams, with no
+individual identity/statistics. Specialty signals use actual TeamSpecialty and
+UserSpecialty links, including distinct eligible specialists on matching Teams.
+Team workload is not evidence that each ticket requires every linked Specialty;
+there is no Category/Tag-to-Specialty mapping to infer. Correlations are service
+signals, not AI/root-cause conclusions or staffing prescriptions. No individual
+employee performance scoring, rankings, gamification, Supplier/Training entities,
+SLA claims, GCS setup or AI integration are authorized by this phase.
+
+See [the definitions, query-plan evidence and verification](service-analytics.md).
+Existing indexes are retained; no schema migration is needed.
+
 ## Request creation and requester metadata follow-up (2026-10-16)
 
 A requester may edit the structured details of their own ticket only while it is

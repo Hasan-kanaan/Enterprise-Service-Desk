@@ -1,3 +1,6 @@
+import { attachmentPreviews, previewBodies } from './attachment-preview.mjs'
+import { assertPrivateStorage, storageAuditScript } from './storage-audit.mjs'
+import { revalidatePage } from './revalidation.mjs'
 import { requestFollowup } from './request-followup.mjs'
 import { requesterPolish } from './ui-polish.mjs'
 import { pageFixture, historyFixture } from './list-fixture.mjs'
@@ -174,7 +177,11 @@ function response(request) {
   requests.push(`${request.method} ${path}`)
   const body = submission(request).body
   if (/^\/tickets\/\d+\/attachments$/.test(path)) return [200, tickets.find(t => t.id === Number(path.split('/')[2]))?.attachments ?? []]
-  if (/^\/tickets\/attachments\/\d+\/download$/.test(path)) return [200, { file: 'downloaded' }]
+  if (/^\/tickets\/attachments\/\d+\/download$/.test(path)) {
+    assert(request.headers.Authorization || request.headers.authorization)
+    const preview = previewBodies.get(Number(path.split('/')[3]))
+    return preview?.denied ? [404, { message: 'Attachment not found' }] : [200, preview?.bytes ?? Buffer.from('private file')]
+  }
   if (path === '/auth/setup/status') return [200, { available: false }]
   if (path === '/auth/refresh') {
     refreshCount++
@@ -350,7 +357,7 @@ try {
           requestId,
           responseCode: status,
           responseHeaders: [
-            { name: 'Content-Type', value: 'application/json' },
+            { name: 'Content-Type', value: Buffer.isBuffer(body) ? previewBodies.get(Number(new URL(request.url).pathname.split('/')[3]))?.contentType ?? 'text/plain' : 'application/json' },
             {
               name: 'Access-Control-Allow-Origin',
               value: 'http://127.0.0.1:3000',
@@ -365,7 +372,7 @@ try {
               value: 'GET,POST,PATCH,DELETE,OPTIONS',
             },
           ],
-          body: Buffer.from(JSON.stringify(body)).toString('base64'),
+          body: (Buffer.isBuffer(body) ? body : Buffer.from(JSON.stringify(body))).toString('base64'),
         })
       } catch (error) {
         if (new URL(request.url).searchParams.get('search') === 'scale slow' && String(error).includes('Invalid InterceptionId')) return
@@ -377,6 +384,7 @@ try {
   await send('Page.enable')
   await send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.attachmentConfirmations = []; window.confirm = text => { window.attachmentConfirmations.push(text); return true }' })
   await send('Runtime.enable')
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: storageAuditScript })
   await send('Fetch.enable', {
     patterns: [{ urlPattern: 'http://localhost:8000/*' }],
   })
@@ -457,11 +465,12 @@ try {
   console.log(
     'PASS: validated form submits real category/scope IDs and opens detail',
   )
-  await waitText('Download original.txt')
-  await click('Download original.txt')
+  await waitText('original.txt')
+  await evaluate(`document.querySelector('[aria-label="Download original.txt"]').click()`)
   await until(() => requests.some(path => /attachments\/\d+\/download/.test(path)), 'authenticated file download')
   assert(!await evaluate(`document.querySelector('[aria-label="Original request attachments"]').textContent.includes('Delete attachment')`))
   console.log('PASS: draft attachment removal, multipart ticket submission, immutable attachment display/download')
+  await attachmentPreviews({ evaluate, navigate, waitText, until, tickets, requests, send })
   const supportNotice = notifications.add(10, 'SUPPORT_MESSAGE', 142)
   notifications.add(10, 'WAITING_FOR_EMPLOYEE', 142)
   await evaluate(`document.querySelector('[aria-label="Notifications"]').click()`)
@@ -521,13 +530,13 @@ try {
   await waitText('Employee context')
   await until(() => evaluate(`!![...document.querySelectorAll('button')].find(el => el.textContent === 'Edit message')`), 'message posted')
   communication.records.push(...Array.from({ length: 61 }, (_, i) => ({ id: 10000 + i, ticketId: 142, kind: 'messages', createdInCycleId: cycles[0].id, author: { id: 20, displayName: 'Sara' }, content: `Older public ${i}`, createdAt: '2020-01-01T00:00:00.000Z', editedAt: null, deletedAt: null, attachments: [] })))
-  await click('Refresh conversation')
+  await revalidatePage(evaluate)
   await waitText('Load older messages')
   assert.equal(await evaluate(`document.querySelectorAll('.communication-records > li').length`), 25)
   await fill('[aria-label="Message content"]', 'Paging draft')
   slowOlder = true
   await click('Load older messages')
-  await click('Refresh conversation')
+  await revalidatePage(evaluate)
   await waitText('Load older messages')
   await delay(1000)
   assert.equal(await evaluate(`document.querySelectorAll('.communication-records > li').length`), 25)
@@ -552,7 +561,7 @@ try {
   await click('Send message')
   await waitText('Reload the latest information')
   assert.equal(await evaluate(`document.querySelector('[aria-label="Message content"]').value`), 'The requested result')
-  await click('Refresh conversation')
+  await click('Reload ticket')
   await until(() => evaluate(`!!document.querySelector('[aria-label="Message content"]')`), 'draft restored after reload')
   await click('Send message')
   await waitText('The requested result')
@@ -569,15 +578,17 @@ try {
   assert(await evaluate('window.attachmentConfirmations.length >= 2'))
   assert(!await evaluate(`document.body.textContent.includes('Employee corrected context')`))
   assert.equal(tickets[0].status, 'IN_PROGRESS')
+  await assertPrivateStorage(evaluate)
+  console.log('PASS: prohibited credential, PII, draft, message and attachment persistence absent')
   console.log('PASS: preserved file draft after upload failure and confirmed own attachment/message tombstones')
   communication.records.push({ id: 9000, ticketId: 142, kind: 'messages', createdInCycleId: cycles[0].id, author: { id: 20, displayName: 'Sara' }, content: 'Support file reply', createdAt: now, editedAt: null, deletedAt: null, attachments: [{ id: 9001, filename: 'support.txt', byteSize: 12, createdAt: now, deletedAt: null }] })
-  await click('Refresh conversation')
-  await waitText('Download support.txt')
+  await revalidatePage(evaluate)
+  await waitText('support.txt')
   assert(!await evaluate(`[...document.querySelectorAll('.communication-records > li')].find(el => el.textContent.includes('Support file reply')).textContent.includes('Delete')`))
   console.log('PASS: requester sees support attachment without non-author deletion controls')
 
   tickets[0].status = 'NEW'
-  await click('Refresh')
+  await revalidatePage(evaluate)
   await waitText('Cancel ticket')
   await click('Cancel ticket')
   await waitText('Cancel this ticket?')
@@ -602,7 +613,7 @@ try {
   cycles[0].resolutionSummary = 'Reinstalled the VPN client.'
   tickets[0].resolvedAt = now
   tickets[0].autoCloseAt = '2026-09-25T08:00:00.000Z'
-  await click('Refresh')
+  await revalidatePage(evaluate)
   await waitText('Your request has been resolved.')
   await waitText('Eligible for automatic closure on')
   const expectedDeadline = await evaluate(`new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-09-25T08:00:00.000Z'))`)
@@ -615,14 +626,14 @@ try {
   cycles[0].closedAt = tickets[0].autoCloseAt
   cycles[0].closeSource = 'AUTO_TIMEOUT'
   cycles[0].closedBy = null
-  await click('Refresh')
+  await revalidatePage(evaluate)
   await waitText('Automatically closed')
   assert(!await evaluate(`document.body.innerText.includes('Eligible for automatic closure on')`))
   tickets[0].status = 'RESOLVED'
   tickets[0].closedAt = null
   cycles[0].closedAt = null
   cycles[0].closeSource = null
-  await click('Refresh')
+  await revalidatePage(evaluate)
   await waitText('Your request has been resolved.')
   console.log('PASS: accurate auto-close date, automatic CLOSED history and resolved mobile layout')
   await click('Close ticket')
@@ -652,7 +663,7 @@ try {
   tickets[0].currentCycle = cycles[0]
   await click('Send message')
   await waitText('Reload the latest information')
-  await click('Refresh conversation')
+  await click('Reload ticket')
   await waitText('This draft belongs to an earlier cycle')
   assert.equal(await evaluate(`document.querySelector('[aria-label="Message content"]').value`), 'Draft written before another reopening')
   assert(await evaluate(`[...document.querySelectorAll('button')].find(el => el.textContent === 'Send message').disabled`))
@@ -800,17 +811,13 @@ try {
   await waitText('VPN disconnects repeatedly')
   const before = refreshCount
   expired = true
-  await evaluate(
-    `document.querySelector('[aria-label="Refresh tickets"]').click()`,
-  )
+  await revalidatePage(evaluate)
   await waitText('VPN disconnects repeatedly')
-  await until(() => evaluate(`!document.querySelector('[aria-label="Refresh tickets"]').disabled`), 'refresh completed before token assertion')
+  await until(() => evaluate(`!document.querySelector('[aria-busy="true"]')`), 'refresh completed before token assertion')
   assert.equal(refreshCount, before + 1)
   loggedIn = false
   retryUnauthorized = true
-  await evaluate(
-    `document.querySelector('[aria-label="Refresh tickets"]').click()`,
-  )
+  await revalidatePage(evaluate)
   await waitText('Welcome back')
   console.log('PASS: token renewal and deactivated session redirects to login')
   loggedIn = true

@@ -1,5 +1,18 @@
 # Frontend UI/UX polish — 2026-10-04
 
+## Focused UX/security follow-up (2026-10-17)
+
+ISS-054–065 adds bounded native-radio people results, explicit Team specialties,
+a compact analytics toolbar and open-only donut with a semantic count/share table.
+Ticket detail uses shared hierarchy styles and places backend-permitted primary
+actions near the header. Intake origin/current-page semantics survive canonical
+detail navigation; direct links stay neutral. Attachment cards offer private,
+on-demand image/video previews and Download. Shared resource/list hooks replace
+routine Refresh buttons with restrained focus/pageshow revalidation; real Retry
+and stale Reload recovery remain. Existing panels, tokens, dialogs and theme
+colors are reused. See the [complete report](ux-security-054-065.md) for the control
+inventory, security boundaries, responsive/browser evidence and limitations.
+
 ## Later operational wrap-up (2026-10-16)
 
 The final checkpoint documentation and test corrections are included in the

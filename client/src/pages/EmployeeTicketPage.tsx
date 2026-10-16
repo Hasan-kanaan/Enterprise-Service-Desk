@@ -3,7 +3,7 @@ import { useAppSelector } from '@/hooks/storeHooks'
 import { TicketAttachments } from '@/components/Attachments'
 import { useCallback, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, Pencil, RefreshCw, RotateCcw, X } from 'lucide-react'
+import { ArrowLeft, Check, Pencil, RotateCcw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useResource } from '@/hooks/useResource'
 import {
@@ -117,7 +117,7 @@ function TicketContent({ id }: { id: number }) {
     return <LoadingState variant="detail" label="Loading your ticket..." />
   if (ticketResource.error || !ticket)
     return (
-      <div className="ticket-workspace">
+      <div className="ticket-workspace ticket-detail">
         <Link className="back-link" to="/tickets">
           <ArrowLeft size={16} />
           My Requests
@@ -163,7 +163,7 @@ function TicketContent({ id }: { id: number }) {
   const routingConflict =
     conflict && getApiErrorMessage(actionError, '').includes('returnToIntake')
   return (
-    <RefreshSurface busy={!!(ticketResource.loading && ticketResource.data)}><div className="ticket-workspace">
+    <RefreshSurface busy={!!(ticketResource.loading && ticketResource.data)}><div className="ticket-workspace ticket-detail">
       <Link className="back-link" to="/tickets">
         <ArrowLeft size={16} />
         My Requests
@@ -183,10 +183,6 @@ function TicketContent({ id }: { id: number }) {
               : 'History unavailable'}
           </p>
         </div>
-        <button className="button secondary" disabled={busy || ticketResource.loading} onClick={reload}>
-          <RefreshCw size={16} />
-          Refresh
-        </button>
       </header>
       {ticket.status === 'RESOLVED' && (
         <div className="notice success">

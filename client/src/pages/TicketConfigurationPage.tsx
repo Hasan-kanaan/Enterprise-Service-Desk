@@ -43,9 +43,6 @@ export function TicketConfigurationPage() {
             reserved.
           </p>
         </div>
-        <button className="button secondary" disabled={resource.loading} onClick={reload}>
-          Refresh configuration
-        </button>
       </header>
       {(['categories', 'tags'] as const).map((catalog) => (
         <section className="panel" key={catalog}>

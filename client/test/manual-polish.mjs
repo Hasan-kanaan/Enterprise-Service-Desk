@@ -1,3 +1,4 @@
+import { revalidatePage } from './revalidation.mjs'
 import assert from 'node:assert/strict'
 import { setTimeout as delay } from 'node:timers/promises'
 import { writeFileSync } from 'node:fs'
@@ -71,10 +72,10 @@ export async function manualPolish({ send, evaluate, navigate, waitText, click, 
   await evaluate('window.savedRow = document.querySelector("[data-account-id]"); void 0')
   const count = requests.filter(r => r === 'GET /users').length
   delayList()
-  await evaluate(`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Refresh accounts').click()`)
+  await revalidatePage(evaluate)
   await waitText('Refreshing')
   assert(await evaluate('window.savedRow.isConnected && !!window.savedRow.closest("[inert]")'), 'Refresh retains row and disables stale actions')
-  await evaluate(`for (let i=0;i<4;i++) [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Refresh accounts').click()`)
+  await evaluate(`for (let i=0;i<4;i++) window.dispatchEvent(new Event('focus'))`)
   await delay(1100)
   assert.equal(requests.filter(r => r === 'GET /users').length, count + 1)
   assert(await evaluate('window.savedRow.isConnected'), 'Refresh keeps DOM identity')
@@ -162,7 +163,7 @@ export async function manualPolish({ send, evaluate, navigate, waitText, click, 
   await navigate('/admin/organization')
   await waitText('Regions, departments, specialties and team coverage.')
   delayCatalog(700)
-  await click('Refresh organization')
+  await revalidatePage(evaluate)
   await waitText('Refreshing')
   assert(await evaluate('document.querySelector("h1").textContent === "Organization"'))
   await delay(900)

@@ -37,9 +37,9 @@ export function SpecialtyLinks({
     onReload()
   }
   return (
-    <section className="panel detail-body">
-      <div className="list-heading">
-        <h2>Specialties</h2>
+    <section className="panel detail-body specialty-links">
+      <div className="section-heading">
+        <h2>{kind === 'teams' ? 'Team specialties' : 'Specialties'}</h2>
         <button
           className="button secondary"
           disabled={!!reason}
@@ -53,6 +53,7 @@ export function SpecialtyLinks({
         </button>
       </div>
       <p className="quiet-note">
+        {kind === 'teams' && 'Team specialty coverage is separate from individual Agent specialties. '}
         Specialties do not grant ticket authority or change team membership.
       </p>
       {reason && <p className="quiet-note" id={explanationId}>{reason}</p>}
@@ -62,14 +63,15 @@ export function SpecialtyLinks({
       </p>}
       {existing.length ? (
         existing.map((item) => (
-          <div className="admin-row" key={item.id}>
+          <div className="specialty-row" key={item.id}>
             <span>
               {item.name}
               {item.archivedAt ? ' (ARCHIVED)' : ''}
               {((kind === 'agents' && !canAdd) || item.archivedAt) && <span className="specialty-retained">Retained link</span>}
             </span>
             <button
-              className="button secondary"
+              className="text-button"
+              aria-label={`Remove specialty ${item.name}`}
               onClick={() => setAction({ remove: item })}
             >
               Remove specialty

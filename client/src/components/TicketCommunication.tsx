@@ -285,13 +285,6 @@ function CommunicationStream({
       >
         <div className="list-heading">
           <h2>{title}</h2>
-          <button
-            className="text-button"
-            disabled={busy || resource.loading}
-            onClick={reload}
-          >
-            Refresh {notes ? 'notes' : 'conversation'}
-          </button>
         </div>
         <p className="muted">
           {notes

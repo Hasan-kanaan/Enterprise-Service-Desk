@@ -575,7 +575,9 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
         `/organization/teams/${teamId}/people?purpose=${purpose}&search=${prefix}`,
         'admin',
       ).expect(200);
-      expect((response.body as unknown[]).length).toBeLessThanOrEqual(20);
+      expect(
+        (response.body as { items: unknown[] }).items.length,
+      ).toBeLessThanOrEqual(20);
       await get(
         `/organization/teams/${teamId}/people?purpose=${purpose}&search=${prefix}`,
         'agent',
@@ -588,7 +590,7 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
           'admin',
         )
       ).body,
-    ).toEqual([]);
+    ).toEqual({ items: [], hasMore: false, nextCursor: null });
     expect(
       (
         await get(
@@ -596,7 +598,58 @@ describe('Bounded lists and scoped lookups (PostgreSQL)', () => {
           'admin',
         )
       ).body,
-    ).toEqual([]);
+    ).toEqual({ items: [], hasMore: false, nextCursor: null });
+  });
+
+  it('initial organization people pages are bounded, private and eligible through every continuation', async () => {
+    for (const purpose of ['member', 'lead', 'manager']) {
+      let cursor: string | null = null;
+      const seen = new Set<number>();
+      do {
+        const result: Page = await page(
+          `/organization/teams/${teamId}/people?purpose=${purpose}&limit=100${cursor ? `&cursor=${cursor}` : ''}`,
+          'admin',
+        );
+        expect(result.items.length).toBeLessThanOrEqual(20);
+        for (const row of result.items) {
+          expect(Object.keys(row).sort()).toEqual(['displayName', 'id']);
+          expect(seen.has(row.id)).toBe(false);
+          seen.add(row.id);
+          const candidate = await db.user.findUniqueOrThrow({
+            where: { id: row.id },
+            include: { teamMemberships: true, ledTeam: true },
+          });
+          expect(candidate.status).toBe('ACTIVE');
+          expect(candidate.activatedAt).not.toBeNull();
+          expect(candidate.role).toBe(
+            purpose === 'manager' ? 'MANAGER' : 'AGENT',
+          );
+          if (purpose !== 'manager')
+            expect(
+              candidate.teamMemberships.some((link) => link.teamId === teamId),
+            ).toBe(purpose === 'lead');
+          if (purpose === 'lead')
+            expect(!candidate.ledTeam || candidate.ledTeam.id === teamId).toBe(
+              true,
+            );
+        }
+        cursor = result.nextCursor;
+        expect(result.hasMore).toBe(!!cursor);
+      } while (cursor);
+      expect(seen.size).toBeGreaterThan(0);
+      await get(
+        `/organization/teams/${teamId}/people?purpose=${purpose}`,
+        'manager',
+      ).expect(403);
+    }
+    await get(
+      `/organization/teams/${teamId}/people?purpose=member&cursor=broken`,
+      'admin',
+    ).expect(400);
+    await get(
+      `/organization/teams/${teamId}/people?purpose=member&limit=101`,
+      'admin',
+    ).expect(400);
   });
 
   it('validates directory filters, blank search and lookup input limits', async () => {

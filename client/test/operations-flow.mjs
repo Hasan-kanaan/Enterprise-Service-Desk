@@ -1,4 +1,7 @@
+import { revalidatePage } from './revalidation.mjs'
 import { operationsPolish } from './ui-polish.mjs'
+import { analyticsFixture, analyticsBrowser } from './analytics-browser.mjs'
+const analytics = analyticsFixture()
 import { pageFixture, historyFixture } from './list-fixture.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
@@ -267,6 +270,7 @@ function response(request) {
   if (!loggedIn) return [401, { message: 'Inactive account' }]
   if (path.startsWith('/notifications')) return notifications.respond(request, user.id)
   if (failure) return [503, { message: 'Service temporarily unavailable' }]
+  if (path === '/analytics') return analytics.respond(request)
   if (path === '/my-work-history') {
     const page = Number(url.searchParams.get('page') || 1)
     const contribution = user.role === 'MANAGER' ? 'RESPONSIBLE_MANAGER' : 'PRIMARY_AGENT'
@@ -560,13 +564,15 @@ try {
     if (data.method === 'Fetch.requestPaused') {
       const { requestId, request } = data.params
       try {
-        const [status, body] =
-          request.method === 'OPTIONS' ? [200, {}] : response(request)
+        const [status, body, lag, cacheControl] =
+          request.method === 'OPTIONS' ? [200, {}] : await response(request)
+        if (lag) await delay(lag)
         await send('Fetch.fulfillRequest', {
           requestId,
           responseCode: status,
           responseHeaders: [
             { name: 'Content-Type', value: 'application/json' },
+            ...(cacheControl ? [{ name: 'Cache-Control', value: cacheControl }] : []),
             {
               name: 'Access-Control-Allow-Origin',
               value: 'http://127.0.0.1:3000',
@@ -584,6 +590,9 @@ try {
           body: Buffer.from(JSON.stringify(body)).toString('base64'),
         })
       } catch (error) {
+        // Range changes intentionally abort delayed analytics requests; CDP may
+        // already have removed their interception before fulfillment resumes.
+        if (request.url.includes('/analytics') && String(error).includes('Invalid InterceptionId')) return
         browserErrors.push(String(error))
         await send('Fetch.failRequest', { requestId, errorReason: 'Failed' })
       }
@@ -617,7 +626,9 @@ try {
     await click(text)
     await waitText('Confirm')
   }
-  if (process.argv.includes('--list-fallbacks')) {
+  if (process.argv.includes('--analytics')) {
+    await analyticsBrowser({ fixture: analytics, navigate, waitText, evaluate, fill, click, send, setUser: role => { user = { ...user, role } }, browserErrors })
+  } else if (process.argv.includes('--list-fallbacks')) {
     const checkRows = async (expected) => {
       await waitText(expected)
       const text = await evaluate("document.querySelector('.ticket-rows').textContent")
@@ -809,7 +820,7 @@ try {
   await until(() => evaluate(`!!document.querySelector('[aria-label="Internal note content"]')`), 'notes loaded')
   assert.equal(await evaluate(`document.querySelector('[aria-label="Internal note content"]').value`), 'Private draft survives public posting')
   communication.records.push(...Array.from({ length: 61 }, (_, i) => ({ id: 11000 + i, ticketId: 142, kind: 'internal-notes', createdInCycleId: history[142][0].id, author: { id: 99, displayName: 'Other support' }, content: `Older private ${i}`, createdAt: '2020-01-01T00:00:00.000Z', editedAt: null, deletedAt: null, attachments: [] })))
-  await click('Refresh notes')
+  await revalidatePage(evaluate)
   await waitText('Load older notes')
   await click('Load older notes')
   await waitText('Older private 20')
@@ -828,7 +839,7 @@ try {
   await click('Save edit')
   await waitText('Private corrected diagnosis')
   await waitText('edited')
-  await evaluate(`document.querySelector('[aria-label="Internal note content"]').closest('section').querySelector('.attachment-list button:last-child').click()`)
+  await evaluate(`document.querySelector('[aria-label="Internal note content"]').closest('section').querySelector('.attachment-card button[aria-label^="Delete attachment"]').click()`)
   await waitText('Attachment deleted')
   await click('Delete note')
   await waitText('Note deleted')
@@ -1065,18 +1076,18 @@ try {
   await navigate('/work/team')
   await waitText('Owned network issue')
   failure = true
-  await click('Refresh workspace')
+  await revalidatePage(evaluate)
   await waitText('Service temporarily unavailable')
   failure = false
   await click('Try again')
   await waitText('Owned network issue')
   const count = refreshCount
   expired = true
-  await click('Refresh workspace')
+  await revalidatePage(evaluate)
   await waitText('Owned network issue')
   await until(() => Promise.resolve(refreshCount > count), 'token renewal')
   loggedIn = false
-  await click('Refresh workspace')
+  await revalidatePage(evaluate)
   await waitText('Welcome back')
   user = { ...user, role: 'ADMIN' }
   loggedIn = true

@@ -1,3 +1,4 @@
+import { assertPrivateStorage, storageAuditScript } from './storage-audit.mjs'
 // Real same-profile Chromium pages and isolated cookie-rotating HTTP fixtures.
 // Vite dev exposes source imports to the test only; no production test hooks.
 import assert from 'node:assert/strict'
@@ -272,6 +273,7 @@ async function page(source = '', contextId = null) {
   })
   await send('Page.enable')
   await send('Runtime.enable')
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: storageAuditScript })
   if (source) await send('Page.addScriptToEvaluateOnNewDocument', { source })
   await send('Fetch.enable', {
     patterns: [{ urlPattern: 'http://127.0.0.1:8000/*' }],
@@ -314,13 +316,15 @@ try {
   const putDraft = async page => page.evaluate(`import('/src/store/requestDraftSlice.ts').then(({saveRequestDraft}) => store.dispatch(saveRequestDraft({ownerId: 10, values: {title:'Sensitive draft',description:'Private',categoryId:4,priority:'HIGH',tagIds:[7],allRegions:true,allDepartments:true,affectedRegionIds:[],affectedDepartmentIds:[]}})))`)
   const draft = page => page.evaluate('store.getState().requestDraft.values')
   await putDraft(a); await putDraft(b)
+  await assertPrivateStorage(a.evaluate)
+  await assertPrivateStorage(b.evaluate)
   await refresh(a)
   assert.equal((await draft(a)).title, 'Sensitive draft', 'same-user refresh preserves draft')
   // Exercise account replacement through the real store without persisting private text.
   await a.evaluate(`import('/src/store/authSlice.ts').then(({signedIn}) => { const auth=store.getState().auth; store.dispatch(signedIn({accessToken:auth.accessToken,user:{...auth.user,id:999}})); })`)
   assert.equal(await draft(a), null, 'another account cannot inherit draft')
   await refresh(a); await putDraft(a)
-  await until(() => a.evaluate("document.body.innerText.includes('Your sessions') && document.body.innerText.includes('Other device')"), 'session management loaded')
+  await until(() => a.evaluate("document.body.innerText.includes('Your sessions') && document.body.innerText.includes('Other device')"), 'session management loaded').catch(async error => { console.error('Session diagnostics', await a.evaluate('document.body.innerText'), errors); throw error })
   for (const scheme of ['light', 'dark']) {
     await a.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] })
     await until(() => a.evaluate(`document.documentElement.dataset.theme === '${scheme}'`), 'session theme')
@@ -458,6 +462,8 @@ try {
   await until(async () => (await state(b)).user, 'login propagation')
   assert.equal(await probe(b), true)
   await putDraft(a); await putDraft(b)
+  await assertPrivateStorage(a.evaluate)
+  await assertPrivateStorage(b.evaluate)
   rejection = true
   await refresh(a)
   await until(async () => !(await state(b)).user, 'deactivation propagation')
@@ -576,6 +582,7 @@ try {
   console.log(
     'PASS: closing refresh owner releases lock; uncertain rotation requires fresh login without replay',
   )
+  await assertPrivateStorage(b.evaluate)
   const stored = await b.evaluate(
     'JSON.stringify({...localStorage}) + JSON.stringify({...sessionStorage}) + document.cookie',
   )

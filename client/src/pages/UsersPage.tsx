@@ -56,13 +56,6 @@ export function UsersPage() {
           <p className="muted">Manage identities and account access.</p>
         </div>
         <div className="button-row">
-          <button
-            className="button secondary"
-            disabled={resource.loading}
-            onClick={reload}
-          >
-            Refresh accounts
-          </button>
           <button className="button primary" onClick={() => setCreating(true)}>
             Create account
           </button>

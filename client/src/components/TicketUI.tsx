@@ -2,6 +2,7 @@ import { SkeletonState, type SkeletonVariant } from './Skeleton'
 import { AlertCircle, ArrowUpRight, Inbox } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
+import type { WorkOrigin } from '@/types/workNavigation'
 import { getApiStatus, getApiErrorMessage } from '@/services/api'
 import type { TicketStatus, TicketSummary, NamedOption } from '@/types/tickets'
 import { formatDate, statusLabels } from '@/types/ticketPresentation'
@@ -71,10 +72,12 @@ export function TicketRows({
   tickets,
   basePath = '/tickets',
   categories,
+  origin,
 }: {
   tickets: TicketSummary[]
   basePath?: string
   categories?: NamedOption[]
+  origin?: WorkOrigin
 }) {
   return (
     <div className="ticket-rows">
@@ -82,6 +85,7 @@ export function TicketRows({
         <Link
           key={ticket.id}
           to={`${basePath}/${ticket.id}`}
+          state={origin ? { workOrigin: origin } : undefined}
           className="ticket-row"
         >
           <div className="ticket-row-main">
