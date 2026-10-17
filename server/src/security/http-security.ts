@@ -12,6 +12,10 @@ import type { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import { RateLimiter } from './rate-limiter';
 import { securityConfig } from './security.config';
+import {
+  AiUnavailableException,
+  AI_UNAVAILABLE_MESSAGE,
+} from '../ai/ai-unavailable.exception';
 
 @Catch()
 export class SafeHttpErrors implements ExceptionFilter {
@@ -19,7 +23,11 @@ export class SafeHttpErrors implements ExceptionFilter {
   catch(error: unknown, host: ArgumentsHost) {
     const response = host.switchToHttp().getResponse<Response>();
     const status = error instanceof HttpException ? error.getStatus() : 500;
-    if (status >= 500) {
+    if (error instanceof AiUnavailableException) {
+      response
+        .status(503)
+        .json({ statusCode: 503, message: AI_UNAVAILABLE_MESSAGE });
+    } else if (status >= 500) {
       // Do not serialize error messages/stacks: drivers can embed SQL, paths or secrets.
       const req = host.switchToHttp().getRequest<Request>();
       const route = (req.route as { path?: unknown } | undefined)?.path;

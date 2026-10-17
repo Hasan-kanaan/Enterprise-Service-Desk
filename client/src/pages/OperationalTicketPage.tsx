@@ -1,4 +1,5 @@
 import { getApiErrorMessage } from '@/services/api'
+import { AiSuggestions } from '@/components/AiSuggestions'
 import { RefreshSurface } from '@/components/RefreshSurface'
 import { ActionMenu } from '@/components/ActionMenu'
 import { TicketAttachments } from '@/components/Attachments'
@@ -249,6 +250,7 @@ function OperationalTicket({ id }: { id: number }) {
           </section>
         </div>
         <aside id="ticket-information" className="detail-aside">
+          {user.role === 'MANAGER' && !isTerminal(ticket.status) && <AiSuggestions key={ticket.updatedAt} ticket={ticket} permissions={p} onChanged={reload} />}
           <section className="panel detail-body">
             <h2>Request information</h2>
             <dl className="metadata-grid">

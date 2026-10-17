@@ -1,5 +1,70 @@
 # Project Status
 
+## Requester AI direct form population revision (2026-10-17)
+
+Replaced requester suggestion cards and Apply buttons with direct population of the
+existing form controls after accepted IN_SCOPE results. Users can override every
+field and must still submit normally. One memory-only Undo snapshot restores the
+complete pre-AI form, including later manual edits, until the next AI request.
+Null/invalid/weak suggestions preserve values; Tags merge, attachments stay untouched,
+and stale or in-flight edits are protected. Compact accessible status replaces
+per-field confidence displays. Manager routing UI and all backend code are unchanged.
+
+Focused revision checks: client lint/build, 15 client unit tests, 37 existing requester
+contract tests, revised requester browser mode and preserved Manager browser mode.
+See [current revision evidence](docs/requester-ai-verification.md#requester-ux-revision).
+No new live provider calls, DB suite rerun or full regression needed for this UI-only
+change. No schema/dependencies, secrets, staging, commit or push.
+
+## Requester AI assistance and shared Gemini verification (2026-10-17)
+
+Requester drafting/classification now complements the preserved Manager routing
+feature. Every active authenticated role can request assistance for its own draft,
+receive direct field assistance, review/edit the form, and submit normally. Negative
+scope never blocks manual creation; identical negative input reuses local results.
+No attachments, routing directory or account data enters the requester payload.
+
+Live Manager smoke passes; three additional synthetic requester probes pass for
+IN_SCOPE, NEEDS_MORE_INFORMATION and OUT_OF_SCOPE. The previous HTTP 402 is resolved
+with the user's separate Free-tier Gemini-project key. No key or GCS setting was changed.
+Shared budgets cover both operations: 12/minute, 400/day and conservative 225K
+reserved tokens/minute. Manager 10/hour, 25/day; requester 5/hour, 10/day.
+
+Focused verification passes: **11 unit suites / 230 tests**, **3 PostgreSQL suites /
+203 tests** (125 existing authorization, 29 Manager AI, 49 requester AI), **9 browser
+PASS groups** (5 requester, 4 Manager), server/client lint and builds, server typecheck,
+Prisma validate/generate and diff check. Browser fixtures include 390px light/dark.
+No final full repository regression. PostgreSQL ran only in `eds_stabilization_test`.
+
+Continued the existing uncommitted `development` workspace at
+`2b59952cb1eb30328bf86d668a7e016f72813a08`. No migration, dependency change, staging,
+commit or push. See [current report and exact file inventory](docs/requester-ai-verification.md).
+
+## Manager AI routing recommendations (2026-10-17; preserved phase)
+
+Implemented manual Manager-only Gemini `gemini-3.5-flash-lite` classification and
+routing recommendations with explicit review, existing mutation APIs, unchanged
+authorization, bounded eligible candidates, deterministic basic redaction,
+structured-output validation, quotas and a ten-second provider timeout.
+Intake permits classification without routing/apply authority. AI has no mutation
+path. Recommendations/provenance remain transient; no schema or migration changes.
+
+The ignored local Gemini key was detected without disclosure and was not changed.
+The initial synthetic-only provider request returned HTTP 402. The user's replacement
+Free-tier Gemini-project key resolved it; the same live synthetic probe now passes.
+No billing change, alternate model/provider or paid fallback.
+Focused test results and the exact file inventory are recorded in the
+[AI security/verification report](docs/ai-routing-verification.md).
+
+Passed 10 focused unit suites / 187 tests, two PostgreSQL AI/routing suites /
+154 tests, four focused browser PASS groups, server/client lint and builds,
+server typecheck, Prisma validate/generate and diff check. No full regression.
+
+Started from clean pushed `development` at
+`2b59952cb1eb30328bf86d668a7e016f72813a08`. Work remains unstaged; no commit or push.
+The existing Docker Desktop/PostgreSQL container was started for isolated `_test`
+verification. No normal development data, migration, seed or reset was performed.
+
 ## Private GCS operational verification (2026-10-17)
 
 Private GCS storage is operational locally and verified without exposing public attachment access.
@@ -1104,7 +1169,7 @@ git status --short
 ## Remaining Roadmap
 
 1. General polish/stabilization
-2. AI routing/recommendations
+2. Broader AI quality evaluation (manual drafting/routing assistance is implemented)
 
 Attachments, author-controlled communication soft deletion, My Work History and automatic closure are complete.
 

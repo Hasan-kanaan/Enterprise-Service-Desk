@@ -18,10 +18,21 @@ import { WorkHistoryController } from './work-history.controller';
 import { WorkHistoryService } from './work-history.service';
 import { AutoCloseService } from './auto-close.service';
 import { AutoCloseScheduler } from './auto-close.scheduler';
+import { AiRecommendationsController } from '../ai/ai-recommendations.controller';
+import { AiRecommendationsService } from '../ai/ai-recommendations.service';
+import { AiRateLimiter } from '../ai/ai-rate-limiter';
+import { TicketAssistanceService } from '../ai/ticket-assistance.service';
+import { TicketAssistanceController } from '../ai/ticket-assistance.controller';
+import {
+  AiRecommendationProvider,
+  GeminiRecommendationProvider,
+} from '../ai/gemini.provider';
 
 @Module({
   imports: [JwtModule.register({ secret: jwtConstants.secret })],
   controllers: [
+    TicketAssistanceController,
+    AiRecommendationsController,
     WorkHistoryController,
     AttachmentsController,
     TicketCommunicationController,
@@ -30,6 +41,13 @@ import { AutoCloseScheduler } from './auto-close.scheduler';
     TicketWorkspaceController,
   ],
   providers: [
+    TicketAssistanceService,
+    AiRecommendationsService,
+    AiRateLimiter,
+    {
+      provide: AiRecommendationProvider,
+      useClass: GeminiRecommendationProvider,
+    },
     AutoCloseService,
     AutoCloseScheduler,
     WorkHistoryService,

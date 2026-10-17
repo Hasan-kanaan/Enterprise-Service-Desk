@@ -34,11 +34,13 @@ export const assignTicket = async (
   id: number,
   teamId: number,
   agentId: number | null,
+  expectedUpdatedAt?: string,
 ) =>
   (
     await api.patch<TicketSummary>(`/tickets/${id}/assignment`, {
       teamId,
       agentId,
+      ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
     })
   ).data
 export const transitionTicket = async (

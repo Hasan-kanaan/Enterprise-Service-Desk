@@ -89,6 +89,8 @@ export function CreateTicketPage() {
                 />
               )}
               <TicketForm
+                key={userId}
+                allowAiAssistance
                 initial={
                   draft ?? {
                     title: '',

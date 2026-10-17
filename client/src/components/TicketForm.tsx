@@ -1,6 +1,7 @@
 import { toast } from 'sonner'
 import { useEffect, useState } from 'react'
 import { AttachmentPicker } from './Attachments'
+import { TicketDraftAssistance } from './TicketDraftAssistance'
 import { useForm, useWatch } from 'react-hook-form'
 import type {
   TicketInput,
@@ -22,6 +23,7 @@ type Props = {
   onDraftChange?: (values: TicketInput) => void
   onSave: (values: TicketInput, files?: File[]) => Promise<void>
   allowAttachments?: boolean
+  allowAiAssistance?: boolean
   onCancel: () => void
   submitLabel: string
   locked?: boolean
@@ -47,6 +49,7 @@ export function TicketForm({
   submitLabel,
   locked = false,
   allowAttachments = false,
+  allowAiAssistance = false,
 }: Props) {
   const options = {
     ...activeOptions,
@@ -98,6 +101,7 @@ export function TicketForm({
     control,
     handleSubmit,
     setValue,
+    getValues,
     setError,
     clearErrors,
     formState: { errors, isSubmitting },
@@ -216,6 +220,22 @@ export function TicketForm({
               {errors.description.message}
             </p>
           )}
+          {allowAiAssistance && (
+            <TicketDraftAssistance
+              draft={getValues()}
+              getDraft={getValues}
+              locked={isSubmitting || locked}
+              options={activeOptions}
+              onApply={(patch) => {
+                for (const key of Object.keys(patch) as (keyof TicketInput)[]) {
+                  setValue(key, patch[key]!, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+              }}
+            />
+          )}
           <div className="form-columns">
             <div>
               <label className="field" htmlFor="ticket-category">
@@ -318,7 +338,15 @@ export function TicketForm({
           {options.tags.length > 0 && (
             <details
               className="optional-fields"
-              open={initial?.tagIds.length ? true : undefined}
+              open={
+                (
+                  allowAiAssistance
+                    ? values.tagIds?.length
+                    : initial?.tagIds.length
+                )
+                  ? true
+                  : undefined
+              }
             >
               <summary>Tags (optional)</summary>
               <fieldset className="scope-field">

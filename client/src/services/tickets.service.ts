@@ -20,7 +20,7 @@ export const getTicketOptions = async (signal?: AbortSignal) =>
   (await api.get<TicketOptions>('/ticket-options', { signal })).data
 export const createTicket = async (input: TicketInput, clientRequestId: string, files: File[] = []) =>
   (await postWithAttachments<TicketSummary>('/tickets', { ...input, clientRequestId }, files)).data
-export const updateTicket = async (id: number, input: TicketInput) =>
+export const updateTicket = async (id: number, input: Partial<TicketInput> & { expectedUpdatedAt?: string }) =>
   (await api.patch<TicketSummary>(`/tickets/${id}`, input)).data
 export const cancelTicket = async (id: number) =>
   (await api.post<TicketSummary>(`/tickets/${id}/cancel`)).data

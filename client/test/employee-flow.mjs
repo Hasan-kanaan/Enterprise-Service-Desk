@@ -1,4 +1,5 @@
 import { employeeVisual } from './visual-stabilization.mjs'
+import { requesterAiFixture, requesterAiBrowser } from './requester-ai-browser.mjs'
 import { attachmentPreviews, previewBodies } from './attachment-preview.mjs'
 import { assertPrivateStorage, storageAuditScript } from './storage-audit.mjs'
 import { revalidatePage } from './revalidation.mjs'
@@ -12,6 +13,7 @@ import { communicationFixture, submission } from './communication-fixture.mjs'
 import { notificationFixture } from './notification-fixture.mjs'
 const notifications = notificationFixture()
 const communication = communicationFixture()
+const requesterAi = requesterAiFixture()
 let slowOlder = false
 import { spawn } from 'node:child_process'
 import {
@@ -177,6 +179,7 @@ function response(request) {
   const url = new URL(request.url), path = url.pathname
   requests.push(`${request.method} ${path}`)
   const body = submission(request).body
+  if (path === '/ticket-assistance') return requesterAi.respond(body)
   if (/^\/tickets\/\d+\/attachments$/.test(path)) return [200, tickets.find(t => t.id === Number(path.split('/')[2]))?.attachments ?? []]
   if (/^\/tickets\/attachments\/\d+\/download$/.test(path)) {
     assert(request.headers.Authorization || request.headers.authorization)
@@ -224,9 +227,9 @@ function response(request) {
       : [200, pageFixture(tickets, url)]
   if (path === '/tickets' && request.method === 'POST') {
     mutations.push({ path, body })
-    assert.equal(body.categoryId, 4)
-    assert.deepEqual(body.affectedRegionIds, [2])
-    assert.deepEqual(body.affectedDepartmentIds, [3])
+    assert.equal(body.categoryId, process.argv.includes('--ai') ? 5 : 4)
+    assert.deepEqual(body.affectedRegionIds, process.argv.includes('--ai') ? [12] : [2])
+    assert.deepEqual(body.affectedDepartmentIds, process.argv.includes('--ai') ? [13] : [3])
     assert(!('assignedManagerId' in body))
     assert.equal(typeof body.clientRequestId, 'string')
     const replay = tickets.find(ticket => ticket.clientRequestId === body.clientRequestId)
@@ -250,7 +253,7 @@ function response(request) {
       currentCycle: cycles[0],
     }
     tickets.push(ticket)
-    return [503, { message: 'Submission response interrupted' }]
+    return process.argv.includes('--ai') ? [201, ticket] : [503, { message: 'Submission response interrupted' }]
   }
   const communicationTicket = tickets.find(item => item.id === Number(path.split('/')[2]))
   if (communicationTicket && /\/(messages|internal-notes)/.test(path))
@@ -350,8 +353,9 @@ try {
     if (data.method === 'Fetch.requestPaused') {
       const { requestId, request } = data.params
       try {
-        const [status, body] =
+        const [status, body, lag] =
           request.method === 'OPTIONS' ? [200, {}] : response(request)
+        if (lag) await delay(lag)
         if (slowOlder && new URL(request.url).searchParams.has('cursor') && new URL(request.url).pathname.endsWith('/messages')) await delay(800)
         if (new URL(request.url).searchParams.get('search') === 'scale slow') await delay(1000)
         await send('Fetch.fulfillRequest', {
@@ -395,7 +399,9 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   })
-  if (process.argv.includes('--visual-stabilization')) {
+  if (process.argv.includes('--ai')) {
+    await requesterAiBrowser({ fixture: requesterAi, send, evaluate, navigate, waitText, until, click, fill, checkLabel, selectAttachment, mutations, requests, browserErrors, options, tickets })
+  } else if (process.argv.includes('--visual-stabilization')) {
     await employeeVisual({ send, evaluate, navigate, waitText, until, click, fill, checkLabel, selectAttachment, tickets, requests, browserErrors, attachmentPreviews })
   } else if (process.argv.includes('--request-followup')) {
     await requestFollowup({ fileDialogs: () => fileDialogs, send, evaluate, navigate, waitText, click, fill, checkLabel, selectAttachment, tickets, options, browserErrors, original, setCycles: value => { cycles = value } })

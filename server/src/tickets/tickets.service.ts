@@ -189,6 +189,7 @@ export class TicketsService {
   ) {
     return this.withTicket(ticketId, user, async (db, ticket) => {
       this.authorization.assertCanMutateTicket(user, ticket);
+      this.assertExpectedVersion(ticket, dto.expectedUpdatedAt);
       const allRegions = dto.allRegions ?? ticket.allRegions;
       const allDepartments = dto.allDepartments ?? ticket.allDepartments;
       const regionIds =
@@ -322,6 +323,7 @@ export class TicketsService {
           'Primary team must be explicitly assigned and cannot be cleared',
         );
       this.authorization.assertCanAssignTicket(user, ticket, teamId);
+      this.assertExpectedVersion(ticket, dto.expectedUpdatedAt);
       if (this.authorization.isResponsibleManager(user, ticket)) {
         // Hold organizational responsibility through this assignment, including
         // when an administrator concurrently removes the TeamManager relation.
@@ -525,6 +527,16 @@ export class TicketsService {
         });
       return result;
     });
+  }
+
+  private assertExpectedVersion(ticket: EditableTicket, expected?: string) {
+    if (
+      expected !== undefined &&
+      ticket.updatedAt.getTime() !== Date.parse(expected)
+    )
+      throw new ConflictException(
+        'Ticket changed. Reload and regenerate AI suggestions.',
+      );
   }
 
   private async validateAssignment(

@@ -9,10 +9,15 @@ import {
   MaxLength,
   Min,
   MinLength,
+  IsISO8601,
 } from 'class-validator';
 import { TicketPriority } from '../../../generated/prisma/client';
 
 export class UpdateTicketDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsISO8601({ strict: true })
+  expectedUpdatedAt?: string;
+
   @ValidateIf((_object, value) => value !== undefined)
   @IsString()
   @MinLength(1)

@@ -124,13 +124,13 @@ Current installation/security/package instructions are in [Pre-AI hardening and 
 
 Use Node 24.12.0 and pnpm 11.9.0. Client/server retain independent frozen lockfiles; root commands only orchestrate them. Prisma remains pinned to 7.10.0. Configure [server/.env.example](server/.env.example) and optionally [client/.env.example](client/.env.example), then follow the linked migration/start instructions. PR/push CI includes isolated PostgreSQL e2e; Chromium has a separate manual Windows workflow.
 
-Both runtime dependency gates now pass with zero known vulnerabilities; development-tooling advisories remain visible. Keep `server/pnpm-workspace.yaml` with the server manifest and lockfile: pnpm 11 reads the scoped security overrides and explicit install-script policy there. See [the audit](docs/dependency-audit.md) and [verification results](status.md). AI, cloud provisioning and public-demo deployment remain deferred.
+Both runtime dependency gates now pass with zero known vulnerabilities; development-tooling advisories remain visible. Keep `server/pnpm-workspace.yaml` with the server manifest and lockfile: pnpm 11 reads the scoped security overrides and explicit install-script policy there. See [the audit](docs/dependency-audit.md) and [verification results](status.md). Current AI and private GCS verification supersede their earlier deferrals; public-demo deployment remains deferred.
 
 An AI-powered full-stack Enterprise IT Service Desk built as a real-world learning project.
 
 The application simulates an internal IT support platform for a large company. Employees can submit IT support tickets, support agents can work on those tickets, managers can oversee and assign tickets, and administrators can manage the system.
 
-AI assistance with categorization, priority, and assignment is planned after the non-AI service-desk workflow is functional; it is not integrated yet.
+Manual Gemini assistance is implemented for requester ticket drafting/classification and Manager routing recommendations. Both require explicit human review and preserve ordinary ticket authorization.
 
 The goal is not only to build a functional application, but also to gain practical full-stack development experience while learning backend development gradually.
 
@@ -884,9 +884,9 @@ HIGH
 CRITICAL
 ```
 
-AI may suggest a priority when a ticket is created.
+AI may suggest priority when a requester explicitly asks for draft assistance or an authorized Manager requests suggestions on an existing ticket.
 
-The manager can approve or override the suggestion.
+The user can accept or override the suggestion; factual impact and urgency matter more than emotional wording.
 
 Priority should be based on the impact and urgency of the issue.
 
@@ -894,88 +894,84 @@ Priority should be based on the impact and urgency of the issue.
 
 ## AI Integration
 
-AI is a planned part of the application, deferred until the manual service-desk workflow is functional.
+Any active authenticated user creating their own ticket can optionally choose
+**Help me complete this ticket** after describing the issue. `POST /ticket-assistance`
+uses one structured call to return IN_SCOPE, NEEDS_MORE_INFORMATION or OUT_OF_SCOPE.
+For workplace IT incidents and service requests, it can suggest a clearer Title/
+Description, Category, Priority, up to three Tags, Region and Department. Accepted
+suggestions populate the existing form controls directly. Users can edit every field
+before explicitly submitting the ordinary Create Ticket form; AI never submits it.
+**Undo AI changes** restores the complete pre-AI form snapshot, including later manual
+edits, until the next AI request. The snapshot is transient memory only. Null, invalid
+or low-confidence suggestions leave current fields unchanged; Tags merge with existing
+selections. There are no requester suggestion cards or per-field Apply buttons.
 
-AI should be considered during the initial system architecture rather than added as an afterthought.
+Requester AI input is limited to an optional title of 200 characters and description
+of 3,000 characters with at least 20 letters/digits, enforced in browser and server.
+Longer manual descriptions remain intact. Vague or unrelated input gets a useful
+explanation and no suggestions; manual creation remains available. Unchanged negative
+scope results reuse a bounded component-memory hash cache without another AI call.
+Only redacted draft text and the first 30 active public Category/Tag/Region/Department
+IDs/names per catalog, plus priorities, reach Gemini. Region/Department require
+evidence; null is preferable to guessing. No Team, Agent, Manager, specialties or
+internal routing data enters this feature. Attachments and their metadata are excluded.
 
-When a ticket is created, AI may analyze it and provide:
+An authorized Manager can explicitly choose **Generate AI suggestions** on an
+existing support ticket/intake page. AI recommends Category, Priority, up to three
+Tags, Team and Agent. Routing generation never runs at creation, page load, intake
+opening, through polling or in the background. EMPLOYEE, AGENT (including Team Lead),
+ADMIN and SUPER_ADMIN are denied this Manager endpoint server-side. Normal ticket
+visibility is required; requester assistance grants no support authority.
 
-- Suggested category
-- Suggested priority
-- Suggested agent
-- Confidence score
-- Reason for the recommendation
+The sole provider is Google Gemini, model `gemini-3.5-flash-lite`, using native
+HTTPS and structured JSON. Configure ignored local `server/.env` with
+`GEMINI_API_KEY` and optionally `AI_MODEL=gemini-3.5-flash-lite` (the default).
+Use placeholders from `server/.env.example`; never use a `VITE_` variable or
+commit credentials. Missing key or unsupported model disables AI without breaking
+ordinary work. Live synthetic Manager and requester structured-output probes pass.
+The initial HTTP 402 was resolved by the user's replacement Free-tier Gemini-project
+key. Gemini may use a different project from GCS; private GCS configuration is unchanged.
 
-The future AI workflow is:
+The panel labels results **AI-generated suggestion — review before applying** and
+shows current/suggested values, AI confidence and a short rationale. Confidence
+below 0.55 cannot be applied from the panel. Each explicit Apply uses the existing
+metadata or assignment API with a ticket version precondition. Taking responsibility
+remains a separate human action; intake generation supplies no Team/Agent choices.
+Team changes preserve the current Agent and reject incompatible retained assignments.
+Applying an Agent explicitly includes the displayed eligible Team. Each successful
+change clears recommendations; regenerate for the updated ticket.
 
-```text
-Employee creates ticket
-        │
-        ▼
-AI analyzes ticket
-        │
-        ├── Suggested category
-        ├── Suggested priority
-        ├── Suggested agent
-        ├── Confidence score
-        └── Reason
-        │
-        ▼
-Manager reviews recommendation
-        │
-        ├── Approve
-        │
-        └── Override
-        │
-        ▼
-Ticket assigned
+For Manager routing, only redacted title (200 characters), description (6,000 characters), current
+category/priority/active Tag names and bounded eligible candidate IDs/names and
+Specialty names enter the provider payload. Contact/account/session data,
+conversations, internal notes, attachments/filenames/object keys, history, analytics
+and other tickets are excluded. Basic pattern redaction does not guarantee anonymity.
+Specialties grant no membership or authority. Exact candidate ID allowlists and
+Team/Agent compatibility are enforced before returning results.
+
+Limits: **Manager routing 10/hour and 25/day; requester assistance 5/hour and 10/day;
+12/minute and 400/day shared across both features**. One conservative shared budget
+also reserves serialized request bytes plus the 2,048-token output allowance against
+225,000 tokens/minute, below the supplied 250K TPM project quota. No independent pools.
+All fixed windows are app-local and reset on restart; multi-instance coordination
+is deferred. Ten-second timeout, bounded prompt/response, no retries, tools,
+autonomous actions or paid fallback. Recommendations and provenance remain in
+memory only; existing AI schema fields are untouched and no migration is required.
+
+Run the synthetic-only probe from `server`:
+
+```powershell
+node --env-file-if-exists=.env -r ts-node/register src/ai-smoke.ts
+node --env-file-if-exists=.env -r ts-node/register src/ticket-assistance-smoke.ts
 ```
 
-The AI assists humans.
-
-It does not completely replace the manager during the initial implementation.
-
----
-
-## AI Ticket Creation Assistant
-
-AI may also assist employees while they create tickets.
-
-For example:
-
-```text
-My laptop keeps disconnecting from WiFi and I can't connect
-to the company network.
-```
-
-The AI could help:
-
-- Improve the description
-- Identify the likely category
-- Suggest priority
-- Ask for missing information
-- Help the employee describe the issue clearly
-
-The AI should assist the employee rather than silently changing important information.
-
----
-
-## Future AI Automation
-
-Once the basic AI workflow works, automatic assignment may be introduced.
-
-For example:
-
-```text
-AI confidence >= configured threshold
-        │
-        ▼
-Automatically assign ticket
-```
-
-Lower-confidence recommendations should continue to require manager review.
-
-The exact threshold and automation rules will be decided later.
+It never reads ticket data and prints only success/failure metadata. See the
+[complete AI security and verification report](docs/ai-routing-verification.md)
+for payload shape, exclusions, bounds, test results, stale handling and limitations.
+See [requester assistance verification](docs/requester-ai-verification.md) for its
+distinct scope, privacy boundary, rewrite safeguards, shared budgets and checks.
+Prompts require factual rewrites; validation rejects invented numeric facts/IDs,
+but semantic fidelity still requires human review. Autonomous routing remains deferred.
 
 ---
 
@@ -1437,7 +1433,7 @@ These reads and their `/people` lookup routes require MANAGER or AGENT authentic
 
 `pnpm test:browser` runs Employee, operational and administration suites. Communication coverage includes requester/support posting, own editing, internal-note separation, collaborator controls, frozen history, waiting replies and draft recovery across failures/reopening. Existing lifecycle, organization, mobile, session and error flows remain covered. Browser tests use isolated API fixtures; PostgreSQL e2e separately exercises actual authorization and atomicity. No browser-to-live-database coverage is claimed.
 
-ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Persistent in-app notifications are implemented in the shared shell. My Work History is implemented. Automatic RESOLVED -> CLOSED behavior is implemented. The remaining roadmap, in order, is general polish/stabilization and AI routing/recommendations. Generic audits and SSO/SCIM remain deferred.
+ADMIN/SUPER_ADMIN account and supported organization management are implemented in the dedicated administration workspace below. Persistent in-app notifications are implemented in the shared shell. My Work History, automatic RESOLVED -> CLOSED behavior and manual AI drafting/routing assistance are implemented. Remaining work includes general polish/stabilization and broader AI quality evaluation. Generic audits and SSO/SCIM remain deferred.
 
 ---
 
@@ -1640,7 +1636,7 @@ Focus on:
 ### Remaining Roadmap
 
 1. General polish/stabilization
-2. AI routing/recommendations
+2. Broader AI quality evaluation (manual drafting/routing assistance is implemented)
 
 AI recommendations include categorization, priority and agent suggestions, confidence scores, reasoning, and manager review. Secure attachments and author-controlled communication soft deletion are implemented.
 

@@ -1,4 +1,6 @@
 import { operationsVisual } from './visual-stabilization.mjs'
+import { aiFixture, aiBrowser } from './ai-browser.mjs'
+const ai = aiFixture()
 import { revalidatePage } from './revalidation.mjs'
 import { operationsPolish } from './ui-polish.mjs'
 import { analyticsFixture, analyticsBrowser } from './analytics-browser.mjs'
@@ -272,6 +274,12 @@ function response(request) {
   if (path.startsWith('/notifications')) return notifications.respond(request, user.id)
   if (failure) return [503, { message: 'Service temporarily unavailable' }]
   if (path === '/analytics') return analytics.respond(request)
+  if (/^\/tickets\/\d+\/ai-suggestions$/.test(path)) {
+    const ticket = tickets.find(t => t.id === Number(path.split('/')[2]))
+    if (user.role !== 'MANAGER') return [403, {}]
+    if (!ticket || !visible(ticket)) return [404, {}]
+    return ai.respond(ticket)
+  }
   if (path === '/my-work-history') {
     const page = Number(url.searchParams.get('page') || 1)
     const contribution = user.role === 'MANAGER' ? 'RESPONSIBLE_MANAGER' : 'PRIMARY_AGENT'
@@ -627,7 +635,9 @@ try {
     await click(text)
     await waitText('Confirm')
   }
-  if (process.argv.includes('--visual-stabilization')) {
+  if (process.argv.includes('--ai')) {
+    await aiBrowser({ fixture: ai, navigate, waitText, evaluate, click, send, until, mutations, browserErrors, setConflict: value => { conflict = value }, setUser: (role, id) => { user = { ...user, role, id } } })
+  } else if (process.argv.includes('--visual-stabilization')) {
     await operationsVisual({ until, send, evaluate, navigate, waitText, click, fill, tickets, browserErrors, setUser: (role, id) => { user = { ...user, role, id } }, setFailure: value => { failure = value } })
   } else if (process.argv.includes('--analytics')) {
     await analyticsBrowser({ fixture: analytics, navigate, waitText, evaluate, fill, click, send, setUser: role => { user = { ...user, role } }, browserErrors })

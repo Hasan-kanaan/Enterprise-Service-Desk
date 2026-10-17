@@ -1,5 +1,95 @@
 # Project Decisions
 
+## Requester drafting and shared Gemini budgets (2026-10-17)
+
+Any authenticated ACTIVE, activated user who can create their own ticket may use
+`POST /ticket-assistance`, including support and administrative roles acting as
+requesters. It takes only optional title (200 characters) and required description
+(20 letters/digits minimum, 3,000 characters maximum). Normal ticket storage limits
+are unchanged. The secondary helper follows the description field. Successful IN_SCOPE
+responses populate accepted values directly in the existing controls; users freely
+override them and submit through the existing creation endpoint with normal identity,
+idempotency and attachment rules. No requester review cards or Apply buttons.
+
+Undo retains one complete pre-application snapshot in component memory. It restores
+all pre-AI fields even after manual edits; this behavior is explained beside Undo.
+Starting the next AI request clears the prior Undo opportunity. Attachments are
+separate state and remain untouched. Null, invalid and confidence below 0.55 preserve
+current values; valid suggested Tags merge without deleting selections. Stale text
+blocks population; individual fields edited while pending are protected. The snapshot
+is captured immediately before population, so it includes those in-flight edits.
+Confidence is an internal threshold, not a per-field UI percentage. Compact live
+status announces completion without moving focus or scrolling. Manager routing keeps
+its existing separate review/apply interaction.
+
+One Gemini call classifies IN_SCOPE / NEEDS_MORE_INFORMATION / OUT_OF_SCOPE before
+offering Title/Description/Category/Priority/Tags/Region/Department suggestions. IT
+service requests qualify as well as incidents. Negative scope results contain no
+field suggestions or provider-authored advice and never prohibit manual creation.
+The form caches up to eight negative responses by normalized title/description
+SHA-256 digest in memory; unchanged retries do not call Gemini. No global raw-text cache.
+
+Only redacted draft text, priorities and bounded active public option IDs/names reach
+the requester operation. No identity/session, routing users, teams, specialties,
+messages, notes, attachments, filenames or object keys. Null Region/Department is
+preferred without evidence. Exact response schemas and candidate allowlists are
+authoritative; active account/catalog snapshots are rechecked after generation.
+Prompt instructions require scope-first handling of untrusted input, factual rewrites,
+no invented urgency/impact/troubleshooting, and no unrelated solutions or secrets.
+New numeric facts are rejected; semantic truth still needs explicit human review.
+
+Both operations share one native-fetch provider transport and one process-local
+limiter: Manager routing 10/hour and 25/day, requester 5/hour and 10/day, shared
+12/minute and 400/day. A shared conservative 225K token reservation/minute counts
+serialized request UTF-8 bytes plus the full 2,048-token output allowance per call.
+All budgets are checked atomically before consuming any; failed calls consume budget.
+Fixed windows reset on process restart and do not coordinate multiple instances.
+No paid fallback, tools, autonomous actions, schema migration or new dependencies.
+
+Live synthetic Manager and all three requester scope probes pass with
+`gemini-3.5-flash-lite`. The prior HTTP 402 is resolved after the user replaced the
+ignored Gemini key with a Free-tier project key. GCS remains independently configured.
+See [requester verification and exact current inventory](requester-ai-verification.md).
+
+## Manual Manager AI recommendations (2026-10-17)
+
+This approved phase supersedes earlier AI deferrals and creation-time/automatic
+routing proposals. Only MANAGER may explicitly POST to
+`/tickets/:ticketId/ai-suggestions`, and existing ticket visibility still applies.
+AuthGuard checks current account/session authority; the service rechecks active,
+activated Manager role and sessionVersion before and after the provider call.
+Intake or own-request visibility grants no routing directory or extra mutation power.
+
+Google Gemini `gemini-3.5-flash-lite` is the sole provider/model. Native fetch,
+JSON schema, ten-second timeout, no tools/retries/paid fallback. AI may recommend
+Category, Priority, up to three Tags, Team and Agent; it cannot mutate any entity.
+Human application uses the existing metadata/assignment endpoints, their locked
+transactions and eligibility rules, with optional `expectedUpdatedAt` checked
+inside those transactions. No fake actor, automatic claim or silent agent clearing.
+
+Provider input is an explicit projection: redacted title/description, current
+category/priority/active Tag names, bounded eligible catalog and routing candidates,
+and up to five active Specialty names per eligible Team/Agent. Region/Department
+names are omitted because the current routing predicates do not need them.
+No contact/account/session records, conversations, notes, attachments, keys,
+history, analytics or other tickets. All text is untrusted data; output IDs and
+Team/Agent pairings are validated against the supplied allowlists.
+
+Application quotas are 10/hour and 25/day per Manager, 12/minute and 400/day
+globally. Fixed windows and bounded memory are process-local: restart resets
+counters and multi-instance coordination is deferred. Failure leaves ordinary
+workflows intact. A dedicated payload-free exception preserves a safe generic
+503 through the global error filter; other 5xx redaction is unchanged.
+
+Existing `Ticket.aiSuggested*`, review fields and `TicketSuggestedTag` were
+inspected. Recommendations and provenance are transient response/UI state only;
+those legacy fields remain untouched. No new table, migration, raw-prompt storage,
+provider-response logging or durable browser storage. See the
+[security and verification report](ai-routing-verification.md) for exact bounds,
+candidate ordering, stale behavior, verification and limitations. The synthetic
+live-provider probe now passes. The initial HTTP 402 is resolved; see the requester
+phase above for current shared limits and live verification.
+
 ## UX/security follow-up: ISS-054–065 (2026-10-17)
 
 Team member, Team Lead and TeamManager selectors are distinct purpose-scoped,
@@ -636,7 +726,7 @@ Writes reuse serializable parent-ticket/user locks and active-session validation
 
 The shared frontend groups messages and notes by cycle, labels notes support-only, exposes author-only current-cycle editing, and shows edited timestamps. Sibling drafts survive communication refreshes; recoverable submission failures retain text and creation keys. Stale-cycle drafts require explicit review before creating a record in the new cycle. The employee waiting prompt directs the requester to the conversation. No real-time transport is introduced.
 
-Employee and operational Manager/Agent/Team Lead ticket workflows and persistent in-app notifications are implemented. My Work History is implemented. Automatic RESOLVED -> CLOSED behavior is implemented. The remaining roadmap, in order, is general polish/stabilization and AI routing/recommendations. Generic audit infrastructure and optional enterprise features such as SSO/SCIM remain deferred.
+Employee and operational Manager/Agent/Team Lead ticket workflows and persistent in-app notifications are implemented. My Work History, automatic RESOLVED -> CLOSED behavior and manual AI drafting/routing assistance are implemented. General polish/stabilization and broader AI quality evaluation remain. Generic audit infrastructure and optional enterprise features such as SSO/SCIM remain deferred.
 
 ## NULL and Data Integrity
 
@@ -726,7 +816,7 @@ The standalone subtask projection retains its independent predicate and contains
 
 Current-cycle subtasks appear separately within ticket detail; authorized earlier work is grouped under its cycle in the shared history view. Agents/leads receive only the existing filtered history projection. Current incomplete subtask queues use the existing currentWork filter; an explicit broader view allows authorized completed/historical records without suggesting they are active assignments. Standalone detail rechecks current read/action availability before exposing edit controls.
 
-Browser suites verify employee, manager, primary agent, collaborator, Team Lead and administration flows with isolated API fixtures. PostgreSQL e2e separately verifies real authorization, atomicity, constraints and controlled races. AI routing/recommendations remain on the roadmap; generic audit infrastructure remains deferred.
+Browser suites verify employee, manager, primary agent, collaborator, Team Lead and administration flows with isolated API fixtures. PostgreSQL e2e separately verifies real authorization, atomicity, constraints and controlled races. Manual AI drafting/routing assistance is implemented with focused verification above; generic audit infrastructure remains deferred.
 
 
 ## Administration Frontend and Existing Organization Capabilities
