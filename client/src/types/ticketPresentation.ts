@@ -3,7 +3,7 @@ export const statusLabels: Record<TicketStatus, string> = {
   NEW: 'New',
   ASSIGNED: 'Assigned',
   IN_PROGRESS: 'In progress',
-  WAITING_FOR_EMPLOYEE: 'Waiting for you',
+  WAITING_FOR_EMPLOYEE: 'Waiting for employee',
   BLOCKED: 'Blocked',
   RESOLVED: 'Resolved',
   CLOSED: 'Closed',

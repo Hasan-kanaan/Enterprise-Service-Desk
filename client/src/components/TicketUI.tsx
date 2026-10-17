@@ -7,11 +7,11 @@ import { getApiStatus, getApiErrorMessage } from '@/services/api'
 import type { TicketStatus, TicketSummary, NamedOption } from '@/types/tickets'
 import { formatDate, statusLabels } from '@/types/ticketPresentation'
 
-export function StatusBadge({ status }: { status: TicketStatus }) {
+export function StatusBadge({ status, requester = false }: { status: TicketStatus; requester?: boolean }) {
   return (
     <span className={`status-badge status-${status.toLowerCase()}`}>
       <span aria-hidden="true" />
-      {statusLabels[status]}
+      {requester && status === 'WAITING_FOR_EMPLOYEE' ? 'Waiting for you' : statusLabels[status]}
     </span>
   )
 }
@@ -62,7 +62,7 @@ export function EmptyState({
 }) {
   return (
     <div className="empty-state">
-      <Inbox size={28} />
+      <Inbox size={24} aria-hidden="true" />
       <h2>{title}</h2>
       {children}
     </div>
@@ -116,7 +116,7 @@ export function TicketRows({
             </div>
           </div>
           <div className="ticket-row-end">
-            <StatusBadge status={ticket.status} />
+            <StatusBadge status={ticket.status} requester={basePath === '/tickets'} />
             <ArrowUpRight size={18} aria-hidden="true" />
           </div>
         </Link>

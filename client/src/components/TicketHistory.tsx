@@ -108,6 +108,7 @@ export function TicketHistory({
           </li>
         ))}
       </ol>
+      <div className="list-continuation">
       {data.hasMore ? (
         <button
           className="button secondary"
@@ -122,6 +123,7 @@ export function TicketHistory({
       {!!pages.error && (
         <ErrorState error={pages.error} onRetry={() => void loadOlder()} />
       )}
+      </div>
     </>
   )
 }

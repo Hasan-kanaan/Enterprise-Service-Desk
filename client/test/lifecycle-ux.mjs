@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 
 export async function lifecycleUxChecks({ accounts, catalogs, specialtyLinks, navigate, click, fill, evaluate, waitText, until, send, requests }) {
+  // This mode exercises pending-account guidance/eligibility before activation.
+  // The shared directory fixture otherwise starts every account verified.
+  for (const account of accounts.filter(account => [3, 4, 6].includes(account.id))) account.activatedAt = null
   const agent = accounts.find(a => a.id === 4)
   const rowAction = async (id, label) => {
     await evaluate(`(() => { const row = document.querySelector('[data-account-id="${id}"]'); row.querySelector('button[popovertarget]').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).click() })()`)

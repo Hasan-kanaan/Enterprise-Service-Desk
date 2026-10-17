@@ -1,3 +1,4 @@
+import { captureMatrix } from './visual-stabilization.mjs'
 import { assertPrivateStorage, storageAuditScript } from './storage-audit.mjs'
 // Real same-profile Chromium pages and isolated cookie-rotating HTTP fixtures.
 // Vite dev exposes source imports to the test only; no production test hooks.
@@ -325,6 +326,7 @@ try {
   assert.equal(await draft(a), null, 'another account cannot inherit draft')
   await refresh(a); await putDraft(a)
   await until(() => a.evaluate("document.body.innerText.includes('Your sessions') && document.body.innerText.includes('Other device')"), 'session management loaded').catch(async error => { console.error('Session diagnostics', await a.evaluate('document.body.innerText'), errors); throw error })
+  if (process.argv.includes('--visual-stabilization')) await captureMatrix({ send: a.send, evaluate: a.evaluate }, 'profile-other-sessions')
   for (const scheme of ['light', 'dark']) {
     await a.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] })
     await until(() => a.evaluate(`document.documentElement.dataset.theme === '${scheme}'`), 'session theme')
@@ -370,7 +372,11 @@ try {
   await until(() => a.evaluate("document.body.innerText.includes('Your sessions')"), 'profile restored after current-device login')
   console.log('PASS: current-device session UI signs out both tabs and permits fresh login')
 
-  if (process.argv.includes('--session-ui')) {
+  if (process.argv.includes('--visual-stabilization')) {
+    await captureMatrix({ send: a.send, evaluate: a.evaluate }, 'profile-sessions')
+    assert.deepEqual(errors, [])
+    console.log('PASS: profile/session screenshot matrix, desktop/tablet/mobile, light/dark and existing session assertions')
+  } else if (process.argv.includes('--session-ui')) {
     assert.deepEqual(errors, [])
     console.log('PASS: current-device logout styling/icon, keyboard focus, existing confirmation, remote controls and light/dark/mobile')
   } else if (process.argv.includes('--ui-polish')) {

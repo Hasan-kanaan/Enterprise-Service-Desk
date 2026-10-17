@@ -36,7 +36,6 @@ export function TicketConfigurationPage() {
     <RefreshSurface busy={!!(resource.loading && resource.data)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Administration</p>
           <h1>Ticket configuration</h1>
           <p className="muted">
             Categories and tags describe support issues. Archived names remain
@@ -85,8 +84,8 @@ export function TicketConfigurationPage() {
               </article>
             ))
           ) : (
-            <EmptyState title="No records yet">
-              <p>Create a category or tag for your service desk.</p>
+            <EmptyState title={`No ${catalog} yet`}>
+              <p>Create a {catalog === 'categories' ? 'category' : 'tag'} for your service desk.</p>
             </EmptyState>
           )}
         </section>

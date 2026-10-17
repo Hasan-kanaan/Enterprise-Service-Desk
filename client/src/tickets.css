@@ -313,9 +313,9 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   text-align: center;
-  padding: 36px 24px;
+  padding: 28px 20px;
   color: var(--muted-foreground);
 }
 .empty-state h1,
@@ -813,12 +813,12 @@ button:disabled {
   .specialty-row { gap: 8px; }
 }
 
-.attachment-cards { list-style: none; padding: 0; display: grid; gap: 12px; margin-top: 12px; }
+.attachment-cards { list-style: none; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px; }
 .attachment-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; background: var(--card); min-width: 0; }
 .attachment-card-info { display: flex; align-items: center; gap: 12px; }
 .attachment-card-info > svg { flex-shrink: 0; color: var(--muted-foreground); }
 .attachment-card-info > div { min-width: 0; }
-.attachment-filename { font-weight: 600; overflow-wrap: anywhere; margin: 0 0 4px; }
+.attachment-filename { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 0 4px; }
 .attachment-card-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; }
 .attachment-card-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
 .attachment-preview { display: block; width: 100%; max-width: 480px; max-height: 280px; object-fit: contain; margin-top: 12px; background: var(--muted); border-radius: var(--radius); }

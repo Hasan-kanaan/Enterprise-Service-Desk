@@ -172,7 +172,7 @@ function TicketContent({ id }: { id: number }) {
         <div>
           <div className="button-row">
             <p className="eyebrow">Request #{ticket.id}</p>
-            <StatusBadge status={ticket.status} />
+            <StatusBadge status={ticket.status} requester />
           </div>
           <h1>{ticket.title}</h1>
           <p className="muted">

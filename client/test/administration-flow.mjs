@@ -1,3 +1,4 @@
+import { administrationVisual } from './visual-stabilization.mjs'
 import { revalidatePage } from './revalidation.mjs'
 import { loadingFeedbackChecks } from './loading-feedback.mjs'
 import { phoneBrowserChecks } from './phone-browser.mjs'
@@ -654,7 +655,11 @@ try {
   await send('Fetch.enable', {
     patterns: [{ urlPattern: 'http://localhost:8000/*' }, ...(process.argv.includes('--loading-feedback') ? [{ urlPattern: 'http://127.0.0.1:3000/assets/UsersPage-*.js' }] : [])],
   })
-  if (process.argv.includes('--loading-feedback')) {
+  if (process.argv.includes('--visual-stabilization')) {
+    teams.push({ id: 1, name: 'Regional help', scope: 'REGION', regionId: 1, managerId: null, teamLeadId: 4, memberIds: [4] })
+    configuration.categories.push({ id: 1, name: 'Network', archivedAt: null })
+    await administrationVisual({ send, evaluate, navigate, waitText, click, fill, browserErrors, setUser: role => { user = { ...user, role } } })
+  } else if (process.argv.includes('--loading-feedback')) {
     await loadingFeedbackChecks({ send, navigate, click, fill, evaluate, waitText, until, requests,
       delayList: () => { directoryDelay = 1800 },
       failMutation: () => { rejectMutation = true; failureCode = 400 },
@@ -975,7 +980,8 @@ try {
     console.log('PASS: focused Team coverage transitions, active destinations, confirmation, duplicate submit, 400/404/409, archived Team and mobile')
   } else if (process.argv.includes('--ticket-configuration')) {
     await navigate('/admin/ticket-configuration')
-    await waitText('No records yet')
+    await waitText('No categories yet')
+    await waitText('No tags yet')
     for (const kind of ['category', 'tag']) {
       await action(`Create ${kind}`)
       await fill('[aria-label="Configuration name"]', `  Test ${kind}  `)

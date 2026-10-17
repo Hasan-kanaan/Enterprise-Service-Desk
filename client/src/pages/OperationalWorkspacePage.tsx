@@ -93,20 +93,15 @@ export function OperationalWorkspacePage({
     <RefreshSurface busy={!!(loading && resource.items.length)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">
-            {manager
-              ? 'Manager workspace'
-              : led.length
-                ? 'Agent / Team Lead workspace'
-                : 'Agent workspace'}
-          </p>
           <h1>{title}</h1>
           <p className="muted">
             {view === 'intake'
               ? 'Take responsibility before routing or working a request.'
               : view === 'subtasks'
                 ? 'Assigned and team work items.'
-                : 'Tickets assigned to you and work you collaborate on.'}
+                : view === 'team'
+                  ? 'Tickets routed to Teams you lead.'
+                  : 'Tickets assigned to you and work you collaborate on.'}
           </p>
         </div>
       </header>
@@ -135,7 +130,7 @@ export function OperationalWorkspacePage({
             <strong>{summary.data?.counts[1] ?? '-'}</strong>
           </div>
           <div className="stat-card">
-            <span>Authorized incomplete subtasks</span>
+            <span>Incomplete subtasks</span>
             <strong>{summary.data?.counts[2] ?? '-'}</strong>
           </div>
         </section>)
@@ -193,8 +188,8 @@ export function OperationalWorkspacePage({
           tasks.items.length ? (
             <SubtaskRows subtasks={tasks.items} />
           ) : (
-            <EmptyState title="No subtasks in this queue">
-              <p>There is no work in this view.</p>
+            <EmptyState title={query ? 'No matching subtasks' : 'No subtasks in this queue'}>
+              <p>{query ? 'Try a different search.' : 'Assigned and team work items will appear here.'}</p>
             </EmptyState>
           )
         ) : visible.length ? (
@@ -205,7 +200,7 @@ export function OperationalWorkspacePage({
             origin={view === 'intake' ? 'intake' : view === 'team' ? 'team' : view === 'mine' ? 'mine' : undefined}
           />
         ) : (
-          <EmptyState title="No tickets in this queue">
+          <EmptyState title={query ? 'No matching tickets' : view === 'team' && !led.length ? 'No led Teams' : 'No tickets in this queue'}>
             <p>
               {view === 'team' && !led.length
                 ? 'You do not currently lead a team.'

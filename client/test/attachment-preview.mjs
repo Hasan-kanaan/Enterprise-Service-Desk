@@ -1,3 +1,4 @@
+import { captureMatrix } from './visual-stabilization.mjs'
 import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -57,7 +58,9 @@ export async function attachmentPreviews({ evaluate, navigate, waitText, until, 
   previewBodies.set(9102, { contentType: 'video/webm', bytes: webm })
   previewBodies.set(9103, { contentType: 'video/mp4', bytes: mp4 })
   tickets[0].attachments = [...original, ...[9101, 9102, 9103].map(id => ({ id, filename: id === 9101 ? 'private.png' : id === 9102 ? 'private.webm' : 'private.mp4', contentType: previewBodies.get(id).contentType, byteSize: previewBodies.get(id).bytes.length, createdAt: new Date().toISOString(), deletedAt: null }))]
+  if (process.argv.includes('--visual-stabilization')) tickets[0].attachments[0] = { ...tickets[0].attachments[0], filename: 'network-investigation-' + 'long-filename-'.repeat(15) + '.txt' }
   await navigate('/tickets/142'); await waitText('private.png')
+  if (process.argv.includes('--visual-stabilization')) assert(await evaluate(`document.querySelector('.attachment-filename').title.length > 100 && getComputedStyle(document.querySelector('.attachment-filename')).textOverflow === 'ellipsis'`))
   await evaluate(`(() => {
     window.previewUrls = []; window.revokedUrls = [];
     const create = URL.createObjectURL, revoke = URL.revokeObjectURL;
@@ -69,12 +72,14 @@ export async function attachmentPreviews({ evaluate, navigate, waitText, until, 
   await evaluate(`document.querySelector('[aria-label="Preview private.png"]').click()`)
   await until(() => evaluate('!!document.querySelector("img.attachment-preview")?.naturalWidth'), 'authorized PNG thumbnail')
   assert(await evaluate('document.querySelector("img.attachment-preview").src.startsWith("blob:")'))
+  if (process.argv.includes('--visual-stabilization')) await captureMatrix({ send, evaluate }, 'attachments-image')
   await evaluate(`document.querySelector('[aria-label="Hide private.png"]').click()`)
   await until(() => evaluate('window.revokedUrls.length === 1'), 'hidden image URL revoked')
   previewBodies.get(9101).denied = true
   await evaluate(`document.querySelector('[aria-label="Preview private.png"]').click()`)
   await waitText('could not be found or is no longer available')
   assert(await evaluate('!document.querySelector("img.attachment-preview")'))
+  if (process.argv.includes('--visual-stabilization')) await captureMatrix({ send, evaluate }, 'attachments-denied')
   previewBodies.get(9101).denied = false
   await evaluate(`document.querySelector('[aria-label="Hide private.png"]').click()`)
   await evaluate(`document.querySelector('[aria-label="Preview private.webm"]').click()`)
@@ -90,6 +95,7 @@ export async function attachmentPreviews({ evaluate, navigate, waitText, until, 
     await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 390 })
     assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'))
   }
+  if (process.argv.includes('--visual-stabilization')) await captureMatrix({ send, evaluate }, 'attachments-video')
   await assertPrivateStorage(evaluate)
   // Router navigation unmounts previews without replacing the document/test counters.
   await evaluate(`document.querySelector('.back-link').click()`)

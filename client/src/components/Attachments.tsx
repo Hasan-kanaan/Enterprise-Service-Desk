@@ -106,12 +106,13 @@ export function AttachmentPicker({
               type="button"
               className="text-button"
               disabled={disabled}
+              aria-label={`Remove ${file.name}`}
               onClick={() => {
                 onChange(files.filter((_, i) => i !== index))
                 setError('')
               }}
             >
-              Remove {file.name}
+              Remove
             </button>
           </li>
         ))}

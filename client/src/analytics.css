@@ -1,6 +1,13 @@
 .analytics-page {
   max-width: 1280px;
 }
+.analytics-page h2 { font-size: 15px; font-weight: 650; }
+.analytics-page > p, .analytics-section > p { font-size: 13px; line-height: 1.6; }
+.analytics-metrics dt { color: var(--muted-foreground); font-size: 12px; }
+.analytics-metrics dd, .analytics-table-wrap td, .status-legend td { font-variant-numeric: tabular-nums; }
+.analytics-table-wrap thead th { color: var(--muted-foreground); font-weight: 600; }
+.analytics-table-wrap tbody th { font-weight: 500; }
+.analytics-table-wrap tbody tr:hover { background: var(--background); }
 .analytics-controls {
   display: flex;
   align-items: center;

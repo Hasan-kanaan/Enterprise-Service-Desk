@@ -100,6 +100,7 @@ export function usePagedList<T extends { id: number }>(
     loadingMore: loading && !!cursor,
     error: !loading && state.key === key ? state.error : undefined,
     hasMore: state.key === key && !!state.page?.hasMore,
+    hasPreviousPage: state.key === key && !!state.cursor,
     loadMore: () => {
       if (!loading && state.page?.nextCursor)
         setRequest({

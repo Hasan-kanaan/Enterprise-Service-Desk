@@ -1,3 +1,4 @@
+import { employeeVisual } from './visual-stabilization.mjs'
 import { attachmentPreviews, previewBodies } from './attachment-preview.mjs'
 import { assertPrivateStorage, storageAuditScript } from './storage-audit.mjs'
 import { revalidatePage } from './revalidation.mjs'
@@ -394,7 +395,9 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   })
-  if (process.argv.includes('--request-followup')) {
+  if (process.argv.includes('--visual-stabilization')) {
+    await employeeVisual({ send, evaluate, navigate, waitText, until, click, fill, checkLabel, selectAttachment, tickets, requests, browserErrors, attachmentPreviews })
+  } else if (process.argv.includes('--request-followup')) {
     await requestFollowup({ fileDialogs: () => fileDialogs, send, evaluate, navigate, waitText, click, fill, checkLabel, selectAttachment, tickets, options, browserErrors, original, setCycles: value => { cycles = value } })
   } else if (process.argv.includes('--ui-polish')) {
     await requesterPolish({ send, evaluate, navigate, waitText, click, fill, checkLabel, tickets, cycles, requests, browserErrors })
@@ -448,12 +451,12 @@ try {
   await evaluate(`document.querySelector('.optional-fields').open = true`)
   await checkLabel('VPN')
   await selectAttachment('input[type=file]', 'remove.txt')
-  await waitText('Remove remove.txt')
-  await click('Remove remove.txt')
+  assert(await evaluate(`!!document.querySelector('[aria-label="Remove remove.txt"]')`))
+  await evaluate(`document.querySelector('[aria-label="Remove remove.txt"]').click()`)
   await selectAttachment('input[type=file]', 'original.txt')
   await click('Submit ticket')
   await waitText('Submission response interrupted')
-  await waitText('Remove original.txt')
+  assert(await evaluate(`!!document.querySelector('[aria-label="Remove original.txt"]')`))
   await click('Submit ticket')
   await waitText('Request #142')
   assert.equal(mutations.filter((item) => item.path === '/tickets').length, 2)
@@ -524,7 +527,7 @@ try {
   communication.fail(503)
   await click('Send message')
   await waitText('Temporary server failure')
-  await waitText('Remove message.txt')
+  assert(await evaluate(`!!document.querySelector('[aria-label="Remove message.txt"]')`))
   assert.equal(await evaluate(`document.querySelector('[aria-label="Message content"]').value`), 'Employee context')
   await click('Send message')
   await waitText('Employee context')

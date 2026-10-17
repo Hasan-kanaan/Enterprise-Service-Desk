@@ -89,7 +89,7 @@ export function NotificationBell({ role }: { role: UserRole }) {
       </button>
       {open && (
         <Modal title="Notifications" onClose={() => setOpen(false)} busy={busy}>
-          <RefreshSurface busy={resource.loading && !!resource.data}><div className="button-row">
+          <RefreshSurface busy={resource.loading && !!resource.data}>{!!resource.data?.unread && <div className="button-row">
             <button
               className="button secondary"
               disabled={busy || !resource.data?.unread}
@@ -97,7 +97,7 @@ export function NotificationBell({ role }: { role: UserRole }) {
             >
               Mark all read
             </button>
-          </div>
+          </div>}
           {!!error && <ErrorState error={error} onRetry={refresh} />}
           {resource.loading && !resource.data ? (
             <LoadingState label="Loading notifications..." />

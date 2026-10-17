@@ -1,5 +1,21 @@
 # Frontend UI/UX polish — 2026-10-04
 
+## Cross-screen visual stabilization: ISS-066 / ISS-067 (2026-10-17)
+
+Work History uses a compact shared pagination footer only when navigation is
+useful; filters and page state survive browser back/forward. Existing page headers,
+empty states, list continuation, metadata and theme tokens now provide more
+consistent hierarchy across authenticated routes. Support statuses use neutral
+language, subtask actions sit beside their context, attachment filenames truncate
+accessibly, and session metadata includes the browser timezone. Narrow toolbars,
+catalog actions and dialog footers wrap within the existing layout system.
+
+The [complete visual audit](visual-stabilization-066-067.md) records fixed and
+retained patterns, route screenshots at desktop/tablet/mobile widths in both
+themes, targeted verification and exact files. The normal development database
+now has all 27 migrations, including `20261016180000_video_attachment_limits`, with
+zero schema drift. Historical checkpoint results below are unchanged.
+
 ## Focused UX/security follow-up (2026-10-17)
 
 ISS-054–065 adds bounded native-radio people results, explicit Team specialties,

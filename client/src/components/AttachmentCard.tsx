@@ -4,7 +4,15 @@ import { attachmentBytes, type Attachment } from '@/services/attachments.service
 import { ErrorState } from './TicketUI'
 
 function fileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
   return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MiB` : `${(bytes / 1024).toFixed(1)} KiB`
+}
+
+const fileKinds: Record<string, string> = {
+  'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/webp': 'WebP',
+  'video/mp4': 'MP4', 'video/webm': 'WebM', 'application/pdf': 'PDF',
+  'text/plain': 'Text', 'application/json': 'JSON', 'text/csv': 'CSV',
+  'application/vnd.ms-excel': 'CSV',
 }
 
 function PrivatePreview({ file }: { file: Attachment }) {
@@ -52,7 +60,7 @@ export function AttachmentCard({ file, disabled, onDownload, onDelete }: {
   return <article className="attachment-card" aria-label={`Attachment: ${file.filename}`}>
     <div className="attachment-card-info">
       <Icon size={24} aria-hidden="true" />
-      <div><p className="attachment-filename">{file.filename}</p><p className="quiet-note">{file.contentType?.split('/')[1]?.toUpperCase()} · {fileSize(file.byteSize ?? 0)}</p></div>
+      <div><p className="attachment-filename" title={file.filename ?? undefined}>{file.filename}</p><p className="quiet-note">{fileKinds[file.contentType ?? ''] ?? 'File'} · {fileSize(file.byteSize ?? 0)}</p></div>
     </div>
     <div className="attachment-card-actions">
       {(image || video) && <button type="button" className="text-button" disabled={disabled} aria-expanded={preview} aria-label={`${preview ? 'Hide' : 'Preview'} ${file.filename}`} onClick={() => setPreview(value => !value)}>{preview ? 'Hide preview' : video ? 'Preview video' : 'Preview image'}</button>}

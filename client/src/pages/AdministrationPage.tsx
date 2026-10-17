@@ -23,7 +23,6 @@ export function AdministrationPage() {
     <div className="ticket-workspace">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Workspace</p>
           <h1>Administration</h1>
           <p className="muted">
             Manage your service desk's people and configuration.

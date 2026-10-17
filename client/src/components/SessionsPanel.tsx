@@ -1,3 +1,4 @@
+import { formatDate } from '@/types/ticketPresentation'
 import { SkeletonState } from './Skeleton'
 import { LogOut } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -77,9 +78,9 @@ export function SessionsPanel() {
       <h2 id="sessions-heading" className="font-semibold">
         Your sessions
       </h2>
-      <p className="text-sm text-slate-500">
+      <p className="quiet-note">
         Review devices with access to your account. Device names and last-active
-        times are approximate.
+        times are approximate. Times are shown in {Intl.DateTimeFormat().resolvedOptions().timeZone}.
       </p>
       {loading && !sessions.length && <SkeletonState count={2} label="Loading sessions..." />}
       {error && (
@@ -106,13 +107,13 @@ export function SessionsPanel() {
             key={session.id}
             className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-4"
           >
-            <div className="min-w-0 text-sm">
+            <div className="session-metadata min-w-0 text-sm">
               <h3 className="font-semibold">
                 {session.current ? 'This device' : 'Other device'}
               </h3>
               <p>{session.deviceLabel ?? 'Browser session'}</p>
-              <p>Created {new Date(session.createdAt).toLocaleString()}</p>
-              <p>Last active {new Date(session.lastUsedAt).toLocaleString()}</p>
+              <p>Created {formatDate(session.createdAt, true)}</p>
+              <p>Last active {formatDate(session.lastUsedAt, true)}</p>
             </div>
             <button
               type="button"
@@ -126,7 +127,7 @@ export function SessionsPanel() {
           </li>
         ))}
       </ul>
-      <button
+      {sessions.some((session) => !session.current) && <button
         type="button"
         className="button secondary"
         disabled={
@@ -135,7 +136,7 @@ export function SessionsPanel() {
         onClick={() => void revoke()}
       >
         Log out all other sessions
-      </button>
+      </button>}
     </section>
   )
 }

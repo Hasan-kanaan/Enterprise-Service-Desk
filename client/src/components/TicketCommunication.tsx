@@ -313,11 +313,11 @@ function CommunicationStream({
                     Showing loaded records; the oldest cycle may be incomplete.
                   </p>
                 </>
-              ) : (
+              ) : data.records.length > 0 ? (
                 <p className="muted small">
                   Beginning of {notes ? 'notes' : 'conversation'}.
                 </p>
-              )}
+              ) : null}
               {!!pages.error && (
                 <ErrorState
                   error={pages.error}

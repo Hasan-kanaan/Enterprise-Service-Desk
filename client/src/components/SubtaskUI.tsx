@@ -21,7 +21,7 @@ export function SubtaskRows({
             <div>
               <h3>{task.title}</h3>
               <p>
-                {task.status.replaceAll('_', ' ')}
+                {task.status === 'TODO' ? 'To do' : task.status.charAt(0) + task.status.slice(1).toLowerCase().replaceAll('_', ' ')}
                 {frozen ? ' / Frozen history' : ''}
               </p>
               <p>
@@ -29,7 +29,7 @@ export function SubtaskRows({
                 {task.assignedTeam?.name ??
                   (task.assignedTeamId === null
                     ? 'Unassigned'
-                    : `#${task.assignedTeamId}`)}{' '}
+                    : 'Team unavailable')}{' '}
                 / Agent:{' '}
                 {task.assignedAgent?.displayName ??
                   (task.assignedAgentId === null

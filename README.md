@@ -1,5 +1,17 @@
 # Enterprise Service Desk
 
+## Authenticated visual stabilization: ISS-066 / ISS-067 (2026-10-17)
+
+Work History hides pagination for empty or single-page results and uses compact
+navigation for multiple pages, preserving filters in the URL. Authenticated pages
+share quieter headers/metadata, compact empty states and continuation controls,
+contextual status labels, readable attachment cards and responsive dialogs in
+light and dark themes. See the [visual audit and verification](docs/visual-stabilization-066-067.md).
+
+The normal local development database now includes
+`20261016180000_video_attachment_limits`: all 27 migrations applied, zero schema
+drift. Other databases still need the migration before accepting larger videos.
+
 ## UX/security follow-up: ISS-054–065 (2026-10-17)
 
 Team relationship pickers now open with bounded, searchable eligible results;

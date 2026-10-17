@@ -51,7 +51,6 @@ export function UsersPage() {
     <RefreshSurface busy={!!(resource.loading && resource.items.length)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Administration</p>
           <h1>Accounts</h1>
           <p className="muted">Manage identities and account access.</p>
         </div>
@@ -94,8 +93,8 @@ export function UsersPage() {
             onChange={(e) => filters.set('status', e.target.value)}
           >
             <option value="">All statuses</option>
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="INACTIVE">INACTIVE</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
           </select>
           <select
             aria-label="Account role filter"

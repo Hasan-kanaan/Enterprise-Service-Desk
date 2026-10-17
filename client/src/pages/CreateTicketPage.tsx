@@ -58,7 +58,6 @@ export function CreateTicketPage() {
       </Link>
       <header className="page-heading">
         <div>
-          <p className="eyebrow">My Requests</p>
           <h1>New request</h1>
           <p className="muted">Describe the issue and who is affected.</p>
         </div>

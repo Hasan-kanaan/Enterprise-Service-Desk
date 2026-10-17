@@ -19,7 +19,6 @@ export function ProfilePage() {
       </button>
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Account</p>
           <h1>Account settings</h1>
         </div>
       </header>

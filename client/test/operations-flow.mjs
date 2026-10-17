@@ -1,3 +1,4 @@
+import { operationsVisual } from './visual-stabilization.mjs'
 import { revalidatePage } from './revalidation.mjs'
 import { operationsPolish } from './ui-polish.mjs'
 import { analyticsFixture, analyticsBrowser } from './analytics-browser.mjs'
@@ -626,7 +627,9 @@ try {
     await click(text)
     await waitText('Confirm')
   }
-  if (process.argv.includes('--analytics')) {
+  if (process.argv.includes('--visual-stabilization')) {
+    await operationsVisual({ until, send, evaluate, navigate, waitText, click, fill, tickets, browserErrors, setUser: (role, id) => { user = { ...user, role, id } }, setFailure: value => { failure = value } })
+  } else if (process.argv.includes('--analytics')) {
     await analyticsBrowser({ fixture: analytics, navigate, waitText, evaluate, fill, click, send, setUser: role => { user = { ...user, role } }, browserErrors })
   } else if (process.argv.includes('--list-fallbacks')) {
     const checkRows = async (expected) => {
@@ -859,7 +862,7 @@ try {
   await action('Update subtask')
   await fill('[aria-label="Subtask status"]', 'COMPLETED')
   await click('Confirm')
-  await waitText('COMPLETED')
+  await until(() => evaluate(`document.querySelector('.page-heading .muted')?.textContent === 'Completed'`), 'completed subtask status')
   assert.equal(created.completedById, 20)
   await navigate('/work/tickets/143')
   await waitText('Original investigation task')
@@ -963,7 +966,7 @@ try {
   )
   await fill('[aria-label="Subtask status"]', 'COMPLETED')
   await click('Confirm')
-  await waitText('COMPLETED')
+  await until(() => evaluate(`document.querySelector('.page-heading .muted')?.textContent === 'Completed'`), 'completed subtask status')
   assert.equal(subtasks.find((s) => s.id === 604).completedById, 31)
   await navigate('/work/subtasks/603')
   await waitText('Historical work. This subtask is read-only.')
@@ -1032,7 +1035,7 @@ try {
   await fill('[aria-label="Assignment agent"]', '32')
   await fill('[aria-label="Subtask status"]', 'IN_PROGRESS')
   await click('Confirm')
-  await waitText('IN PROGRESS')
+  await until(() => evaluate(`document.querySelector('.page-heading .muted')?.textContent === 'In progress'`), 'in-progress subtask status')
   await navigate('/work/subtasks/602')
   await waitText('could not be found')
   console.log(

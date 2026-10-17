@@ -128,6 +128,7 @@ export function AppLayout() {
             location.pathname === item.to ||
             location.pathname.startsWith(`${item.to}/`),
         )?.label ?? 'Dashboard')
+  const contextLabel = location.pathname.startsWith('/tickets') ? 'Personal' : viewLabel
   const handleLogout = async () => {
     try {
       await logout()
@@ -253,12 +254,10 @@ export function AppLayout() {
             <Menu size={20} />
           </button>
           <div className="workspace-context">
-            <span>
-              {location.pathname.startsWith('/tickets')
-                ? 'Personal'
-                : viewLabel}
-            </span>
-            <ChevronRight size={13} aria-hidden="true" />
+            {contextLabel !== pageLabel && <>
+              <span>{contextLabel}</span>
+              <ChevronRight size={13} aria-hidden="true" />
+            </>}
             <strong>{pageLabel}</strong>
           </div>
           <div className="topbar-account">

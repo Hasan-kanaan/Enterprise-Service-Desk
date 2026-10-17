@@ -1,5 +1,28 @@
 # Project Status
 
+## ISS-066 / ISS-067 visual stabilization (2026-10-17)
+
+ISS-066 and ISS-067 are implemented. All 15 targeted browser runs pass (69 emitted
+PASS groups), with 300 screenshots across 50 representative states at three widths
+in both themes. Client lint/build and the repository diff check also pass.
+
+Work History now hides unnecessary first-page pagination and groups meaningful
+navigation in a compact footer, with URL filters, back/forward and keyboard
+support. Shared headers, empty states, continuation controls, status language,
+metadata, attachments, dialogs and responsive layouts received a cross-screen
+visual pass using the existing components and design tokens.
+
+The normal local development database `enterprise_service_desk` received
+`20261016180000_video_attachment_limits` in this phase. All 27 migrations are
+applied; Prisma validation/generation pass, schema drift is zero, and the
+attachment-size CHECK is validated. No reset, seed or data repair occurred.
+
+See the [visual audit and verification report](docs/visual-stabilization-066-067.md)
+for route/theme coverage, findings, exact checks, files and limitations. Existing
+business, authorization, privacy and session rules remain unchanged. Changes are
+left unstaged on `development`; no commit, push, GCS, AI or final full regression.
+Earlier entries retain their historical timing.
+
 ## ISS-054 through ISS-065 UX/security cleanup (2026-10-17)
 
 Implemented bounded, purpose-specific Team relationship pickers; clearer Team

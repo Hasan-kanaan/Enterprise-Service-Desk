@@ -61,7 +61,6 @@ export function EmployeeTicketsPage({
     <RefreshSurface busy={!!(loading && tickets.length)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Requester workspace</p>
           <h1>
             {overview
               ? `Hello, ${user?.displayName ?? 'there'}.`
@@ -131,7 +130,7 @@ export function EmployeeTicketsPage({
                 <option value="">All statuses</option>
                 {ticketStatuses.map((value) => (
                   <option key={value} value={value}>
-                    {statusLabels[value]}
+                    {value === 'WAITING_FOR_EMPLOYEE' ? 'Waiting for you' : statusLabels[value]}
                   </option>
                 ))}
               </select>

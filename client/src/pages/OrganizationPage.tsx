@@ -83,7 +83,6 @@ export function OrganizationPage() {
     <RefreshSurface busy={!!(resource.loading && resource.data)}><div className="ticket-workspace">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Administration</p>
           <h1>{team ? team.name : 'Organization'}</h1>
           <p className="muted">
             {team

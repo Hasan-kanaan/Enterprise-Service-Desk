@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Pagination } from '@/components/Pagination'
 import { EmptyState, ErrorState, LoadingState } from '@/components/TicketUI'
 import { useResource } from '@/hooks/useResource'
 import api from '@/services/api'
@@ -33,10 +34,25 @@ type HistoryPage = {
   hasMore: boolean
 }
 export function WorkHistoryPage() {
-  const [page, setPage] = useState(1)
-  const [contribution, setContribution] = useState('')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
+  const [params, setParams] = useSearchParams()
+  const requestedPage = Number(params.get('page') ?? 1)
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1
+  const contribution = params.get('contribution') ?? ''
+  const from = params.get('from') ?? ''
+  const to = params.get('to') ?? ''
+  const setFilter = (name: string, value: string) => setParams(previous => {
+    const next = new URLSearchParams(previous)
+    if (value) next.set(name, value)
+    else next.delete(name)
+    next.delete('page')
+    return next
+  })
+  const setPage = (value: number) => setParams(previous => {
+    const next = new URLSearchParams(previous)
+    if (value === 1) next.delete('page')
+    else next.set('page', String(value))
+    return next
+  })
   const history = useResource(
     useCallback(
       async (signal: AbortSignal) =>
@@ -59,23 +75,21 @@ export function WorkHistoryPage() {
     <section className="ticket-workspace">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Support workspace</p>
           <h1>My Work History</h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="muted">
             Your recorded completed work. Historical records do not grant ticket
             access.
           </p>
         </div>
       </header>
-      <div className="panel list-filters">
+      <div className="list-filters history-filters">
         <label className="flex min-w-0 flex-col gap-1 text-sm">
           Contribution
           <select
             className="max-w-full rounded border border-[var(--border)] bg-[var(--card)] p-2"
             value={contribution}
             onChange={(e) => {
-              setContribution(e.target.value)
-              setPage(1)
+              setFilter('contribution', e.target.value)
             }}
           >
             <option value="">All contributions</option>
@@ -93,8 +107,7 @@ export function WorkHistoryPage() {
             type="date"
             value={from}
             onChange={(e) => {
-              setFrom(e.target.value)
-              setPage(1)
+              setFilter('from', e.target.value)
             }}
           />
         </label>
@@ -105,8 +118,7 @@ export function WorkHistoryPage() {
             type="date"
             value={to}
             onChange={(e) => {
-              setTo(e.target.value)
-              setPage(1)
+              setFilter('to', e.target.value)
             }}
           />
         </label>
@@ -124,8 +136,9 @@ export function WorkHistoryPage() {
           {!history.data?.items.length ? (
             <EmptyState title="No work history found">
               <p>
-                Completed work with retained attribution will appear here. Try
-                adjusting your filters.
+                {contribution || from || to
+                  ? 'No completed work matches these filters. Try a different contribution or date range.'
+                  : 'Completed work with retained attribution will appear here.'}
               </p>
             </EmptyState>
           ) : (
@@ -145,7 +158,7 @@ export function WorkHistoryPage() {
                         Subtask #{row.id}: {row.subtaskTitle} · Completed
                       </p>
                     )}
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="mt-1 quiet-note">
                       {row.outcome
                         ? `Cycle ${row.outcome.toLowerCase()}`
                         : 'Cycle ongoing'}{' '}
@@ -154,13 +167,13 @@ export function WorkHistoryPage() {
                   </div>
                   {row.canOpenTicket ? (
                     <Link
-                      className="shrink-0 text-sm font-semibold text-cyan-700"
+                      className="text-button shrink-0"
                       to={`/work/tickets/${row.ticketId}`}
                     >
                       Open ticket
                     </Link>
                   ) : (
-                    <span className="shrink-0 text-sm text-slate-500">
+                    <span className="quiet-note shrink-0">
                       Historical record only
                     </span>
                   )}
@@ -168,26 +181,7 @@ export function WorkHistoryPage() {
               ))}
             </ul>
           )}
-          <nav
-            className="flex items-center justify-between gap-3"
-            aria-label="History pagination"
-          >
-            <button
-              className="button secondary"
-              disabled={page === 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Previous
-            </button>
-            <span aria-live="polite">Page {page}</span>
-            <button
-              className="button secondary"
-              disabled={!history.data?.hasMore}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </button>
-          </nav>
+          <Pagination page={page} hasMore={!!history.data?.hasMore} busy={history.loading} onPage={setPage} label="History pagination" />
         </>
       )}
     </section>

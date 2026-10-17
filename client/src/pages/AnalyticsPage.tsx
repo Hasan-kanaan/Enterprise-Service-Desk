@@ -93,7 +93,6 @@ export function AnalyticsPage() {
     <div className="ticket-workspace analytics-page">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Manager workspace</p>
           <h1>Service analytics</h1>
           <p className="muted">
             Company-wide aggregates, without individual performance metrics.
@@ -130,7 +129,7 @@ export function AnalyticsPage() {
           <>
             <p className="quiet-note">Backlog and coverage are current snapshots, including older work.</p>
             {!data.period.created && (
-              <p className="panel">
+              <p className="notice">
                 No tickets created in this period. Current backlog and recorded
                 lifecycle activity may still be present.
               </p>

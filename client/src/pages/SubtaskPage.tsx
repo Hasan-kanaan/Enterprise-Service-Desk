@@ -54,17 +54,22 @@ function SubtaskContent({ id }: { id: number }) {
             Subtask #{id} / Ticket #{task.ticketId}
           </p>
           <h1>{task.title}</h1>
-          <p className="muted">{task.status.replaceAll('_', ' ')}</p>
+          <p className="muted">{task.status === 'TODO' ? 'To do' : task.status.charAt(0) + task.status.slice(1).toLowerCase().replaceAll('_', ' ')}</p>
+        </div>
+        <div className="button-row">
+          {permissions.edit && (
+            <button className="button primary" onClick={() => setEditing(true)}>
+              Update subtask
+            </button>
+          )}
+          {resource.data.parentVisible && (
+            <Link className="button secondary" to={`/work/tickets/${task.ticketId}`}>
+              Open parent ticket
+            </Link>
+          )}
         </div>
       </header>
-      {resource.data.parentVisible && (
-        <Link
-          className="button secondary"
-          to={`/work/tickets/${task.ticketId}`}
-        >
-          Open parent ticket
-        </Link>
-      )}
+
       {frozen && (
         <p className="notice">
           {historical
@@ -93,11 +98,6 @@ function SubtaskContent({ id }: { id: number }) {
           </div>
         </dl>
       </section>
-      {permissions.edit && (
-        <button className="button primary" onClick={() => setEditing(true)}>
-          Update subtask
-        </button>
-      )}
 
       {editing && (
         <SubtaskForm
