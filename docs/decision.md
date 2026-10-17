@@ -948,6 +948,20 @@ No schema/migration or demo-deployment-plan assumption changes. Future work rema
 shared limiting, malware scanning, actual hosting proxy/TLS policy
 and optional bot/CAPTCHA protection. AI and public deployment work remain deferred.
 
+## 2026-10-17: Operate the existing private GCS bucket locally
+
+Configure the ignored `server/.env` with `STORAGE_PROVIDER=gcs`,
+`GCS_PROJECT_ID=enterprise-service-511905` and
+`GCS_BUCKET_NAME=enterprise-service-files-22`. Use the existing developer ADC
+outside the repository. Do not create keys or change bucket IAM. The dedicated
+deployment identity is
+`enterprise-service-storage@enterprise-service-511905.iam.gserviceaccount.com`,
+with bucket-scoped `roles/storage.objectUser`; local developer access is separate
+from production runtime validation. Public access prevention and uniform access
+remain enabled, with no browser-to-GCS access. Extend the explicit smoke command
+only to confirm live-object absence after deletion. Seven-day soft delete remains
+unchanged. No AI or deployment work is included. See [verification evidence](gcs-storage-verification.md).
+
 ## 2026-09-26: Configurable Google Cloud attachment storage
 
 Preserve AttachmentStorage put/read/remove and the existing bounded-buffer flow.

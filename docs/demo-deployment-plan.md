@@ -22,7 +22,7 @@ The likely eventual deployment shape is:
 - HTTPS everywhere.
 - Secrets only on backend/server infrastructure.
 
-Hosting providers are intentionally not selected yet. Google Cloud Storage is now supported through the configurable storage abstraction; its real project, private bucket and IAM setup remain manual future work. Local filesystem storage remains valid for development and tests. Production/demo attachments can use GCS. Do not store attachment binaries in PostgreSQL.
+Hosting providers are intentionally not selected yet. Google Cloud Storage is supported through the configurable storage abstraction. Project `enterprise-service-511905`, private bucket `enterprise-service-files-22`, and bucket-scoped Storage Object User for `enterprise-service-storage@enterprise-service-511905.iam.gserviceaccount.com` were inspected on 2026-10-17. Public access prevention is enforced and uniform bucket-level access is enabled; no public grants were found. The local adapter smoke test passed using developer ADC. Production must attach the dedicated service account or use workload identity and validate that runtime separately; do not deploy developer ADC or service-account keys. Downloads and previews remain authorized backend reads. See [GCS verification and limitations](gcs-storage-verification.md). Local filesystem storage remains valid for development and tests. Do not store attachment binaries in PostgreSQL.
 
 ## Domain
 

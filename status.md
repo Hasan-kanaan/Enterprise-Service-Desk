@@ -1,5 +1,31 @@
 # Project Status
 
+## Private GCS operational verification (2026-10-17)
+
+Private GCS storage is operational locally and verified without exposing public attachment access.
+
+The ignored `server/.env` now explicitly selects project
+`enterprise-service-511905`, bucket `enterprise-service-files-22` and provider
+`gcs`. Actual backend ADC was verified as the developer user, separate from
+`enterprise-service-storage@enterprise-service-511905.iam.gserviceaccount.com`.
+The service account has bucket-scoped Storage Object User and no project
+Owner/Editor/Storage Admin. Public access prevention is enforced, uniform access
+is enabled, and bucket/project policies have no public principals. Default project
+legacy principals were inspected separately; no cloud permissions were changed.
+
+Real-GCS upload/read/checksum/content comparison/delete passed. The smoke command
+now also confirms the live probe is absent after deletion. Seven-day soft delete
+remains enabled. Backend-mediated downloads/previews, parent authorization,
+requester-only administration-role access and fail-closed GCS selection remain intact.
+
+Server lint/typecheck/build pass; focused adapter/file/video units pass
+**3 suites / 53 tests**; local PostgreSQL attachment/authorization tests pass
+**2 suites / 151 tests**. Local probe and production configuration rejection
+checks pass; diff check passes. No frontend changes/client checks or full regression.
+Production workload identity, deployed end-to-end GCS application checks and any
+existing local-binary migration remain separate. No AI, secrets committed, staging,
+commit or push. See [exact evidence, commands, files and limitations](docs/gcs-storage-verification.md).
+
 ## ISS-066 / ISS-067 visual stabilization (2026-10-17)
 
 ISS-066 and ISS-067 are implemented. All 15 targeted browser runs pass (69 emitted

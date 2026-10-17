@@ -1,5 +1,15 @@
 # Enterprise Service Desk
 
+## Private GCS operational verification (2026-10-17)
+
+Local development now uses private bucket `enterprise-service-files-22` in
+`enterprise-service-511905` through developer ADC. The live create/read/content-match/
+delete check passed and confirmed the probe is no longer readable. Public access
+prevention is enforced; uniform bucket-level access is enabled; no public IAM grants
+were found. The dedicated runtime service account has bucket-scoped Storage Object
+User, without project Owner/Editor/Storage Admin. Production runtime identity still
+needs separate validation. See [configuration, IAM evidence and limitations](docs/gcs-storage-verification.md).
+
 ## Authenticated visual stabilization: ISS-066 / ISS-067 (2026-10-17)
 
 Work History hides pagination for empty or single-page results and uses compact
@@ -1100,7 +1110,7 @@ with sanitized errors; GCS never falls back to local. Authorized download failur
 retain the existing generic unavailable response. For an explicit operational check,
 run `npm run storage:check` from `server/` with the intended backend environment.
 It loads `.env` if present, uploads one generated probe, reads/verifies bytes and
-attempts deletion in `finally`. It creates no bucket, changes no IAM and writes no
+attempts deletion in `finally`, then confirms the live object is absent. It creates no bucket, changes no IAM and writes no
 database rows. Cleanup failure can leave a private probe for manual removal. This
 command is never run by startup/tests and exposes no public health endpoint.
 
@@ -1133,7 +1143,11 @@ Normal automated verification needs no Google account, credentials, bucket, `gcl
 or cloud calls. Future backend AI can obtain authorized bytes through the same
 boundary; AI and public-demo deployment remain separate, unimplemented phases.
 
-### Manual Google setup and smoke test (still required)
+### Google setup and smoke-test procedure
+
+The existing project/bucket and local adapter smoke test were verified on 2026-10-17;
+see the [operational record](docs/gcs-storage-verification.md). The procedure below
+also describes future deployment verification. Do not reprovision the existing resources.
 
 1. Manually create/select a Google Cloud project, configure billing as needed and
    enable the Cloud Storage API. Choose your bucket region/storage class.
@@ -1141,10 +1155,12 @@ boundary; AI and public-demo deployment remain separate, unimplemented phases.
    access prevention enforced. Remove `allUsers`/`allAuthenticatedUsers` grants.
    Do not configure public URLs or browser bucket access. See
    [Google access controls](https://docs.cloud.google.com/storage/docs/access-control).
-3. Create/select a dedicated backend identity. Bind a custom role **on this bucket**
-   with only `storage.objects.create`, `storage.objects.get`, and
-   `storage.objects.delete`. `get` includes metadata. No object listing, bucket
-   administration, ACL/IAM mutation or project Owner/Editor is needed. See
+3. Use dedicated backend identity
+   `enterprise-service-storage@enterprise-service-511905.iam.gserviceaccount.com`.
+   It already has **bucket-scoped Storage Object User** (`roles/storage.objectUser`).
+   The adapter needs `storage.objects.create`, `storage.objects.get`, and
+   `storage.objects.delete`; the predefined role includes additional object permissions.
+   No project Owner/Editor, Storage Admin or bucket IAM administration is needed. See
    [Google permission definitions](https://docs.cloud.google.com/storage/docs/access-control/iam-permissions).
 4. Configure ADC outside source control. For optional local cloud testing,
    `gcloud auth application-default login` establishes local ADC for your permitted
@@ -1162,7 +1178,10 @@ boundary; AI and public-demo deployment remain separate, unimplemented phases.
    verify tombstones, download denial and object deletion. Verify ticket files
    cannot be individually deleted. In an isolated smoke-test setup, deny object
    deletion and verify the tombstone survives with a safe cleanup warning, then
-   restore permissions. Real GCS setup and smoke testing have not been performed.
+   restore permissions. These complete application/runtime scenarios remain deployment
+   checks; the local real-GCS adapter probe and local-storage authorization tests
+   are recorded separately in the operational record. Do not change live IAM just
+   to inject a failure during the local adapter probe.
 
 ### Attachment business rules
 
