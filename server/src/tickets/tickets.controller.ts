@@ -33,6 +33,7 @@ import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { ListTicketsDto, ListSubtasksDto } from './dto/list-tickets.dto';
 import { ReopenTicketDto } from './dto/reopen-ticket.dto';
 import { UpdateTicketManagerDto } from './dto/update-ticket-manager.dto';
+import { mapTicketMutation } from './ticket-response.mapper';
 
 type AuthenticatedRequest = {
   user: {
@@ -140,7 +141,9 @@ export class TicketsController {
     @UploadedFiles() files: Upload[] = [],
   ) {
     return this.uploads.run(files, (batch) =>
-      this.ticketsService.create(this.authenticatedUser(request), dto, batch),
+      this.ticketsService
+        .create(this.authenticatedUser(request), dto, batch)
+        .then(mapTicketMutation),
     );
   }
 
@@ -150,11 +153,9 @@ export class TicketsController {
     @Body() dto: UpdateTicketDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.update(
-      ticketId,
-      this.authenticatedUser(request),
-      dto,
-    );
+    return this.ticketsService
+      .update(ticketId, this.authenticatedUser(request), dto)
+      .then(mapTicketMutation);
   }
 
   @Patch(':ticketId/manager')
@@ -163,11 +164,9 @@ export class TicketsController {
     @Body() dto: UpdateTicketManagerDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.assignManager(
-      ticketId,
-      this.authenticatedUser(request),
-      dto,
-    );
+    return this.ticketsService
+      .assignManager(ticketId, this.authenticatedUser(request), dto)
+      .then(mapTicketMutation);
   }
 
   @Patch(':ticketId/assignment')
@@ -176,11 +175,9 @@ export class TicketsController {
     @Body() dto: AssignTicketDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.assign(
-      ticketId,
-      this.authenticatedUser(request),
-      dto,
-    );
+    return this.ticketsService
+      .assign(ticketId, this.authenticatedUser(request), dto)
+      .then(mapTicketMutation);
   }
 
   @Patch(':ticketId/status')
@@ -189,12 +186,14 @@ export class TicketsController {
     @Body() dto: UpdateTicketStatusDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.updateStatus(
-      ticketId,
-      this.authenticatedUser(request),
-      dto.status,
-      dto.resolutionSummary,
-    );
+    return this.ticketsService
+      .updateStatus(
+        ticketId,
+        this.authenticatedUser(request),
+        dto.status,
+        dto.resolutionSummary,
+      )
+      .then(mapTicketMutation);
   }
 
   @Get(':ticketId/history')
@@ -230,7 +229,9 @@ export class TicketsController {
     @Param('ticketId', ParseIntPipe) id: number,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.cancel(id, this.authenticatedUser(request));
+    return this.ticketsService
+      .cancel(id, this.authenticatedUser(request))
+      .then(mapTicketMutation);
   }
 
   @Post(':ticketId/reopen')
@@ -239,7 +240,9 @@ export class TicketsController {
     @Body() dto: ReopenTicketDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ticketsService.reopen(id, this.authenticatedUser(request), dto);
+    return this.ticketsService
+      .reopen(id, this.authenticatedUser(request), dto)
+      .then(mapTicketMutation);
   }
 
   @Post(':ticketId/subtasks')

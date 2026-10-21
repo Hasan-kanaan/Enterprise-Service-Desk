@@ -5,6 +5,7 @@ node_modules
 
 client/node_modules
 server/node_modules
+/.pnpm-store/
 
 client/dist
 server/dist
@@ -14,3 +15,7 @@ server/dist
 *.log
 # Private local attachment storage
 .attachments/
+
+# Local pre-deployment QA evidence and manual-test credentials
+/.qa-checkpoint/
+/docs-local/qa-accounts.local.md

@@ -244,6 +244,64 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       clientRequestId: randomUUID(),
     });
 
+  it('omits creation internals from every ticket mutation and retains database idempotency', async () => {
+    const input = {
+      clientRequestId: randomUUID(),
+      title: 'Private creation metadata regression',
+      description: 'Synthetic regression ticket',
+      categoryId,
+      affectedRegionIds: [regionId],
+      affectedDepartmentIds: [departmentId],
+    };
+    const created = await post('/tickets', 'employee', input).expect(201);
+    const id = created.body.id;
+    const responses = [created];
+    responses.push(await post('/tickets', 'employee', input).expect(201));
+    responses.push(
+      await patch(`/tickets/${id}`, 'employee', { title: 'Updated' }).expect(
+        200,
+      ),
+    );
+    responses.push(
+      await patch(`/tickets/${id}/manager`, 'manager', {
+        assignedManagerId: users.manager.id,
+      }).expect(200),
+    );
+    responses.push(
+      await patch(`/tickets/${id}/assignment`, 'manager', {
+        teamId: teamA.id,
+        agentId: users.agent.id,
+      }).expect(200),
+    );
+    responses.push(
+      await patch(`/tickets/${id}/status`, 'agent', {
+        status: 'IN_PROGRESS',
+      }).expect(200),
+    );
+    responses.push(
+      await patch(`/tickets/${id}/status`, 'agent', {
+        status: 'RESOLVED',
+        resolutionSummary: 'Synthetic resolution',
+      }).expect(200),
+    );
+    responses.push(
+      await post(`/tickets/${id}/reopen`, 'employee', {
+        reason: 'Synthetic reopen',
+      }).expect(201),
+    );
+    for (const response of responses) {
+      expect(response.body.id).toBe(id);
+      expect(response.body).not.toHaveProperty('creationHash');
+      expect(response.body).not.toHaveProperty('clientRequestId');
+    }
+    const persisted = await db.ticket.findUniqueOrThrow({ where: { id } });
+    expect(persisted.clientRequestId).toBe(input.clientRequestId);
+    expect(persisted.creationHash).toMatch(/^[a-f0-9]{64}$/);
+    await post('/tickets', 'employee', { ...input, title: 'Changed' }).expect(
+      409,
+    );
+  });
+
   it.each(Object.values(TicketStatus))(
     'enforces requester metadata current state: %s',
     async (status) => {

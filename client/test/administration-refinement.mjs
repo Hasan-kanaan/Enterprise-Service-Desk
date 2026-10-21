@@ -110,7 +110,10 @@ export async function administrationRefinementChecks({ teams, navigate, click, f
     }
     await evaluate(`document.querySelector('button[aria-label="Actions for ${kind} Renamed ${kind}"]').focus()`)
     for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) })
+    await until(() => evaluate('document.activeElement.textContent.trim() === "Rename"'), 'first action keyboard focus')
     for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    assert.equal(await evaluate('document.activeElement.textContent.trim()'), 'Archive')
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, modifiers: 8 })
     assert.equal(await evaluate('document.activeElement.textContent.trim()'), 'Rename')
     for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) })
     await waitText(`Rename Renamed ${kind}`)

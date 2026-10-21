@@ -18,6 +18,7 @@ describe('TicketsController', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('delegates manager assignment with the authenticated identity', async () => {
+    assignManager.mockResolvedValue({ id: 12 });
     await controller.assignManager(
       12,
       { assignedManagerId: 32 },

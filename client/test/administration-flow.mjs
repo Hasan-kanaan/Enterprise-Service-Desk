@@ -687,6 +687,10 @@ try {
     assert.deepEqual(browserErrors, [])
   } else if (process.argv.includes('--account-security')) {
     securitySession = false
+    // This public lifecycle mode needs a pending identity for generic recovery
+    // enumeration; all shared browser accounts otherwise default to activated.
+    const pendingFixture = accounts.find(a => a.id !== accounts.find(item => item.role === 'ADMIN').id)
+    pendingFixture.activatedAt = null
     await accountSecurityChecks({ accounts, requests, sendSecurityMail, navigate, click, fill, evaluate, waitText, until, send,
       failNext: value => { publicSecurityFailure = value },
       delayNext: () => { securityDelay = 700 },

@@ -323,6 +323,10 @@ describe('Pre-AI hardening (isolated PostgreSQL schema and HTTP)', () => {
         .attach('files', Buffer.from(file), 'evidence.txt');
     const results = await Promise.all([send(), send(), send()]);
     expect(results.map((r) => r.status)).toEqual([201, 201, 201]);
+    for (const result of results) {
+      expect(result.body).not.toHaveProperty('creationHash');
+      expect(result.body).not.toHaveProperty('clientRequestId');
+    }
     const id = (results[0].body as TicketResult).id;
     expect(results.map((r) => (r.body as TicketResult).id)).toEqual([
       id,

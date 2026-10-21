@@ -1,5 +1,15 @@
 import { Prisma } from '../../generated/prisma/client';
+import type { Ticket } from '../../generated/prisma/client';
 import { autoCloseAt } from './auto-close.config';
+
+// Mutation services retain creation metadata for idempotency checks. It is not
+// part of the public ticket contract, including create/replay responses.
+export function mapTicketMutation(ticket: Ticket) {
+  const { creationHash, clientRequestId, ...visible } = ticket;
+  void creationHash;
+  void clientRequestId;
+  return visible;
+}
 
 const person = {
   select: { id: true, displayName: true },

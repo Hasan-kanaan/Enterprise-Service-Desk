@@ -2,9 +2,16 @@ allowBuilds:
   '@prisma/engines': true
   prisma: true
   unrs-resolver: true
+minimumReleaseAgeExclude:
+  - brace-expansion@1.1.16 || 1.1.17 || 1.1.18 || 1.1.19 || 1.1.20 || 1.1.21 || 2.1.2 || 2.1.3 || 2.1.4 || 2.1.5 || 2.1.6 || 2.1.7 || 5.0.8 || 5.0.9 || 5.0.10 || 5.0.11 || 5.0.12
+  - js-yaml@3.15.1 || 3.15.2 || 4.3.1 || 4.3.2
+  - browserslist@4.28.7
+  - baseline-browser-mapping@2.11.0
+  - sprintf-js@1.1.4
 # Server-local pnpm 11 settings; client and root remain independent.
 # Compatibility evidence and removal criteria: ../docs/dependency-audit.md
 overrides:
   'gaxios@6.7.1>uuid': 11.1.1
   '@prisma/config@7.10.0>deepmerge-ts': 8.0.0
   'prisma@7.10.0>mysql2': 3.23.1
+  handlebars: 4.7.10
