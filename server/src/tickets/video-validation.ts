@@ -65,6 +65,21 @@ function mp4(bytes: Buffer) {
     invalid();
   const media = top.filter((box) => box.type === 'mdat' && box.end > box.start);
   if (!media.length) invalid();
+  const mediaBytes = media.reduce((sum, box) => sum + box.end - box.start, 0);
+  // Top-level boxes are parsed in byte order, so non-empty mdat ranges are
+  // sorted and disjoint. Binary search keeps offset validation O(log mdat).
+  const insideMedia = (position: number) => {
+    let low = 0;
+    let high = media.length - 1;
+    while (low <= high) {
+      const middle = low + Math.floor((high - low) / 2);
+      const box = media[middle];
+      if (position < box.start) high = middle - 1;
+      else if (position >= box.end) low = middle + 1;
+      else return true;
+    }
+    return false;
+  };
   const movie = children(one(top, 'moov'));
   const header = one(movie, 'mvhd');
   if (header.end - header.start < 100) invalid();
@@ -163,11 +178,7 @@ function mp4(bytes: Buffer) {
     if (!fixed)
       for (let i = 0; i < count; i++)
         payload += bytes.readUInt32BE(sizes.start + 12 + i * 4);
-    if (
-      !payload ||
-      payload > media.reduce((sum, box) => sum + box.end - box.start, 0)
-    )
-      invalid();
+    if (!payload || payload > mediaBytes) invalid();
     const offsets = table.filter(
       (box) => box.type === 'stco' || box.type === 'co64',
     );
@@ -183,11 +194,7 @@ function mp4(bytes: Buffer) {
         width === 8
           ? Number(bytes.readBigUInt64BE(at))
           : bytes.readUInt32BE(at);
-      if (
-        !Number.isSafeInteger(position) ||
-        !media.some((box) => position >= box.start && position < box.end)
-      )
-        invalid();
+      if (!Number.isSafeInteger(position) || !insideMedia(position)) invalid();
     }
   }
   if (!video) invalid();

@@ -112,7 +112,17 @@ export class AuthGuard implements CanActivate {
       return true;
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
-      throw new UnauthorizedException('Invalid or expired token');
+      // Only JWT verification failures represent an invalid credential. Database
+      // and unexpected failures must reach Nest's safe 5xx exception handling.
+      if (error instanceof UnauthorizedException) throw error;
+      if (
+        error instanceof Error &&
+        ['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(
+          error.name,
+        )
+      )
+        throw new UnauthorizedException('Invalid or expired token');
+      throw error;
     }
   }
 }

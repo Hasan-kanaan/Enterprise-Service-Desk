@@ -2,7 +2,7 @@ import { ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedRequest } from './auth.guard';
-import { UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from './auth.guard';
 
 describe('Database-backed authentication', () => {
@@ -24,6 +24,7 @@ describe('Database-backed authentication', () => {
     } as unknown as PrismaService,
   );
   beforeEach(() => {
+    request.headers.authorization = 'Bearer token';
     findSession.mockResolvedValue({ id: sid });
     verifyAsync.mockResolvedValue({
       sid,
@@ -79,5 +80,44 @@ describe('Database-backed authentication', () => {
         UnauthorizedException,
       );
     }
+  });
+  it('returns 401 for missing credentials and invalid or expired JWTs', async () => {
+    request.headers.authorization = undefined;
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    request.headers.authorization = 'Bearer token';
+    for (const name of ['JsonWebTokenError', 'TokenExpiredError']) {
+      const error = new Error('credential rejected');
+      error.name = name;
+      verifyAsync.mockRejectedValueOnce(error);
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    }
+  });
+  it('preserves password-change authorization as 403', async () => {
+    findUnique.mockResolvedValue({
+      id: 1,
+      role: 'EMPLOYEE',
+      status: 'ACTIVE',
+      activatedAt: new Date(),
+      sessionVersion: 0,
+      passwordChangeRequired: true,
+    });
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+  it('propagates database and unexpected failures instead of labeling them 401', async () => {
+    const databaseError = new Error('database unavailable');
+    findUnique.mockRejectedValueOnce(databaseError);
+    await expect(guard.canActivate(context)).rejects.toBe(databaseError);
+
+    const jwtInfrastructureError = new Error('signing configuration failure');
+    verifyAsync.mockRejectedValueOnce(jwtInfrastructureError);
+    await expect(guard.canActivate(context)).rejects.toBe(
+      jwtInfrastructureError,
+    );
   });
 });

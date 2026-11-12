@@ -54,7 +54,20 @@ export function redact(value: string, limit: number): string {
       '[secret]',
     )
     .replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[token]')
-    .replace(/(?:\+?\d[\d ().-]{6,}\d)/g, '[phone]')
+    .replace(/\(?\+?\d[\d ().-]{6,}\d\)?/g, (candidate) => {
+      const compact = candidate.trim();
+      const digits = compact.replace(/\D/g, '').length;
+      // Preserve common technical identifiers that happen to look numeric.
+      // Dotted numeric forms cover IPv4 addresses and software versions;
+      // ISO dates are preserved separately. These checks do not anonymize text.
+      if (
+        /^\d{4}-\d{2}-\d{2}$/.test(compact) ||
+        /^\d{1,3}(?:\.\d{1,3}){3}$/.test(compact) ||
+        /^v?\d+(?:\.\d+){1,4}$/i.test(compact)
+      )
+        return candidate;
+      return digits >= 7 && digits <= 15 ? '[phone]' : candidate;
+    })
     .slice(0, limit);
 }
 

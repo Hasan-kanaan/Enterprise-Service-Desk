@@ -153,6 +153,37 @@ describe('Requester structured contract', () => {
       AiProviderError,
     );
   });
+  it.each([
+    ['The VPN fails after two hours.', 'The VPN fails after 2 hours.'],
+    ['Win11 fails to connect.', 'Windows 11 fails to connect.'],
+  ])('accepts equivalent numeric normalization: %s', (source, rewrite) => {
+    const input = { ...draftInput, draft: { title: '', description: source } };
+    const result = draftResult();
+    result.suggestions.description = rewrite;
+    expect(validateDraftResult(result, input).suggestions.description).toBe(
+      rewrite,
+    );
+  });
+  it('rejects a new numeric claim while allowing numeric formatting changes', () => {
+    const input = {
+      ...draftInput,
+      draft: { title: '', description: 'VPN fails on Windows 11.' },
+    };
+    const result = draftResult();
+    result.suggestions.description = 'Windows 11 shows error 8001.';
+    expect(() => validateDraftResult(result, input)).toThrow(AiProviderError);
+  });
+  it('redacts phone numbers from returned suggestions', () => {
+    const input = {
+      ...draftInput,
+      draft: { title: '', description: 'Phone number 961123456789 is listed.' },
+    };
+    const result = draftResult();
+    result.suggestions.description = input.draft.description;
+    expect(
+      validateDraftResult(result, input).suggestions.description,
+    ).toContain('[phone]');
+  });
   it('preserves a faithful rewrite without adding location or impact', () => {
     const result = validateDraftResult(draftResult(), draftInput);
     expect(result.suggestions.description).toBe(draftInput.draft.description);

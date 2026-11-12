@@ -91,10 +91,26 @@ export function mapTicket(
     affectedDepartments,
     creationHash,
     clientRequestId,
+    aiSuggestedCategoryId,
+    aiSuggestedPriority,
+    aiSuggestedTeamId,
+    aiSuggestedAgentId,
+    aiConfidence,
+    aiReason,
+    aiReviewedAt,
+    aiReviewedById,
     ...scalars
   } = ticket;
   void creationHash;
   void clientRequestId;
+  void aiSuggestedCategoryId;
+  void aiSuggestedPriority;
+  void aiSuggestedTeamId;
+  void aiSuggestedAgentId;
+  void aiConfidence;
+  void aiReason;
+  void aiReviewedAt;
+  void aiReviewedById;
   return {
     ...scalars,
     autoCloseAt: autoCloseAt(ticket),

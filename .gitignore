@@ -19,3 +19,8 @@ server/dist
 # Local pre-deployment QA evidence and manual-test credentials
 /.qa-checkpoint/
 /docs-local/qa-accounts.local.md
+
+# Project documentation stays local; retain the fixture README required by tests.
+docs/
+*.md
+!server/test/fixtures/README.md

@@ -39,6 +39,26 @@ describe('Conservative private video attachments', () => {
     bytes.writeUInt32BE(0, reference + 4);
     expect(validVideo(bytes, '.mp4')).toBe(false);
   });
+  it('validates chunk offsets across multiple sorted mdat ranges', () => {
+    const original = mp4Fixture();
+    const mdatType = original.indexOf(Buffer.from('mdat'));
+    const mdatStart = mdatType - 4;
+    const mdatEnd = mdatStart + original.readUInt32BE(mdatStart);
+    const extra = box('mdat', Buffer.from([1, 2, 3, 4]));
+    const bytes = Buffer.concat([
+      original.subarray(0, mdatEnd),
+      extra,
+      original.subarray(mdatEnd),
+    ]);
+    const stco = bytes.indexOf(Buffer.from('stco'));
+    // Point the sample chunk into the later media range.
+    bytes.writeUInt32BE(mdatEnd + 8, stco + 12);
+    expect(validVideo(bytes, '.mp4')).toBe(true);
+
+    // A position in the intervening non-media box is rejected.
+    bytes.writeUInt32BE(0, stco + 12);
+    expect(validVideo(bytes, '.mp4')).toBe(false);
+  });
   it.each([
     ['mp4', mp4Fixture()],
     ['webm', webmFixture()],

@@ -56,6 +56,44 @@ export type DraftAiResult = {
 export function meaningfulCharacters(text: string) {
   return (text.match(/[\p{L}\p{N}]/gu) ?? []).length;
 }
+const spokenNumbers: Record<string, string> = {
+  zero: '0',
+  one: '1',
+  two: '2',
+  three: '3',
+  four: '4',
+  five: '5',
+  six: '6',
+  seven: '7',
+  eight: '8',
+  nine: '9',
+  ten: '10',
+  eleven: '11',
+  twelve: '12',
+  thirteen: '13',
+  fourteen: '14',
+  fifteen: '15',
+  sixteen: '16',
+  seventeen: '17',
+  eighteen: '18',
+  nineteen: '19',
+  twenty: '20',
+  thirty: '30',
+  forty: '40',
+  fifty: '50',
+  sixty: '60',
+  seventy: '70',
+  eighty: '80',
+  ninety: '90',
+};
+function numericFacts(value: string) {
+  const facts = new Set<string>();
+  for (const match of value.match(/[0-9]+(?:[.,][0-9]+)*/g) ?? [])
+    facts.add(match.replaceAll(',', '.'));
+  for (const word of value.toLowerCase().match(/[a-z]+/g) ?? [])
+    if (spokenNumbers[word]) facts.add(spokenNumbers[word]);
+  return facts;
+}
 function object(value: unknown, keys: string[]): Record<string, unknown> {
   if (
     !value ||
@@ -139,14 +177,11 @@ export function validateDraftResult(
       throw new AiProviderError('invalid');
     // Reject newly invented numerical facts/error codes/model numbers. Semantic
     // fidelity still requires the explicit human review; this is only a basic guard.
-    const source = new Set(
-      `${input.draft.title} ${input.draft.description}`
-        .toLowerCase()
-        .match(/[\p{L}\p{N}_-]*\d[\p{L}\p{N}_-]*/gu) ?? [],
+    const source = numericFacts(
+      `${input.draft.title} ${input.draft.description}`,
     );
-    for (const token of value.match(/[\p{L}\p{N}_-]*\d[\p{L}\p{N}_-]*/gu) ?? [])
-      if (!source.has(token.toLowerCase()))
-        throw new AiProviderError('invalid');
+    for (const fact of numericFacts(value))
+      if (!source.has(fact)) throw new AiProviderError('invalid');
     return redact(value, max);
   }
   const p = object(s.priority, ['value', 'confidence', 'reason']);

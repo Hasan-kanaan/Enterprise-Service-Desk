@@ -178,18 +178,35 @@ export class TicketVisibilityService {
             : [];
         const ids = new Set(collaborations.map((row) => row.ticketId));
         return listPage(
-          rows.map((ticket) => ({
-            ...ticket,
-            ...(user.role === UserRole.AGENT
-              ? {
-                  isCurrentCollaborator:
-                    ids.has(ticket.id) &&
-                    operationalStatuses.includes(
-                      ticket.status as (typeof operationalStatuses)[number],
-                    ),
-                }
-              : {}),
-          })),
+          rows.map((ticket) => {
+            return {
+              id: ticket.id,
+              title: ticket.title,
+              description: ticket.description,
+              requesterId: ticket.requesterId,
+              categoryId: ticket.categoryId,
+              priority: ticket.priority,
+              status: ticket.status,
+              allRegions: ticket.allRegions,
+              allDepartments: ticket.allDepartments,
+              assignedTeamId: ticket.assignedTeamId,
+              assignedManagerId: ticket.assignedManagerId,
+              assignedAgentId: ticket.assignedAgentId,
+              resolvedAt: ticket.resolvedAt,
+              closedAt: ticket.closedAt,
+              createdAt: ticket.createdAt,
+              updatedAt: ticket.updatedAt,
+              ...(user.role === UserRole.AGENT
+                ? {
+                    isCurrentCollaborator:
+                      ids.has(ticket.id) &&
+                      operationalStatuses.includes(
+                        ticket.status as (typeof operationalStatuses)[number],
+                      ),
+                  }
+                : {}),
+            };
+          }),
           limit,
         );
       },

@@ -221,16 +221,75 @@ describe('TicketVisibilityService', () => {
     );
   });
 
+  it('returns only approved ticket list fields and omits internal AI/idempotency data', async () => {
+    findMany.mockResolvedValue([
+      {
+        id: 99,
+        title: 'VPN issue',
+        description: 'Synthetic description',
+        requesterId: 10,
+        categoryId: 2,
+        priority: 'MEDIUM',
+        status: 'NEW',
+        allRegions: false,
+        allDepartments: false,
+        assignedTeamId: null,
+        assignedManagerId: null,
+        assignedAgentId: null,
+        resolvedAt: null,
+        closedAt: null,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        creationHash: 'private-hash',
+        clientRequestId: 'private-request-key',
+        aiReason: 'internal recommendation',
+        aiSuggestedAgentId: 42,
+      },
+    ]);
+
+    const page = await service.listVisible(employee(10));
+
+    expect(page.items[0]).toEqual({
+      id: 99,
+      title: 'VPN issue',
+      description: 'Synthetic description',
+      requesterId: 10,
+      categoryId: 2,
+      priority: 'MEDIUM',
+      status: 'NEW',
+      allRegions: false,
+      allDepartments: false,
+      assignedTeamId: null,
+      assignedManagerId: null,
+      assignedAgentId: null,
+      resolvedAt: null,
+      closedAt: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+  });
+
   it('combines the ticket id with the visibility filter for detail queries', async () => {
     findFirst.mockResolvedValue({
       id: 99,
+      status: 'NEW',
+      resolvedAt: null,
+      creationHash: 'private-hash',
+      clientRequestId: 'private-request-key',
+      aiReason: 'internal recommendation',
+      aiSuggestedAgentId: 42,
       workCycles: [],
       tags: [],
       affectedRegions: [],
       affectedDepartments: [],
     });
 
-    await service.findVisibleById(99, employee(10));
+    const detail = await service.findVisibleById(99, employee(10));
+
+    expect(detail).not.toHaveProperty('creationHash');
+    expect(detail).not.toHaveProperty('clientRequestId');
+    expect(detail).not.toHaveProperty('aiReason');
+    expect(detail).not.toHaveProperty('aiSuggestedAgentId');
 
     expect(findFirst).toHaveBeenCalledWith({
       where: { AND: [{ id: 99 }, { requesterId: 10 }] },
