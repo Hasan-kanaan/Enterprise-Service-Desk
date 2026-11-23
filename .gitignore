@@ -23,4 +23,8 @@ server/dist
 # Project documentation stays local; retain the fixture README required by tests.
 docs/
 *.md
+!/README.md
+!/status.md
 !server/test/fixtures/README.md
+
+CLAUDE.md

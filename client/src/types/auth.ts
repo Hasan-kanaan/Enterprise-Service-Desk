@@ -5,6 +5,8 @@ export type AuthUser = {
   id: number
   displayName: string
   jobTitle?: string | null
+  phoneNumber?: string | null
+  regionId?: number | null
   email: string
   role: UserRole
 }

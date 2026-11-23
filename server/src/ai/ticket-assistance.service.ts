@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { requireActiveActor } from '../prisma/transactions';
 import { TicketAuthorizationService } from '../tickets/ticket-authorization.service';
 import { TicketAuthorizationUser } from '../tickets/ticket-authorization.types';
+import { Upload, validateUpload } from '../tickets/attachment-storage';
 import { AiRateLimiter } from './ai-rate-limiter';
 import {
   AiRecommendationProvider,
@@ -66,7 +67,11 @@ export class TicketAssistanceService {
     );
   }
 
-  async assist(actor: TicketAuthorizationUser, dto: TicketAssistanceDto) {
+  async assist(
+    actor: TicketAuthorizationUser,
+    dto: TicketAssistanceDto,
+    files: Upload[] = [],
+  ) {
     if (
       typeof dto.description !== 'string' ||
       dto.description.length > DRAFT_DESCRIPTION_MAX ||
@@ -77,6 +82,45 @@ export class TicketAssistanceService {
       throw new BadRequestException(
         'For AI assistance, use a description with at least 20 letters or digits and no more than 3,000 characters, and a title of at most 200 characters. Your manual ticket can still be submitted.',
       );
+    if (
+      files.length > 5 ||
+      files.reduce((total, file) => total + file.buffer.length, 0) >
+        4 * 1024 * 1024
+    )
+      throw new BadRequestException(
+        'AI assistance accepts up to 5 images, PDFs, or text files with a 4 MiB total limit. Your files remain available for ticket submission.',
+      );
+    const attachmentText: string[] = [];
+    const media: NonNullable<DraftAiInput['media']> = [];
+    let textBudget = 16_000;
+    for (const file of files) {
+      const metadata = validateUpload(file);
+      if (
+        metadata.contentType === 'image/png' ||
+        metadata.contentType === 'image/jpeg' ||
+        metadata.contentType === 'image/webp' ||
+        metadata.contentType === 'application/pdf'
+      ) {
+        media.push({ mimeType: metadata.contentType, bytes: file.buffer });
+      } else if (
+        metadata.contentType === 'text/plain' ||
+        metadata.contentType === 'text/csv' ||
+        metadata.contentType === 'application/json'
+      ) {
+        if (textBudget > 0) {
+          const content = new TextDecoder('utf-8', { fatal: true }).decode(
+            file.buffer,
+          );
+          const clean = redact(content, textBudget);
+          if (clean) attachmentText.push(clean);
+          textBudget -= clean.length;
+        }
+      } else {
+        throw new BadRequestException(
+          'AI assistance supports images, PDFs, and text files. Videos remain attached to the ticket only.',
+        );
+      }
+    }
     const candidates = await this.choices(actor);
     const input: DraftAiInput = {
       draft: {
@@ -85,6 +129,8 @@ export class TicketAssistanceService {
       },
       candidates,
       priorities,
+      attachmentText,
+      media,
     };
     this.limiter.consumeRequester(
       actor.id,

@@ -120,7 +120,7 @@ export function EditAccountForm({
           </>
         )
       )}
-      <p className="quiet-note">
+      <p className="quiet-note mt-2">
         Home organization is descriptive only. It grants no ticket access and
         does not change assignments or responsibilities.
       </p>

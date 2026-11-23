@@ -170,6 +170,53 @@ export class UsersService {
     }
   }
 
+  async updateOwnMetadata(
+    actor: { id: number; role: PrismaUserRole; sessionVersion: number; sid: string },
+    change: UpdateUserMetadataDto,
+  ) {
+    // Self-service edits are limited to descriptive account fields. Home
+    // organization and all access/role changes remain administrator managed.
+    if (
+      change.departmentId !== undefined ||
+      !['displayName', 'jobTitle', 'phoneNumber', 'regionId'].some(
+        (key) => change[key as keyof UpdateUserMetadataDto] !== undefined,
+      )
+    )
+      throw new BadRequestException('Provide valid profile fields');
+
+    await serializable(this.prisma, async (db) => {
+      await lockUser(db, actor.id);
+      await requireActiveActor(db, actor);
+      await db.$queryRaw`SELECT id FROM "UserSession" WHERE id = ${actor.sid} FOR SHARE`;
+      if (
+        !(await db.userSession.findFirst({
+          where: { id: actor.sid, userId: actor.id, revokedAt: null },
+          select: { id: true },
+        }))
+      )
+        throw new UnauthorizedException('Account or session is no longer active');
+
+      if (change.regionId != null && change.regionId !== (await db.user.findUniqueOrThrow({ where: { id: actor.id }, select: { regionId: true } })).regionId) {
+        await db.$queryRaw`SELECT id FROM "Region" WHERE id = ${change.regionId} FOR UPDATE`;
+        const region = await db.region.findUnique({ where: { id: change.regionId } });
+        if (!region) throw new NotFoundException('Region not found');
+        if (region.archivedAt) throw new ConflictException('Region is archived');
+      }
+
+      const data: Prisma.UserUncheckedUpdateInput = {};
+      if (change.displayName !== undefined) data.displayName = change.displayName;
+      if (change.jobTitle !== undefined) data.jobTitle = change.jobTitle;
+      if (change.phoneNumber !== undefined) {
+        data.phoneNumber = change.phoneNumber;
+        data.phoneVerifiedAt = null;
+      }
+      if (change.regionId !== undefined) data.regionId = change.regionId;
+      if (Object.keys(data).length)
+        await db.user.update({ where: { id: actor.id }, data });
+    });
+    return { message: 'Profile updated' };
+  }
+
   async changePassword(
     actor: { id: number; role: PrismaUserRole; sessionVersion: number },
     targetId: number,

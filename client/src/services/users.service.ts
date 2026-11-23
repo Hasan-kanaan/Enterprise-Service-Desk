@@ -21,6 +21,9 @@ export type UpdateAccountInput = {
 export const updateAccount = async (id: number, input: UpdateAccountInput) =>
   (await api.patch<Account>(`/users/${id}`, input)).data
 
+export const updateOwnProfile = async (input: Pick<UpdateAccountInput, 'displayName' | 'jobTitle' | 'phoneNumber'>) =>
+  (await api.patch<{ message: string }>('/users/profile', input)).data
+
 export async function createAccount(input: CreateAccountInput) {
   const { data } = await api.post<{ user: Account; delivery: string }>('/auth/accounts', input)
   return data

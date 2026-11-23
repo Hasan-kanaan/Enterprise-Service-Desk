@@ -27,12 +27,18 @@ export class SafeHttpErrors implements ExceptionFilter {
       response
         .status(503)
         .json({ statusCode: 503, message: AI_UNAVAILABLE_MESSAGE });
+    } else if (status === 503) {
+      // Preserve service-unavailable semantics without exposing upstream details.
+      response
+        .status(503)
+        .json({ statusCode: 503, message: 'Voice or AI service is temporarily unavailable.' });
     } else if (status >= 500) {
       // Do not serialize error messages/stacks: drivers can embed SQL, paths or secrets.
       const req = host.switchToHttp().getRequest<Request>();
       const route = (req.route as { path?: unknown } | undefined)?.path;
+      const errorType = error instanceof Error ? error.constructor.name : typeof error;
       this.logger.error(
-        `Unhandled server request failure: ${req.method} ${typeof route === 'string' ? route : '(unmatched route)'}`,
+        `Unhandled server request failure: ${req.method} ${typeof route === 'string' ? route : '(unmatched route)'} (${errorType})`,
       );
       response
         .status(500)

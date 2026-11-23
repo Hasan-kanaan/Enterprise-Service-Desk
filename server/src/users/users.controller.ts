@@ -24,6 +24,26 @@ import { UpdateUserMetadataDto } from './dto/update-user-metadata.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @Patch('profile')
+  @UseGuards(AuthGuard)
+  updateOwnProfile(
+    @Body() dto: UpdateUserMetadataDto,
+    @Req()
+    request: {
+      user: {
+        sub: number;
+        role: PrismaUserRole;
+        sessionVersion: number;
+        sid: string;
+      };
+    },
+  ) {
+    return this.usersService.updateOwnMetadata(
+      { ...request.user, id: request.user.sub },
+      dto,
+    );
+  }
+
   @Patch(':userId')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)

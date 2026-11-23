@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import { useEffect, useState } from 'react'
 import { AttachmentPicker } from './Attachments'
 import { TicketDraftAssistance } from './TicketDraftAssistance'
+import { VoiceDictation } from './VoiceDictation'
 import { useForm, useWatch } from 'react-hook-form'
 import type {
   TicketInput,
@@ -221,9 +222,18 @@ export function TicketForm({
             </p>
           )}
           {allowAiAssistance && (
+            <div className="ticket-ai-tools">
+            <VoiceDictation
+              disabled={isSubmitting || locked}
+              onTranscript={(text) => {
+                const current = getValues('description')
+                setValue('description', current ? `${current.trim()}\n${text}` : text, { shouldDirty: true, shouldValidate: true })
+              }}
+            />
             <TicketDraftAssistance
               draft={getValues()}
               getDraft={getValues}
+              files={files}
               locked={isSubmitting || locked}
               options={activeOptions}
               onApply={(patch) => {
@@ -235,6 +245,7 @@ export function TicketForm({
                 }
               }}
             />
+            </div>
           )}
           <div className="form-columns">
             <div>

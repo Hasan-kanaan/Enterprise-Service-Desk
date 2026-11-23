@@ -20,6 +20,9 @@ const authSlice = createSlice({
       state.user = action.payload.user
       state.status = 'ready'
     },
+    profileUpdated: (state, action: PayloadAction<Partial<AuthUser>>) => {
+      if (state.user) state.user = { ...state.user, ...action.payload }
+    },
     signedOut: (state) => {
       state.accessToken = null
       state.user = null
@@ -33,6 +36,6 @@ const authSlice = createSlice({
     },
   },
 })
-export const { signedIn, signedOut, sessionChecking, sessionRestoreFailed } =
+export const { signedIn, signedOut, sessionChecking, sessionRestoreFailed, profileUpdated } =
   authSlice.actions
 export default authSlice.reducer

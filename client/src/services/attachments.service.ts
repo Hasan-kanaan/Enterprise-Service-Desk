@@ -17,7 +17,11 @@ export async function postWithAttachments<T>(
   const form = new FormData()
   form.append('payload', JSON.stringify(payload))
   files.forEach((file) => form.append('files', file))
-  return api.post<T>(path, form, { headers: { 'Content-Type': undefined } })
+  // Override the shared JSON default. Axios otherwise serializes FormData as
+  // JSON; with this media type it leaves the boundary to the browser.
+  return api.post<T>(path, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 export async function attachmentBytes(file: Pick<Attachment, 'id' | 'contentType'>, signal?: AbortSignal) {
   const response = await api.get<Blob>(

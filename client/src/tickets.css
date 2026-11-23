@@ -777,6 +777,7 @@ button:disabled {
 }
 
 .file-picker-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.file-picker-row [role="status"] { min-width: 0; overflow-wrap: anywhere; }
 .file-picker-control { position: relative; overflow: hidden; }
 .file-picker-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .file-picker-control:focus-within { outline: 2px solid var(--ring); outline-offset: 3px; }
@@ -824,6 +825,16 @@ button:disabled {
 .attachment-preview { display: block; width: 100%; max-width: 480px; max-height: 280px; object-fit: contain; margin-top: 12px; background: var(--muted); border-radius: var(--radius); }
 .ai-suggestions { overflow-wrap: anywhere; }
 .draft-assistance { margin-block: .75rem; overflow-wrap: anywhere; }
+.ticket-ai-tools { display: flex; align-items: flex-start; gap: .75rem; flex-wrap: wrap; }
+.ticket-ai-tools > .voice-dictation { display: contents; }
+.ticket-ai-tools > .voice-dictation > button { margin-block: .75rem; flex: 0 0 auto; }
+.ticket-ai-tools > .voice-dictation > [role="status"],
+.ticket-ai-tools > .voice-dictation > .field-error { order: 2; flex: 0 0 100%; margin: 0 0 .35rem; }
+.ticket-ai-tools > .draft-assistance { display: contents; }
+.ticket-ai-tools > .draft-assistance .button-row { order: 1; margin-block: .75rem; flex: 0 0 auto; }
+.ticket-ai-tools > .draft-assistance > p,
+.ticket-ai-tools > .draft-assistance > [role="status"],
+.ticket-ai-tools > .draft-assistance > .notice { order: 3; flex: 0 0 100%; margin: 0 0 .35rem; }
 .draft-assistance p { margin-block: .4rem; }
 .draft-assistance [aria-disabled=true] { cursor: not-allowed; opacity: .55; }
 .ai-suggestion { border-top: 1px solid var(--border); padding-block: 1rem; }

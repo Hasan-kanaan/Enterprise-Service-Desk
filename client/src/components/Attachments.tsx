@@ -86,10 +86,14 @@ export function AttachmentPicker({
           }}
         />
       </label>
-      <span id={`${pickerId}-status`} role="status">{files.length === 0 ? 'No files selected' : `${files.length} ${files.length === 1 ? 'file' : 'files'} selected`}</span>
+      <span id={`${pickerId}-status`} role="status">
+        {files.length === 0
+          ? 'No files selected'
+          : `${files.length} ${files.length === 1 ? 'file' : 'files'} selected: ${files.map((file) => file.name).join(', ')}`}
+      </span>
       </div>
       <p className="small muted">
-        Up to 5 files, 50 MiB total. Images/documents: 10 MiB each; MP4/WebM video: 25 MiB each. PNG, JPEG, WebP, PDF, TXT, LOG, JSON, CSV, MP4 or WebM.
+        Files are attached when you submit. Up to 5 files, 50 MiB total. Images/documents: 10 MiB each; MP4/WebM video: 25 MiB each. PNG, JPEG, WebP, PDF, TXT, LOG, JSON, CSV, MP4 or WebM.
       </p>
       {error && (
         <p role="alert" className="field-error">

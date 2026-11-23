@@ -16,6 +16,8 @@ export type AuthenticatedRequest = Request & {
     sid: string;
     displayName: string;
     jobTitle?: string | null;
+    phoneNumber?: string | null;
+    regionId?: number | null;
     email: string;
     role: import('../../generated/prisma/client').UserRole;
     status: string;
@@ -70,6 +72,8 @@ export class AuthGuard implements CanActivate {
           id: true,
           displayName: true,
           jobTitle: true,
+          phoneNumber: true,
+          regionId: true,
           email: true,
           role: true,
           status: true,
@@ -94,6 +98,8 @@ export class AuthGuard implements CanActivate {
         sub: user.id,
         displayName: user.displayName,
         jobTitle: user.jobTitle,
+        phoneNumber: user.phoneNumber,
+        regionId: user.regionId,
         email: user.email,
         role: user.role,
         status: user.status,

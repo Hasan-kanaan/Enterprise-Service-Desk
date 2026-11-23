@@ -63,9 +63,9 @@ export function CreateTicketPage() {
         </div>
       </header>
       <div className="panel">
-        {options.loading ? (
+        {options.loading && !options.data ? (
           <LoadingState variant="form" label="Loading request options..." />
-        ) : options.error ? (
+        ) : options.error && !options.data ? (
           <ErrorState error={options.error} onRetry={options.reload} />
         ) : (
           options.data && (

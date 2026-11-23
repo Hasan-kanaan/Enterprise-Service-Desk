@@ -23,6 +23,7 @@ import { AiRecommendationsService } from '../ai/ai-recommendations.service';
 import { AiRateLimiter } from '../ai/ai-rate-limiter';
 import { TicketAssistanceService } from '../ai/ticket-assistance.service';
 import { TicketAssistanceController } from '../ai/ticket-assistance.controller';
+import { TranscriptionController } from '../ai/transcription.controller';
 import {
   AiRecommendationProvider,
   GeminiRecommendationProvider,
@@ -32,6 +33,7 @@ import {
   imports: [JwtModule.register({ secret: jwtConstants.secret })],
   controllers: [
     TicketAssistanceController,
+    TranscriptionController,
     AiRecommendationsController,
     WorkHistoryController,
     AttachmentsController,

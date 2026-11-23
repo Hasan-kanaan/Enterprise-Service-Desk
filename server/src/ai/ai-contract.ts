@@ -1,7 +1,8 @@
 export const AI_MODEL = 'gemini-3.5-flash-lite';
 export const PROMPT_VERSION = 'routing-v1';
 export const AI_TIMEOUT_MS = 10_000;
-export const AI_PROMPT_BYTES = 48_000;
+// Includes the base64 expansion of the 4 MiB transient attachment allowance.
+export const AI_PROMPT_BYTES = 6_000_000;
 export const AI_RESPONSE_BYTES = 32_000;
 export const priorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
 export type Candidate = { id: number; name: string };

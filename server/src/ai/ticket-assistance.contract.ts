@@ -31,6 +31,10 @@ export type DraftAiInput = {
     departments: Candidate[];
   };
   priorities: typeof priorities;
+  // Transient attachments are included only in the live Gemini request and
+  // are never persisted by this assistance endpoint.
+  attachmentText?: string[];
+  media?: { mimeType: string; bytes: Buffer }[];
 };
 export type DraftAiResult = {
   scope: {
