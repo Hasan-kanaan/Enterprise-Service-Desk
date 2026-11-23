@@ -1,21 +1,23 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireActiveActor } from '../prisma/transactions';
 import { TicketAuthorizationService } from '../tickets/ticket-authorization.service';
 import { TicketAuthorizationUser } from '../tickets/ticket-authorization.types';
-import { Upload, validateUpload } from '../tickets/attachment-storage';
 import { AiRateLimiter } from './ai-rate-limiter';
 import {
   AiRecommendationProvider,
   draftTokenReservation,
 } from './gemini.provider';
 import { AiUnavailableException } from './ai-unavailable.exception';
-import { AI_MODEL, priorities, redact } from './ai-contract';
+import { AiProviderError, AI_MODEL, priorities, redact } from './ai-contract';
 import {
   DRAFT_DESCRIPTION_MAX,
   DRAFT_DESCRIPTION_MIN,
@@ -28,6 +30,8 @@ import { TicketAssistanceDto } from './ticket-assistance.dto';
 
 @Injectable()
 export class TicketAssistanceService {
+  private readonly logger = new Logger(TicketAssistanceService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly policy: TicketAuthorizationService,
@@ -70,7 +74,6 @@ export class TicketAssistanceService {
   async assist(
     actor: TicketAuthorizationUser,
     dto: TicketAssistanceDto,
-    files: Upload[] = [],
   ) {
     if (
       typeof dto.description !== 'string' ||
@@ -82,45 +85,6 @@ export class TicketAssistanceService {
       throw new BadRequestException(
         'For AI assistance, use a description with at least 20 letters or digits and no more than 3,000 characters, and a title of at most 200 characters. Your manual ticket can still be submitted.',
       );
-    if (
-      files.length > 5 ||
-      files.reduce((total, file) => total + file.buffer.length, 0) >
-        4 * 1024 * 1024
-    )
-      throw new BadRequestException(
-        'AI assistance accepts up to 5 images, PDFs, or text files with a 4 MiB total limit. Your files remain available for ticket submission.',
-      );
-    const attachmentText: string[] = [];
-    const media: NonNullable<DraftAiInput['media']> = [];
-    let textBudget = 16_000;
-    for (const file of files) {
-      const metadata = validateUpload(file);
-      if (
-        metadata.contentType === 'image/png' ||
-        metadata.contentType === 'image/jpeg' ||
-        metadata.contentType === 'image/webp' ||
-        metadata.contentType === 'application/pdf'
-      ) {
-        media.push({ mimeType: metadata.contentType, bytes: file.buffer });
-      } else if (
-        metadata.contentType === 'text/plain' ||
-        metadata.contentType === 'text/csv' ||
-        metadata.contentType === 'application/json'
-      ) {
-        if (textBudget > 0) {
-          const content = new TextDecoder('utf-8', { fatal: true }).decode(
-            file.buffer,
-          );
-          const clean = redact(content, textBudget);
-          if (clean) attachmentText.push(clean);
-          textBudget -= clean.length;
-        }
-      } else {
-        throw new BadRequestException(
-          'AI assistance supports images, PDFs, and text files. Videos remain attached to the ticket only.',
-        );
-      }
-    }
     const candidates = await this.choices(actor);
     const input: DraftAiInput = {
       draft: {
@@ -129,8 +93,6 @@ export class TicketAssistanceService {
       },
       candidates,
       priorities,
-      attachmentText,
-      media,
     };
     this.limiter.consumeRequester(
       actor.id,
@@ -143,7 +105,23 @@ export class TicketAssistanceService {
         await this.provider.generateDraft(input),
         input,
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof AiProviderError) {
+        this.logger.warn(
+          `Gemini draft request failed: category=${error.category} httpStatus=${error.httpStatus ?? 'none'}`,
+        );
+        if (error.category === 'quota' || error.httpStatus === 429)
+          throw new HttpException(
+            'Gemini request limit reached. Please wait and try again.',
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        if ([400, 413, 415, 422].includes(error.httpStatus ?? 0))
+          throw new BadRequestException(
+            'Gemini rejected this request. Your original text is preserved; try again later or complete the ticket manually.',
+          );
+      } else {
+        this.logger.error('Gemini draft request failed unexpectedly');
+      }
       throw new AiUnavailableException();
     }
     const current = await this.choices(actor);

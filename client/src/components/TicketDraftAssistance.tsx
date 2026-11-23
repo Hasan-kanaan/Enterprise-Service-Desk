@@ -11,56 +11,15 @@ import { Sparkles } from 'lucide-react'
 const moreInformation =
   'I need a little more information. Tell us what device, application, account, or service is affected and what happens when you try to use it.'
 
-const aiAttachmentTypes = new Set([
-  'png', 'jpg', 'jpeg', 'webp', 'pdf', 'txt', 'log', 'json', 'csv',
-])
-
-function aiFiles(files: File[]) {
-  return files.filter((file) =>
-    aiAttachmentTypes.has(file.name.split('.').pop()?.toLowerCase() ?? ''),
-  )
-}
-
-async function aiFilesFingerprint(files: File[]) {
-  const identities = await Promise.all(
-    aiFiles(files).map(async (file) => {
-      const digest = await crypto.subtle.digest(
-        'SHA-256',
-        await file.arrayBuffer(),
-      )
-      const hash = Array.from(new Uint8Array(digest), (byte) =>
-        byte.toString(16).padStart(2, '0'),
-      ).join('')
-      return `${file.name}:${hash}`
-    }),
-  )
-  return identities.join('\n')
-}
-
-async function requestAssistance(source: TicketInput, files: File[]) {
-  const selected = aiFiles(files)
-  const payload = { title: source.title, description: source.description }
-  if (!selected.length)
-    return api.post<DraftAssistance>('/ticket-assistance', payload)
-  const form = new FormData()
-  form.append('payload', JSON.stringify(payload))
-  selected.forEach((file) => form.append('files', file))
-  return api.post<DraftAssistance>('/ticket-assistance', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
-}
-
 export function TicketDraftAssistance({
   draft,
   getDraft,
-  files,
   options,
   onApply,
   locked,
 }: {
   draft: TicketInput
   getDraft: () => TicketInput
-  files: File[]
   options: TicketOptions
   onApply: (patch: Partial<TicketInput>) => void
   locked: boolean
@@ -73,10 +32,10 @@ export function TicketDraftAssistance({
   const sequence = useRef(0)
   const pending = useRef(false)
   const helperButton = useRef<HTMLButtonElement>(null)
-  const latest = useRef({ getDraft, options, onApply, locked, files })
+  const latest = useRef({ getDraft, options, onApply, locked })
   useEffect(() => {
-    latest.current = { getDraft, options, onApply, locked, files }
-  }, [getDraft, options, onApply, locked, files])
+    latest.current = { getDraft, options, onApply, locked }
+  }, [getDraft, options, onApply, locked])
   useEffect(
     () => () => {
       sequence.current++
@@ -89,9 +48,7 @@ export function TicketDraftAssistance({
       ? 'AI assistance supports up to 3,000 description characters. Shorten the description to use AI, or keep your text and submit manually.'
       : draft.title.length > 200
         ? 'AI assistance supports titles up to 200 characters.'
-        : aiFiles(files).reduce((total, file) => total + file.size, 0) > 4 * 1024 * 1024
-          ? 'AI attachments must total at most 4 MiB. They remain selected for ticket submission.'
-          : meaningful < 20
+        : meaningful < 20
           ? moreInformation
           : ''
 
@@ -107,15 +64,20 @@ export function TicketDraftAssistance({
     try {
       const bytes = await crypto.subtle.digest(
         'SHA-256',
-        new TextEncoder().encode(
-          `${draftFingerprint(source)}\n${await aiFilesFingerprint(files)}`,
-        ),
+        new TextEncoder().encode(draftFingerprint(source)),
       )
       const key = Array.from(new Uint8Array(bytes), (b) =>
         b.toString(16).padStart(2, '0'),
       ).join('')
       const cached = negatives.current.get(key)
-      const data = cached ?? (await requestAssistance(source, files)).data
+      const data =
+        cached ??
+        (
+          await api.post<DraftAssistance>('/ticket-assistance', {
+            title: source.title,
+            description: source.description,
+          })
+        ).data
       if (sequence.current !== version) return
       if (data.scope.status !== 'IN_SCOPE') {
         if (!cached) {
@@ -132,19 +94,13 @@ export function TicketDraftAssistance({
         return
       }
       const current = structuredClone(latest.current.getDraft())
-      const currentFiles = aiFiles(latest.current.files)
-      const sourceFiles = aiFiles(files)
       if (latest.current.locked) {
         setMessage('AI did not change the form while it was being submitted.')
         return
       }
-      if (
-        draftFingerprint(current) !== draftFingerprint(source) ||
-        currentFiles.length !== sourceFiles.length ||
-        currentFiles.some((file, index) => file !== sourceFiles[index])
-      ) {
+      if (draftFingerprint(current) !== draftFingerprint(source)) {
         setMessage(
-          'Your description, title, or attachments changed while AI was working. No fields were updated. Ask for assistance again when ready.',
+          'Your description or title changed while AI was working. No fields were updated. Ask for assistance again when ready.',
         )
         return
       }
@@ -220,10 +176,9 @@ export function TicketDraftAssistance({
         )}
       </div>
       <p className="small muted" id="draft-ai-limit">
-        AI fills in this form for your review. Selected images, PDFs, and text
-        files are sent to Gemini; videos stay attached to the ticket only. AI
-        attachments have a 4 MiB limit. Description limit: 20 letters or digits
-        to 3,000 characters (
+        AI uses your title and description to fill in this form for your review.
+        Attachments are not sent to Gemini. Description limit: 20 letters or
+        digits to 3,000 characters (
         {draft.description.length}/3,000).
       </p>
       {undo && (

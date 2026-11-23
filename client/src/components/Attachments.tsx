@@ -57,12 +57,12 @@ export function AttachmentPicker({
               setError('Choose at most 5 files.')
               return
             }
-            if (next.some((file) => file.size > (/\.(mp4|webm)$/i.test(file.name) ? 25 : 10) * 1024 * 1024)) {
-              setError('Each file must be at most 10 MiB, or 25 MiB for video.')
+            if (next.some((file) => file.size > (/\.(mp4|webm)$/i.test(file.name) ? 30 : 12) * 1024 * 1024)) {
+              setError('Each file must be at most 12 MiB, or 30 MiB for video.')
               return
             }
-            if (next.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024) {
-              setError('Attachments must total at most 50 MiB.')
+            if (next.reduce((sum, file) => sum + file.size, 0) > 60 * 1024 * 1024) {
+              setError('Attachments must total at most 60 MiB.')
               return
             }
             if (
@@ -93,7 +93,7 @@ export function AttachmentPicker({
       </span>
       </div>
       <p className="small muted">
-        Files are attached when you submit. Up to 5 files, 50 MiB total. Images/documents: 10 MiB each; MP4/WebM video: 25 MiB each. PNG, JPEG, WebP, PDF, TXT, LOG, JSON, CSV, MP4 or WebM.
+        Files are attached when you submit. Up to 5 files, 60 MiB total. Images/documents: 12 MiB each; MP4/WebM video: 30 MiB each. PNG, JPEG, WebP, PDF, TXT, LOG, JSON, CSV, MP4 or WebM.
       </p>
       {error && (
         <p role="alert" className="field-error">

@@ -113,7 +113,7 @@ describe('Conservative private video attachments', () => {
     huge.writeUInt32BE(0xffffffff);
     expect(validVideo(huge, '.mp4')).toBe(false);
   });
-  it('enforces inclusive 25 MiB video and retained 10 MiB non-video bounds using bytes', () => {
+  it('enforces inclusive 30 MiB video and retained 12 MiB non-video bounds using bytes', () => {
     expect(
       validateUpload(upload('mp4', mp4Fixture(VIDEO_LIMIT))).byteSize,
     ).toBe(VIDEO_LIMIT);
@@ -122,7 +122,7 @@ describe('Conservative private video attachments', () => {
     ).toThrow('Maximum file size');
     expect(() =>
       validateUpload(
-        upload('txt', Buffer.alloc(10 * 1024 * 1024 + 1), 'text/plain'),
+        upload('txt', Buffer.alloc(12 * 1024 * 1024 + 1), 'text/plain'),
       ),
     ).toThrow('Maximum file size');
   });
@@ -138,11 +138,11 @@ describe('Conservative private video attachments', () => {
         ],
         operation,
       ),
-    ).rejects.toThrow('50 MiB');
+    ).rejects.toThrow('60 MiB');
     expect(storage.put).not.toHaveBeenCalled();
     expect(operation).not.toHaveBeenCalled();
   });
-  it('accepts the inclusive 50 MiB aggregate without relaxing the five-file bound', async () => {
+  it('accepts the inclusive 60 MiB aggregate without relaxing the five-file bound', async () => {
     const storage = { put: jest.fn(), read: jest.fn(), remove: jest.fn() };
     const uploads = new AttachmentUploads(storage);
     const video = upload('mp4', mp4Fixture(VIDEO_LIMIT));

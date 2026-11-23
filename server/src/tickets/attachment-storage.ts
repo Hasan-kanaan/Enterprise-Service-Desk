@@ -5,9 +5,9 @@ import { extname, join, resolve } from 'node:path';
 import { validateCsv } from './csv-validation';
 import { validVideo } from './video-validation';
 
-export const NON_VIDEO_LIMIT = 10 * 1024 * 1024;
-export const VIDEO_LIMIT = 25 * 1024 * 1024;
-export const ATTACHMENT_BATCH_LIMIT = 50 * 1024 * 1024;
+export const NON_VIDEO_LIMIT = 12 * 1024 * 1024;
+export const VIDEO_LIMIT = 30 * 1024 * 1024;
+export const ATTACHMENT_BATCH_LIMIT = 60 * 1024 * 1024;
 export function uploadLimit(name: string) {
   return /\.(mp4|webm)$/i.test(name) ? VIDEO_LIMIT : NON_VIDEO_LIMIT;
 }
@@ -63,7 +63,7 @@ const types: Record<string, string> = {
 export function validateUpload(file: Upload): Omit<StoredUpload, 'storageKey'> {
   if (file.buffer.length > uploadLimit(file.originalname))
     throw new BadRequestException(
-      'Maximum file size is 10 MiB, or 25 MiB for video',
+      'Maximum file size is 12 MiB, or 30 MiB for video',
     );
   const filename = file.originalname
     .replace(/\\/g, '/')
@@ -183,7 +183,7 @@ export class AttachmentUploads {
       uploads.reduce((total, upload) => total + upload.buffer.length, 0) >
       ATTACHMENT_BATCH_LIMIT
     )
-      throw new BadRequestException('Maximum total attachment size is 50 MiB');
+    throw new BadRequestException('Maximum total attachment size is 60 MiB');
     const files = uploads.map((upload) => ({
       ...validateUpload(upload),
       storageKey: randomUUID(),

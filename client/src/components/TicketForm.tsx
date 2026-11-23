@@ -233,7 +233,6 @@ export function TicketForm({
             <TicketDraftAssistance
               draft={getValues()}
               getDraft={getValues}
-              files={files}
               locked={isSubmitting || locked}
               options={activeOptions}
               onApply={(patch) => {

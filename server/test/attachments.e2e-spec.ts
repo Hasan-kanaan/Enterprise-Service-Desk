@@ -629,7 +629,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       'messages',
       randomUUID(),
       'too-large.mp4',
-      Buffer.alloc(25 * 1024 * 1024 + 1),
+      Buffer.alloc(30 * 1024 * 1024 + 1),
     ).expect(413);
     const call = request(app.getHttpServer())
       .post(`/tickets/${ticketId}/messages`)
@@ -642,7 +642,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
           clientRequestId: randomUUID(),
         }),
       );
-    const bytes = mp4Fixture(25 * 1024 * 1024);
+    const bytes = mp4Fixture(30 * 1024 * 1024);
     await call
       .attach('files', bytes, 'first.mp4')
       .attach('files', bytes, 'second.mp4')
@@ -679,7 +679,7 @@ describe('Attachments and author soft deletion (PostgreSQL and HTTP)', () => {
       'messages',
       randomUUID(),
       'large.txt',
-      Buffer.alloc(10 * 1024 * 1024 + 1, 65),
+      Buffer.alloc(12 * 1024 * 1024 + 1, 65),
     ).expect(413);
     let call = request(app.getHttpServer())
       .post(`/tickets/${ticketId}/messages`)
