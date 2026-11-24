@@ -71,13 +71,13 @@ export function CreateTicketPage() {
           options.data && (
             <>
               {options.data.categories.length === 0 && (
-                <div className="notice" role="status">
+                <div className="notice warning" role="status">
                   Ticket categories have not been configured yet. Contact your
                   administrator before submitting a request.
                 </div>
               )}
               {priorKey && !error && (
-                <p className="notice">
+                <p className="notice warning">
                   A submission was previously attempted. Retry with the same
                   content and reselect any original files to confirm it safely.
                 </p>

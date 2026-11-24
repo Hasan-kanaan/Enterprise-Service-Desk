@@ -119,7 +119,7 @@ export function SubtaskForm({
       {initial &&
         (status === 'CANCELLED' ||
           (initial.status === 'COMPLETED' && status !== 'COMPLETED')) && (
-          <p className="notice">
+          <p className="notice warning">
             Confirm this status change. Leaving completed clears the current
             completion timestamp and actor.
           </p>

@@ -7,7 +7,7 @@ import { DeactivationConsequences } from '@/components/DeactivationConsequences'
 import type { Reference } from '@/types/administration'
 import { AgentSpecialties } from '@/components/SpecialtyLinks'
 import api, { getApiErrorMessage } from '@/services/api'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { toast } from 'sonner'
 import { useAppSelector } from '@/hooks/storeHooks'
 import { usePagedList, useDebouncedValue } from '@/hooks/usePagedList'
@@ -19,17 +19,18 @@ import { AdminDialog } from '@/components/AdminDialog'
 import { AccountForm } from '@/components/AccountForm'
 import { EditAccountForm } from '@/components/EditAccountForm'
 import { ErrorState, LoadingState, EmptyState } from '@/components/TicketUI'
+import { MultiSelectFilter } from '@/components/MultiSelectFilter'
 export function UsersPage() {
   const role = useAppSelector((state) => state.auth.user)!.role
   const filters = useListFilters()
   const query = filters.get('search'),
-    status = filters.get('status'),
-    accountRole = filters.get('role')
+    status = filters.getMany('status'),
+    accountRole = filters.getMany('role')
   const search = useDebouncedValue(query)
   const resource = usePagedList<Account>('/users', {
     search: search || undefined,
-    status: status || undefined,
-    role: accountRole || undefined,
+    status: status.length ? status.join(',') : undefined,
+    role: accountRole.length ? accountRole.join(',') : undefined,
   })
   const [changingRole, setChangingRole] = useState<Account | null>(null)
   const [managerlessTeams, setManagerlessTeams] = useState<Reference[]>([])
@@ -87,27 +88,8 @@ export function UsersPage() {
               onChange={(e) => filters.set('search', e.target.value)}
             />
           </label>
-          <select
-            aria-label="Account status filter"
-            value={status}
-            onChange={(e) => filters.set('status', e.target.value)}
-          >
-            <option value="">All statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
-          <select
-            aria-label="Account role filter"
-            value={accountRole}
-            onChange={(e) => filters.set('role', e.target.value)}
-          >
-            <option value="">All roles</option>
-            {['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'AGENT', 'EMPLOYEE'].map(
-              (value) => (
-                <option key={value}>{value}</option>
-              ),
-            )}
-          </select>
+          <MultiSelectFilter label="Account status filter" allLabel="All statuses" selected={status} onChange={values => filters.setMany('status', values)} options={[{ value: 'ACTIVE', label: 'Active' }, { value: 'INACTIVE', label: 'Inactive' }]} />
+          <MultiSelectFilter label="Account role filter" allLabel="All roles" selected={accountRole} onChange={values => filters.setMany('role', values)} options={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'AGENT', 'EMPLOYEE'].map(value => ({ value, label: value }))} />
         </div>
         {resource.loading && !resource.items.length ? (
           <LoadingState variant="table" label="Loading accounts..." />
@@ -118,39 +100,81 @@ export function UsersPage() {
             onRetry={reload}
           />
         ) : rows.length ? (
-          rows.map((account) => (
-            <article
-              key={account.id}
-              className="admin-row directory-row"
-              data-account-id={account.id}
-            >
-              <div>
-                <h2 className="directory-identity"><Avatar displayName={account.displayName} />{account.displayName}</h2>
-                <p className="quiet-note">
-                  {account.jobTitle ?? 'Job title not set'}
-                </p>
-                <p className="muted small">{account.email}</p>
-                <p className="quiet-note">
-                  Region: {account.region?.name ?? 'Unassigned'}
-                  {account.region?.archivedAt ? ' (ARCHIVED)' : ''} /
-                  Department: {account.department?.name ?? 'Unassigned'}
-                  {account.department?.archivedAt ? ' (ARCHIVED)' : ''}
-                </p>
-              </div>
-              <div className="directory-state">
-                <strong>
-                  {account.role.replaceAll('_', ' ').toLowerCase()}
-                </strong>
-                <span>
-                  {account.status === 'ACTIVE' ? 'Active' : 'Inactive'} &#183;{' '}
-                  {account.activatedAt ? 'Verified' : 'Pending verification'}
-                </span>
-              </div>
-              <div className="directory-actions">
-              {manageableRoles(role).includes(account.role) && (
-                <ActionMenu
-                  label={`Actions for ${account.displayName}`}
-                >
+          <div
+            className="account-directory-wrap"
+            role="region"
+            aria-label="Accounts"
+            tabIndex={0}
+          >
+            <table className="account-directory-table">
+              <colgroup>
+                <col className="account-column" />
+                <col className="account-email-column" />
+                <col className="account-department-column" />
+                <col className="account-region-column" />
+                <col className="account-role-column" />
+                <col className="account-status-column" />
+                <col className="account-actions-column" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">Account</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Department</th>
+                  <th scope="col">Region</th>
+                  <th scope="col">Role</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((account) => (
+                  <Fragment key={account.id}>
+                    <tr
+                      className="admin-row directory-row"
+                      data-account-id={account.id}
+                    >
+                      <th scope="row">
+                        <div className="directory-identity">
+                          <Avatar displayName={account.displayName} />
+                          <span>
+                            {account.displayName}
+                            <small>{account.jobTitle ?? 'Job title not set'}</small>
+                          </span>
+                        </div>
+                      </th>
+                      <td className="account-email">{account.email}</td>
+                      <td>
+                        {account.department?.name ?? 'Unassigned'}
+                        {account.department?.archivedAt ? ' (ARCHIVED)' : ''}
+                      </td>
+                      <td>
+                        {account.region?.name ?? 'Unassigned'}
+                        {account.region?.archivedAt ? ' (ARCHIVED)' : ''}
+                      </td>
+                      <td className="account-role">
+                        {account.role
+                          .replaceAll('_', ' ')
+                          .toLowerCase()
+                          .replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                      </td>
+                      <td>
+                        <div className="directory-state">
+                          <span>
+                            {account.status === 'ACTIVE' ? 'Active' : 'Inactive'}{' '}
+                            &#183;{' '}
+                            {account.activatedAt
+                              ? 'Verified'
+                              : 'Pending verification'}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="directory-actions">
+                          {manageableRoles(role).includes(account.role) && (
+                            <ActionMenu
+                              label={`Actions for ${account.displayName}`}
+                            >
                   {manageableRoles(role).includes(account.role) && (
                     <button
                       className="button secondary"
@@ -231,17 +255,24 @@ export function UsersPage() {
                       {account.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
                     </button>
                   )}
-                </ActionMenu>
-              )}
-              </div>
-              {manageableRoles(role).includes(account.role) &&
-                specialties === account.id && (
-                  <AgentSpecialties
-                    account={account}
-                  />
-                )}
-            </article>
-          ))
+                            </ActionMenu>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {manageableRoles(role).includes(account.role) &&
+                      specialties === account.id && (
+                        <tr className="account-specialty-row">
+                          <td colSpan={7}>
+                            <AgentSpecialties account={account} />
+                          </td>
+                        </tr>
+                      )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <EmptyState title="No matching accounts">
             <p>Try a different search or filter.</p>
@@ -309,7 +340,7 @@ export function UsersPage() {
           {target.status === 'ACTIVE' ? (
             <DeactivationConsequences role={target.role} />
           ) : (
-            <p className="notice">
+            <p className="notice warning">
               ACTIVE status permits sign-in only after account activation.
               Previous sessions and responsibilities are not restored.
             </p>

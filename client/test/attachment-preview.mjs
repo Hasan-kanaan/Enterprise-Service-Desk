@@ -2,6 +2,7 @@ import { captureMatrix } from './visual-stabilization.mjs'
 import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { assertPrivateStorage } from './storage-audit.mjs'
 
 export const previewBodies = new Map()
@@ -49,6 +50,9 @@ export async function attachmentPreviews({ evaluate, navigate, waitText, until, 
   const visual = Buffer.alloc(78); visual.writeUInt16BE(1, 6); visual.writeUInt16BE(32, 24); visual.writeUInt16BE(32, 26); visual.writeUInt32BE(72 * 65536, 28); visual.writeUInt32BE(72 * 65536, 32); visual.writeUInt16BE(1, 40); visual.writeUInt16BE(24, 74); visual.writeInt16BE(-1, 76)
   const mp4 = Buffer.concat([ftyp, box('mdat', avc), box('moov', box('mvhd', mvhd), box('trak', box('tkhd', tkhd), box('mdia', box('mdhd', mdhd), box('hdlr', hdlr), box('minf', box('vmhd', words(1,0,0)), box('dinf', box('dref', words(0,1), box('url ', words(1)))), box('stbl', box('stsd', words(0,1), box('avc1', visual, box('avcC', Buffer.from(encoded['avc1.42001E'].config, 'base64')))), box('stts', words(0,1,1,1000)), box('stsc', words(0,1,1,1,1)), box('stsz', words(0,avc.length,1)), box('stco', words(0,1,ftyp.length+8)))))))])
   previewBodies.set(9101, { contentType: 'image/png', bytes: png })
+  const pdf = Buffer.from(
+    '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF',
+  )
   if (process.env.UPDATE_VIDEO_FIXTURES === '1') {
     const directory = resolve(import.meta.dirname, '../../server/test/fixtures')
     mkdirSync(directory, { recursive: true })
@@ -57,40 +61,36 @@ export async function attachmentPreviews({ evaluate, navigate, waitText, until, 
   }
   previewBodies.set(9102, { contentType: 'video/webm', bytes: webm })
   previewBodies.set(9103, { contentType: 'video/mp4', bytes: mp4 })
-  tickets[0].attachments = [...original, ...[9101, 9102, 9103].map(id => ({ id, filename: id === 9101 ? 'private.png' : id === 9102 ? 'private.webm' : 'private.mp4', contentType: previewBodies.get(id).contentType, byteSize: previewBodies.get(id).bytes.length, createdAt: new Date().toISOString(), deletedAt: null }))]
+  previewBodies.set(9104, { contentType: 'application/pdf', bytes: pdf })
+  tickets[0].attachments = [...original, ...[9101, 9102, 9103, 9104].map(id => ({ id, filename: id === 9101 ? 'private.png' : id === 9102 ? 'private.webm' : id === 9103 ? 'private.mp4' : 'private.pdf', contentType: previewBodies.get(id).contentType, byteSize: previewBodies.get(id).bytes.length, createdAt: new Date().toISOString(), deletedAt: null }))]
   if (process.argv.includes('--visual-stabilization')) tickets[0].attachments[0] = { ...tickets[0].attachments[0], filename: 'network-investigation-' + 'long-filename-'.repeat(15) + '.txt' }
+  await send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `window.previewUrls = []; window.revokedUrls = [];
+      const create = URL.createObjectURL, revoke = URL.revokeObjectURL;
+      URL.createObjectURL = blob => { const url = create(blob); window.previewUrls.push(url); return url };
+      URL.revokeObjectURL = url => { window.revokedUrls.push(url); revoke(url) };`,
+  })
+  assert(!requests.some(path => path.includes('/attachments/910')))
   await navigate('/tickets/142'); await waitText('private.png')
   if (process.argv.includes('--visual-stabilization')) assert(await evaluate(`document.querySelector('.attachment-filename').title.length > 100 && getComputedStyle(document.querySelector('.attachment-filename')).textOverflow === 'ellipsis'`))
-  await evaluate(`(() => {
-    window.previewUrls = []; window.revokedUrls = [];
-    const create = URL.createObjectURL, revoke = URL.revokeObjectURL;
-    URL.createObjectURL = blob => { const url = create(blob); window.previewUrls.push(url); return url };
-    URL.revokeObjectURL = url => { window.revokedUrls.push(url); revoke(url) };
-  })()`)
-  assert(!requests.some(path => path.includes('/attachments/910')))
-  assert.equal(await evaluate('document.querySelectorAll(".attachment-card").length'), 4)
-  await evaluate(`document.querySelector('[aria-label="Preview private.png"]').click()`)
+  assert.equal(await evaluate('document.querySelectorAll(".attachment-card").length'), 5)
   await until(() => evaluate('!!document.querySelector("img.attachment-preview")?.naturalWidth'), 'authorized PNG thumbnail')
   assert(await evaluate('document.querySelector("img.attachment-preview").src.startsWith("blob:")'))
+  assert.equal(await evaluate(`document.querySelectorAll('[aria-label^="Preview "], [aria-label^="Hide "]').length`), 0)
+  assert.equal(requests.filter(path => path.includes('/attachments/9101/download')).length, 1)
+  await evaluate(`document.querySelector('[aria-label="Download private.png"]').click()`)
+  await delay(100)
+  assert.equal(requests.filter(path => path.includes('/attachments/9101/download')).length, 1)
   if (process.argv.includes('--visual-stabilization')) await captureMatrix({ send, evaluate }, 'attachments-image')
-  await evaluate(`document.querySelector('[aria-label="Hide private.png"]').click()`)
-  await until(() => evaluate('window.revokedUrls.length === 1'), 'hidden image URL revoked')
-  previewBodies.get(9101).denied = true
-  await evaluate(`document.querySelector('[aria-label="Preview private.png"]').click()`)
-  await waitText('could not be found or is no longer available')
-  assert(await evaluate('!document.querySelector("img.attachment-preview")'))
-  if (process.argv.includes('--visual-stabilization')) await captureMatrix({ send, evaluate }, 'attachments-denied')
-  previewBodies.get(9101).denied = false
-  await evaluate(`document.querySelector('[aria-label="Hide private.png"]').click()`)
-  await evaluate(`document.querySelector('[aria-label="Preview private.webm"]').click()`)
   await until(() => evaluate('!!document.querySelector("video.attachment-preview")'), 'WebM video player')
   assert(await evaluate('(() => { const v = document.querySelector("video"); return v.controls && !v.autoplay && v.preload === "metadata" && v.src.startsWith("blob:") })()'))
   await until(() => evaluate('document.querySelector("video").readyState >= 1'), 'real browser-encoded WebM metadata').catch(async error => { console.error('Video diagnostics', webm.length, await evaluate('({error: document.querySelector("video").error?.message, network: document.querySelector("video").networkState})')); throw error })
   await evaluate('document.querySelector("video").focus()')
   assert(await evaluate('document.activeElement.tagName === "VIDEO"'))
-  await evaluate(`document.querySelector('[aria-label="Preview private.mp4"]').click()`)
   await until(() => evaluate('document.querySelectorAll("video.attachment-preview").length === 2'), 'MP4 video card')
   await until(() => evaluate('[...document.querySelectorAll("video.attachment-preview")].every(video => video.readyState >= 1)'), 'real MP4 and WebM metadata')
+  assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Preview private.pdf"]').length`), 0)
+  assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Download private.pdf"]').length`), 1)
   for (const width of [768, 390]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 390 })
     assert(await evaluate('document.documentElement.scrollWidth <= innerWidth'))
@@ -102,5 +102,5 @@ export async function attachmentPreviews({ evaluate, navigate, waitText, until, 
   await until(() => evaluate('window.revokedUrls.length === window.previewUrls.length'), 'all preview URLs revoked on unmount')
   tickets[0].attachments = original
   await navigate('/tickets/142'); await waitText('original.txt')
-  console.log('PASS: lazy authorized image/WebM/MP4 cards, real MP4/WebM metadata, keyboard player, responsive layout, no durable bytes and URL cleanup')
+  console.log('PASS: automatic authorized image/video previews, PDF download-only action, real video metadata, keyboard player, responsive layout, no durable bytes and URL cleanup')
 }

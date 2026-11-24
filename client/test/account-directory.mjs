@@ -2,6 +2,7 @@ import { revalidatePage } from './revalidation.mjs'
 import assert from 'node:assert/strict'
 import { expectToast } from './loading-feedback.mjs'
 import { setTimeout as delay } from 'node:timers/promises'
+import { setMultiSelectFilter } from './multi-select-filter.mjs'
 
 export async function accountDirectoryChecks({ accounts, root, securityMail, requests, navigate, click, fill, evaluate, waitText, until, delayNextList, failMail, send, setPageSize }) {
   const rowIds = () => evaluate('[...document.querySelectorAll("[data-account-id]")].map(el => Number(el.dataset.accountId))')
@@ -14,6 +15,14 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
   await waitText("Manage your service desk's people and configuration.")
   await evaluate(`document.querySelector('a[href="/admin/accounts"]').click()`)
   await waitText(root.email)
+  assert.deepEqual(
+    await evaluate('[...document.querySelectorAll(".account-directory-table thead th")].map(cell => cell.textContent.trim())'),
+    ['Account', 'Email', 'Department', 'Region', 'Role', 'Status', 'Actions'],
+  )
+  assert.equal(
+    await evaluate('getComputedStyle(document.querySelector(".account-directory-table tbody tr.directory-row")).display'),
+    'table-row',
+  )
   assert.deepEqual(await rowIds(), [root.id], 'sole root visible on initial navigation after login')
   const first = await rowIds()
   await revalidatePage(evaluate)
@@ -44,15 +53,15 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
     await settled()
     assert.deepEqual(await rowIds(), first, 'failed create retains exactly the persisted root')
   }
-  await fill('[aria-label="Account role filter"]', 'SUPER_ADMIN')
-  await fill('[aria-label="Account status filter"]', 'ACTIVE')
+  await setMultiSelectFilter(evaluate, 'Account role filter', 'SUPER_ADMIN')
+  await setMultiSelectFilter(evaluate, 'Account status filter', 'Active')
   await fill('[aria-label="Search accounts"]', root.email)
   await delay(400)
   await settled()
   assert.deepEqual(await rowIds(), first)
-  await fill('[aria-label="Account role filter"]', 'EMPLOYEE')
+  await setMultiSelectFilter(evaluate, 'Account role filter', 'EMPLOYEE')
   await waitText('No matching accounts')
-  await fill('[aria-label="Account role filter"]', '')
+  await setMultiSelectFilter(evaluate, 'Account role filter')
   await waitText(root.email)
   const listCount = requests.filter(r => r === 'GET /users').length
   delayNextList()
@@ -62,7 +71,7 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
   await delay(1300)
   await settled()
   assert.deepEqual(await rowIds(), first, 'late empty response cannot replace newer root data')
-  await fill('[aria-label="Account status filter"]', '')
+  await setMultiSelectFilter(evaluate, 'Account status filter')
   await settled()
   failMail()
   await create('mailfailure', 'mailfailure@example.test')
@@ -113,10 +122,10 @@ export async function accountDirectoryChecks({ accounts, root, securityMail, req
     assert.notEqual(await evaluate('getComputedStyle(document.querySelector(".directory-row")).backgroundColor'), beforeHover)
     await evaluate('document.querySelector(".directory-row .action-menu-trigger").focus()')
     assert.notEqual(await evaluate('getComputedStyle(document.activeElement.closest(".directory-row")).boxShadow'), 'none')
-    await fill('[aria-label="Account status filter"]', 'INACTIVE')
+    await setMultiSelectFilter(evaluate, 'Account status filter', 'Inactive')
     await until(async () => (await rowIds()).length === 2, 'inactive rows')
     await stripes()
-    await fill('[aria-label="Account status filter"]', '')
+    await setMultiSelectFilter(evaluate, 'Account status filter')
     await until(async () => (await rowIds()).length === accounts.length, 'all rows restored')
     await stripes()
   }

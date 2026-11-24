@@ -27,6 +27,9 @@ export function TicketDraftAssistance({
   const [undo, setUndo] = useState<TicketInput | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<'neutral' | 'warning'>(
+    'neutral',
+  )
   const [error, setError] = useState('')
   const negatives = useRef(new Map<string, DraftAssistance>())
   const sequence = useRef(0)
@@ -60,6 +63,7 @@ export function TicketDraftAssistance({
     setBusy(true)
     setError('')
     setMessage('')
+    setMessageTone('neutral')
     setUndo(null)
     try {
       const bytes = await crypto.subtle.digest(
@@ -91,6 +95,7 @@ export function TicketDraftAssistance({
               ? ' Reused the previous result for unchanged input. No new AI request was sent.'
               : ''),
         )
+        setMessageTone('warning')
         return
       }
       const current = structuredClone(latest.current.getDraft())
@@ -192,13 +197,17 @@ export function TicketDraftAssistance({
           <p>Analyzing your request...</p>
         ) : (
           <>
-            {message && <p>{message}</p>}
-            {inputIssue && <p className="small muted">{inputIssue}</p>}
+            {message && (
+              <p className={messageTone === 'warning' ? 'notice warning' : ''}>
+                {message}
+              </p>
+            )}
+            {inputIssue && <p className="notice warning">{inputIssue}</p>}
           </>
         )}
       </div>
       {error && (
-        <p className="notice" role="alert">
+        <p className="notice danger" role="alert">
           {error}
         </p>
       )}

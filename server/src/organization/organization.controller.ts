@@ -12,7 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ListQuery } from '../common/list-query';
-import { IsIn } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -26,6 +26,38 @@ import { OrganizationService } from './organization.service';
 class OrganizationLookupQuery extends ListQuery {
   @IsIn(['member', 'lead', 'manager'])
   purpose!: 'member' | 'lead' | 'manager';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  specialtyIds?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  regionIds?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  departmentIds?: string;
+}
+
+class TeamMembersQuery extends ListQuery {
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  specialtyIds?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  regionIds?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  departmentIds?: string;
 }
 
 type ActorRequest = {
@@ -272,7 +304,7 @@ export class OrganizationController {
   }
   @Get('teams/:teamId/members') listMembers(
     @Param('teamId', ParseIntPipe) teamId: number,
-    @Query() query: ListQuery,
+    @Query() query: TeamMembersQuery,
   ) {
     return this.organizationService.listMembers(teamId, query);
   }

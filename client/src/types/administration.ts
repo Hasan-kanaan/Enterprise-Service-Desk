@@ -11,6 +11,7 @@ export type Account = AuthUser & {
   status: AccountStatus
   region?: Reference | null
   department?: Reference | null
+  specialties?: { specialty: Reference }[]
 }
 export type Team = Reference & {
   scope: 'REGION' | 'GLOBAL'

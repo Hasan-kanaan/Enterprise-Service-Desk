@@ -15,7 +15,9 @@ export type NamedOption = { id: number; name: string }
 export type Person = {
   id: number
   displayName: string
+  department?: NamedOption | null
   status?: 'ACTIVE' | 'INACTIVE'
+  specialties?: { specialty: NamedOption }[]
 }
 export type Ownership = {
   manager: Person | null

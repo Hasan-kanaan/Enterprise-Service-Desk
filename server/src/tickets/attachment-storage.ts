@@ -1,7 +1,15 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
+import type { Readable } from 'node:stream';
 import { validateCsv } from './csv-validation';
 import { validVideo } from './video-validation';
 
@@ -131,8 +139,18 @@ export function validateUpload(file: Upload): Omit<StoredUpload, 'storageKey'> {
 export abstract class AttachmentStorage {
   abstract put(key: string, bytes: Buffer): Promise<void>;
   abstract read(key: string): Promise<Buffer>;
+  abstract stream(key: string): Readable;
   abstract remove(key: string): Promise<void>;
 }
+
+export function isMissingAttachmentError(error: unknown) {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? error.code
+      : undefined;
+  return code === 404 || code === '404' || code === 'ENOENT';
+}
+
 @Injectable()
 export class LocalAttachmentStorage extends AttachmentStorage {
   constructor(
@@ -161,8 +179,22 @@ export class LocalAttachmentStorage extends AttachmentStorage {
       throw error;
     }
   }
-  read(key: string) {
-    return readFile(this.path(key));
+  async read(key: string) {
+    try {
+      return await readFile(this.path(key));
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT')
+          throw new NotFoundException('Attachment unavailable');
+      }
+      throw new ServiceUnavailableException(
+        'Attachment storage download failed',
+      );
+    }
+  }
+  stream(key: string) {
+    return createReadStream(this.path(key));
   }
   async remove(key: string) {
     await unlink(this.path(key)).catch((error: NodeJS.ErrnoException) => {
@@ -183,7 +215,7 @@ export class AttachmentUploads {
       uploads.reduce((total, upload) => total + upload.buffer.length, 0) >
       ATTACHMENT_BATCH_LIMIT
     )
-    throw new BadRequestException('Maximum total attachment size is 60 MiB');
+      throw new BadRequestException('Maximum total attachment size is 60 MiB');
     const files = uploads.map((upload) => ({
       ...validateUpload(upload),
       storageKey: randomUUID(),

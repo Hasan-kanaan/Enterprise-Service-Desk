@@ -591,7 +591,7 @@ button:disabled {
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 24px;
+  padding: 20px;
   background: var(--card);
   color: var(--foreground);
   box-shadow: 0 25px 100px #0003;
@@ -603,19 +603,19 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 .modal-header h2 {
   font-size: 20px;
   font-weight: 650;
 }
 .modal .form-footer {
-  padding: 24px 0 0;
+  padding: 18px 0 0;
 }
 .modal .notice {
   display: block;
-  margin-top: 20px;
+  margin-top: 16px;
 }
 @media (max-width: 900px) {
   .ticket-detail-grid {
@@ -790,12 +790,37 @@ button:disabled {
 }
 .section-heading { margin-bottom: 12px; }
 .people-picker { border: 0; padding: 0; min-width: 0; }
-.people-picker legend { font-weight: 650; margin-bottom: 12px; }
-.people-results { max-height: 280px; overflow: auto; margin-top: 12px; }
-.people-result { display: flex; gap: 12px; align-items: center; padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.team-action-context { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: 44px; margin: 4px 0 12px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); font-size: 13px; }
+.team-action-context span { color: var(--muted-foreground); }
+.people-picker legend { font-weight: 650; margin-bottom: 8px; }
+.people-picker > .field { margin: 0 0 12px; gap: 8px; }
+.multi-select-filter { position: relative; min-width: 0; }
+.multi-select-filter summary { cursor: pointer; list-style: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 30px 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); position: relative; }
+.multi-select-filter summary::-webkit-details-marker { display: none; }
+.multi-select-chevron { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); color: var(--muted-foreground); pointer-events: none; }
+.multi-select-options { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: 0 10px 32px #0004; }
+.multi-select-options label { display: flex; align-items: center; gap: 8px; padding: 6px; cursor: pointer; }
+.multi-select-options input { width: auto; accent-color: var(--primary); }
+.people-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.people-selection-count { margin: 6px 0 0; }
+.people-specialties { display: block; color: var(--muted-foreground); font-size: 12px; margin-top: 3px; }
+.people-results { flex: 1 1 auto; min-height: 0; max-height: 280px; overflow: auto; margin-top: 8px; }
+.people-results > .quiet-note { margin: 0; padding: 8px 2px; }
+.people-results:has(> .quiet-note:only-child) { display: flex; align-items: center; justify-content: center; }
+.people-results:has(> .quiet-note:only-child) > .quiet-note { text-align: center; }
+.people-result { display: flex; gap: 10px; align-items: center; padding: 9px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .people-result input { width: auto; accent-color: var(--primary); }
 .people-result:has(input:checked), .people-result:hover { background: var(--muted); }
 .people-result:focus-within { outline: 2px solid var(--primary); outline-offset: -2px; }
+.modal[open]:has(.people-picker) { display: flex; flex-direction: column; height: min(560px, calc(100svh - 32px)); max-height: calc(100svh - 32px); overflow: hidden; }
+.modal[open]:has(.people-picker) > form { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.modal[open]:has(.people-picker) > form > fieldset { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.modal[open]:has(.people-picker) .people-picker { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.modal[open]:has(.people-picker) .form-footer { flex: none; }
+@media (max-width: 380px) {
+  .people-filters { grid-template-columns: minmax(0, 1fr); }
+}
+.team-responsibilities .detail-body { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 .specialty-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; }
 .specialty-row > span { overflow-wrap: anywhere; }
 .specialty-row button { flex-shrink: 0; }

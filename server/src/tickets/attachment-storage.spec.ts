@@ -1,4 +1,8 @@
 import { AttachmentUploads, validateUpload } from './attachment-storage';
+import { LocalAttachmentStorage } from './attachment-storage';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 
 const upload = (
   name: string,
@@ -11,6 +15,15 @@ const upload = (
   mimetype,
 });
 describe('Attachment file boundaries', () => {
+  it('distinguishes a missing local object from an unavailable storage directory', async () => {
+    const storage = new LocalAttachmentStorage(
+      join(tmpdir(), `missing-attachments-${randomUUID()}`),
+    );
+    await expect(storage.read(randomUUID())).rejects.toMatchObject({
+      status: 404,
+      message: 'Attachment unavailable',
+    });
+  });
   it.each([
     ['image.png', Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])],
     ['image.jpeg', Buffer.from([255, 216, 255, 224])],
@@ -74,6 +87,7 @@ describe('Attachment file boundaries', () => {
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error('disk')),
       read: jest.fn(),
+      stream: jest.fn(),
       remove: jest.fn().mockResolvedValue(undefined),
     };
     const operation = jest.fn();
@@ -90,6 +104,7 @@ describe('Attachment file boundaries', () => {
     const storage = {
       put: jest.fn(),
       read: jest.fn(),
+      stream: jest.fn(),
       remove: jest.fn(),
     };
     await expect(

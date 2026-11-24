@@ -90,7 +90,7 @@ export function ChangeRoleForm({
         must sign in again. No replacement person is selected automatically.
       </p>
       {!account.activatedAt && (
-        <p className="notice">
+        <p className="notice warning">
           This account has not been activated yet. Changing the role will
           invalidate its current activation link. After the role change, send
           new activation instructions to the user using Resend activation.

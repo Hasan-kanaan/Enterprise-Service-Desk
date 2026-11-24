@@ -69,4 +69,5 @@ describe('Requester AI provider boundary', () => {
     });
     expect(generateDraft).toHaveBeenCalledTimes(5);
   });
+
 });

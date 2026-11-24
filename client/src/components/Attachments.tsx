@@ -134,24 +134,37 @@ export function AttachmentList({
   disabled?: boolean
 }) {
   const [error, setError] = useState<unknown>()
-  const [busy, setBusy] = useState(false)
-  const action = async (run: () => Promise<void>, removing = false) => {
-    if (busy) return
-    setBusy(true)
+  const [busyIds, setBusyIds] = useState<Set<number>>(() => new Set())
+  const action = async (
+    fileId: number,
+    run: () => Promise<void>,
+    removing = false,
+  ) => {
+    if (busyIds.has(fileId)) return
+    setBusyIds((current) => new Set(current).add(fileId))
     setError(undefined)
     try {
       await run()
       if (removing) toast.success('Attachment deleted')
     } catch (failure) {
       setError(failure)
-      toast.error(getApiErrorMessage(failure, 'Could not complete the attachment action.'))
+      toast.error(failure instanceof Error ? failure.message : getApiErrorMessage(failure, 'Could not complete the attachment action.'))
     } finally {
-      setBusy(false)
+      setBusyIds((current) => {
+        const next = new Set(current)
+        next.delete(fileId)
+        return next
+      })
     }
   }
   return (
     <>
-      {!!error && <ErrorState error={error} />}
+      {!!error && (
+        <ErrorState
+          error={error}
+          message={error instanceof Error ? error.message : undefined}
+        />
+      )}
       <ul className="attachment-cards">
         {files.map((file) => (
           <li key={file.id}>
@@ -160,10 +173,13 @@ export function AttachmentList({
                 Attachment deleted · {formatDate(file.deletedAt, true)}
               </span>
             ) : (
-              <AttachmentCard file={file} disabled={disabled || busy}
-                onDownload={() => void action(() => downloadAttachment(file))}
+              <AttachmentCard
+                file={file}
+                disabled={disabled || busyIds.has(file.id)}
+                downloading={busyIds.has(file.id)}
+                onDownload={() => void action(file.id, () => downloadAttachment(file))}
                 onDelete={onDelete ? () => {
-                  if (window.confirm('Delete this attachment? It will no longer be downloadable.')) void action(() => onDelete(file), true)
+                  if (window.confirm('Delete this attachment? It will no longer be downloadable.')) void action(file.id, () => onDelete(file), true)
                 } : undefined}
               />
             )}

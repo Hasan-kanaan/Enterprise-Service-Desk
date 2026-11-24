@@ -242,7 +242,7 @@ function TicketContent({ id }: { id: number }) {
               )}
             </div>
             {workStarted && <p className="notice">Support work has started. Add new information in the <a href="#ticket-conversation">conversation</a> so the support team can see the update.</p>}
-            {editWorkStarted && <div className="notice" role="alert">Support work has started. Add new information in the <a href="#ticket-conversation">conversation</a> so the support team can see the update. Copy any unsaved changes before reloading.</div>}
+            {editWorkStarted && <div className="notice warning" role="alert">Support work has started. Add new information in the <a href="#ticket-conversation">conversation</a> so the support team can see the update. Copy any unsaved changes before reloading.</div>}
             {!!error && (
               <ErrorState
                 error={error}
@@ -468,7 +468,7 @@ function TicketContent({ id }: { id: number }) {
             )}
             {!!actionError &&
               (routingConflict ? (
-                <div className="notice" role="alert">
+                <div className="notice warning" role="alert">
                   <p>
                     The previous assignment is no longer available. This ticket
                     can return to the support queue for a fresh assignment.

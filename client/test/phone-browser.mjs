@@ -5,7 +5,7 @@ export async function phoneBrowserChecks({ navigate, waitText, evaluate, fill, s
   await waitText('Employee Eve')
   await evaluate(`(() => {
     const row = document.querySelector('[data-account-id="3"]')
-    row.querySelector('button[popovertarget]').click()
+    row.querySelector('.action-menu-trigger').click()
     ;[...row.querySelectorAll('button')].find(b => b.textContent === 'Edit account').click()
   })()`)
   await until(() => evaluate('!!document.querySelector(".phone-control input")'), 'phone field')

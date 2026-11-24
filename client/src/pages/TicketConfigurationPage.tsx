@@ -141,7 +141,7 @@ function ConfigurationDialog({
           />
         </label>
       ) : (
-        <p className="notice">
+        <p className="notice warning">
           {action.kind === 'archive'
             ? 'Confirm archival. Existing references remain intact. This record will be unavailable for new selections.'
             : 'Restore eligibility for future selections.'}

@@ -136,12 +136,12 @@ export function AiSuggestions({
         </p>
       )}
       {!!error && (
-        <p className="notice" role="alert">
+        <p className="notice danger" role="alert">
           {error}
         </p>
       )}
       {stale && (
-        <p className="notice" role="alert">
+        <p className="notice warning" role="alert">
           Ticket changed. Reload and regenerate AI suggestions.
         </p>
       )}

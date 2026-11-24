@@ -100,7 +100,7 @@ function OperationalTicket({ id }: { id: number }) {
           <p className="eyebrow">{origin ? workLabels[origin] : 'Support workspace'} / Ticket #{id}</p>
           <h1>{ticket.title}</h1>
           {ticket.requesterStatus === 'INACTIVE' && (
-            <p className="notice" role="alert">
+            <p className="notice warning" role="alert">
               Requester account is inactive.
             </p>
           )}
@@ -116,7 +116,7 @@ function OperationalTicket({ id }: { id: number }) {
         </div>
       </header>
       {p.take && (
-        <div className="notice responsibility-banner">
+        <div className="notice warning responsibility-banner">
           <p>Shared intake. Take responsibility before editing, routing, or creating subtasks.</p>
           <button className="button primary" disabled={busy || resource.loading} onClick={() => setAction('take')}>Take responsibility</button>
         </div>

@@ -456,7 +456,7 @@ function CommunicationStream({
                     />
                   )}
                   {stale && (
-                    <p className="notice">
+                    <p className="notice warning">
                       This draft belongs to an earlier cycle. Review it before
                       starting a new message in the current cycle.
                     </p>

@@ -1,5 +1,4 @@
 import {
-  IsEnum,
   IsIn,
   ValidateIf,
   IsOptional,
@@ -8,7 +7,6 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ListQuery } from '../../common/list-query';
-import { TicketStatus } from '../../../generated/prisma/client';
 
 export class ListTicketsDto extends ListQuery {
   @IsOptional()
@@ -20,9 +18,8 @@ export class ListTicketsDto extends ListQuery {
   @IsInt()
   @Min(1)
   categoryId?: number;
-  @ValidateIf((_object, value) => value !== undefined)
-  @IsEnum(TicketStatus)
-  status?: TicketStatus;
+  @IsOptional()
+  statuses?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsIn(['true', 'false'])

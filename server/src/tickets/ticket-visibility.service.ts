@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, UserRole } from '../../generated/prisma/client';
+import { TicketStatus } from '../../generated/prisma/client';
+import { BadRequestException } from '@nestjs/common';
 import { operationalStatuses } from '../prisma/transactions';
 import { ListQuery, after, listPage, listWindow } from '../common/list-query';
 import { ListSubtasksDto } from './dto/list-tickets.dto';
@@ -15,6 +17,13 @@ export type TicketVisibilityUser = {
   id: number;
   role: UserRole;
 };
+
+function parseTicketStatusFilters(value: string): TicketStatus[] {
+  const statuses = [...new Set(value.split(',').filter(Boolean))];
+  if (!statuses.length || statuses.some(status => !Object.values(TicketStatus).includes(status as TicketStatus)))
+    throw new BadRequestException('Invalid ticket status filter');
+  return statuses as TicketStatus[];
+}
 
 @Injectable()
 export class TicketVisibilityService {
@@ -130,7 +139,7 @@ export class TicketVisibilityService {
           ? { requesterId: user.id }
           : this.operationalWhere(user),
         this.queueWhere(user, query.queue),
-        query.status ? { status: query.status } : {},
+        query.statuses ? { status: { in: parseTicketStatusFilters(query.statuses) } } : {},
         query.active === 'true'
           ? { status: { in: [...operationalStatuses] } }
           : query.active === 'false'
@@ -224,8 +233,8 @@ export class TicketVisibilityService {
     ) {
       const [active, waiting, resolved] = await Promise.all([
         count({ queue: 'requests', active: 'true' }),
-        count({ queue: 'requests', status: 'WAITING_FOR_EMPLOYEE' }),
-        count({ queue: 'requests', status: 'RESOLVED' }),
+        count({ queue: 'requests', statuses: 'WAITING_FOR_EMPLOYEE' }),
+        count({ queue: 'requests', statuses: 'RESOLVED' }),
       ]);
       return { counts: [active, waiting, resolved] };
     }

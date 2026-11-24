@@ -167,3 +167,110 @@ describe('Organization responsibility removal', () => {
     },
   );
 });
+
+describe('Team member list', () => {
+  it('searches names and emails, applies member filters, and selects table metadata', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const service = new OrganizationService({
+      team: { findUnique: jest.fn().mockResolvedValue({ id: 7 }) },
+      user: { findMany },
+    } as unknown as PrismaService);
+
+    await service.listMembers(7, {
+      search: 'agent@example.test',
+      specialtyIds: '4,8,4',
+      regionIds: '2',
+      departmentIds: '6,6',
+      limit: 10,
+    });
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        AND: [
+          {},
+          { teamMemberships: { some: { teamId: 7 } } },
+          {
+            OR: [
+              {
+                displayName: {
+                  contains: 'agent@example.test',
+                  mode: 'insensitive',
+                },
+              },
+              {
+                email: {
+                  contains: 'agent@example.test',
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          },
+          { specialties: { some: { specialtyId: { in: [4, 8] } } } },
+          { regionId: { in: [2] } },
+          { departmentId: { in: [6] } },
+        ],
+      },
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
+        role: true,
+        status: true,
+        region: { select: { id: true, name: true, archivedAt: true } },
+        department: { select: { id: true, name: true, archivedAt: true } },
+        specialties: {
+          select: {
+            specialty: { select: { id: true, name: true, archivedAt: true } },
+          },
+          orderBy: { specialty: { name: 'asc' } },
+        },
+      },
+      orderBy: { id: 'desc' },
+      take: 11,
+    });
+  });
+
+  describe('Eligible Agent lookup', () => {
+    it('filters Add member candidates by department and returns department metadata', async () => {
+      const findMany = jest.fn().mockResolvedValue([]);
+      const service = new OrganizationService({
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        team: {
+          findUnique: jest.fn().mockResolvedValue({ id: 7, archivedAt: null }),
+        },
+        user: { findMany },
+      } as unknown as PrismaService);
+
+      await service.people(7, 'member', {
+        departmentIds: '3,5,3',
+        limit: 20,
+      });
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: {
+          AND: [
+            {
+              role: UserRole.AGENT,
+              teamMemberships: { none: { teamId: 7 } },
+              departmentId: { in: [3, 5] },
+            },
+            {},
+            { status: 'ACTIVE', activatedAt: { not: null } },
+          ],
+        },
+        select: {
+          id: true,
+          displayName: true,
+          department: { select: { id: true, name: true } },
+          specialties: {
+            where: { specialty: { archivedAt: null } },
+            select: { specialty: { select: { id: true, name: true } } },
+            orderBy: { specialty: { name: 'asc' } },
+          },
+        },
+        orderBy: { id: 'desc' },
+        take: 21,
+      });
+    });
+  });
+});

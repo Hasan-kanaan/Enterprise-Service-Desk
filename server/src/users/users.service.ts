@@ -34,6 +34,13 @@ export type RefreshTokenRecord = {
   user: UserRecord;
 };
 
+function parseEnumFilters<T extends string>(value: string, allowed: readonly T[]): T[] {
+  const values = [...new Set(value.split(',').filter(Boolean))];
+  if (values.some((item) => !allowed.includes(item as T)))
+    throw new BadRequestException('Invalid list filter');
+  return values as T[];
+}
+
 export type UserRecord = {
   id: number;
   displayName: string;
@@ -555,8 +562,8 @@ export class UsersService {
       where: {
         AND: [
           after(position),
-          query.role ? { role: query.role } : {},
-          query.status ? { status: query.status } : {},
+          ...(query.role ? [{ role: { in: parseEnumFilters(query.role, Object.values(PrismaUserRole)) } }] : []),
+          ...(query.status ? [{ status: { in: parseEnumFilters(query.status, Object.values(UserStatus)) } }] : []),
           search
             ? {
                 OR: [

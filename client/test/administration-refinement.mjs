@@ -5,7 +5,7 @@ export async function administrationRefinementChecks({ teams, navigate, click, f
   const rowAction = async (name, action) => {
     await evaluate(`(() => {
       const row = [...document.querySelectorAll('.admin-row')].find(r => r.textContent.includes(${JSON.stringify(name)}));
-      row.querySelector('button[popovertarget]').click();
+      row.querySelector('.action-menu-trigger').click();
       [...row.querySelectorAll('[popover] button')].find(b => b.textContent.trim() === ${JSON.stringify(action)}).click();
     })()`)
   }

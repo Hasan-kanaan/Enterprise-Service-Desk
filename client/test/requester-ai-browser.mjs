@@ -27,7 +27,7 @@ export async function requesterAiBrowser({ fixture, send, evaluate, navigate, wa
   options.departments.push({ id: 13, name: 'Finance' })
   options.tags.push({ id: 8, name: 'Existing tag' })
   const description = 'My company VPN cannot connect from the Beirut Operations office.'
-  const helper = 'Help me complete this ticket'
+  const helper = 'Use AI assistance'
   const success = 'AI helped complete this ticket. Review the fields before submitting.'
   const disabled = text => evaluate(`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(text)})?.disabled`)
   const value = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).value`)
@@ -117,6 +117,9 @@ export async function requesterAiBrowser({ fixture, send, evaluate, navigate, wa
     const before = await snapshot(), calls = fixture.calls.length
     await click(helper); await waitText(message)
     assert.deepEqual(await snapshot(), before)
+    if (mode === 'out') {
+      assert(await evaluate("!!document.querySelector('.draft-assistance [role=status] .notice.warning')"))
+    }
     await click(helper); await waitText('Reused the previous result')
     assert.equal(fixture.calls.length, calls + 1)
     assert.deepEqual(await snapshot(), before)

@@ -127,7 +127,12 @@ describe('Conservative private video attachments', () => {
     ).toThrow('Maximum file size');
   });
   it('rejects aggregate overflow before any storage/database work', async () => {
-    const storage = { put: jest.fn(), read: jest.fn(), remove: jest.fn() },
+    const storage = {
+        put: jest.fn(),
+        read: jest.fn(),
+        stream: jest.fn(),
+        remove: jest.fn(),
+      },
       operation = jest.fn();
     await expect(
       new AttachmentUploads(storage).run(
@@ -143,7 +148,12 @@ describe('Conservative private video attachments', () => {
     expect(operation).not.toHaveBeenCalled();
   });
   it('accepts the inclusive 60 MiB aggregate without relaxing the five-file bound', async () => {
-    const storage = { put: jest.fn(), read: jest.fn(), remove: jest.fn() };
+    const storage = {
+      put: jest.fn(),
+      read: jest.fn(),
+      stream: jest.fn(),
+      remove: jest.fn(),
+    };
     const uploads = new AttachmentUploads(storage);
     const video = upload('mp4', mp4Fixture(VIDEO_LIMIT));
     await expect(

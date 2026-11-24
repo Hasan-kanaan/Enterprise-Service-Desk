@@ -1,5 +1,6 @@
 import { Storage } from '@google-cloud/storage';
 import { HttpException } from '@nestjs/common';
+import { Readable } from 'node:stream';
 import {
   GoogleCloudStorageAdapter,
   createAttachmentStorage,
@@ -10,7 +11,12 @@ import { storageConfig } from './storage.config';
 jest.mock('@google-cloud/storage', () => ({ Storage: jest.fn() }));
 const key = '12345678-1234-1234-1234-123456789abc';
 describe('Google Cloud Storage (no network)', () => {
-  const file = { save: jest.fn(), download: jest.fn(), delete: jest.fn() };
+  const file = {
+    save: jest.fn(),
+    download: jest.fn(),
+    createReadStream: jest.fn(),
+    delete: jest.fn(),
+  };
   const bucket = { file: jest.fn(() => file) };
   const client = { bucket: jest.fn(() => bucket) };
   let adapter: GoogleCloudStorageAdapter;
@@ -18,6 +24,9 @@ describe('Google Cloud Storage (no network)', () => {
     jest.clearAllMocks();
     file.save.mockReset().mockResolvedValue(undefined);
     file.download.mockReset().mockResolvedValue([Buffer.from('bytes')]);
+    file.createReadStream
+      .mockReset()
+      .mockReturnValue(Readable.from([Buffer.from('bytes')]));
     file.delete.mockReset().mockResolvedValue(undefined);
     adapter = new GoogleCloudStorageAdapter(
       client as unknown as Storage,
@@ -38,6 +47,14 @@ describe('Google Cloud Storage (no network)', () => {
   it('reads bytes with checksum validation', async () => {
     await expect(adapter.read(key)).resolves.toEqual(Buffer.from('bytes'));
     expect(file.download).toHaveBeenCalledWith({ validation: 'crc32c' });
+  });
+  it('creates a checksum-validated read stream', () => {
+    const stream = Readable.from([Buffer.from('bytes')]);
+    file.createReadStream.mockReturnValueOnce(stream);
+    expect(adapter.stream(key)).toBe(stream);
+    expect(file.createReadStream).toHaveBeenCalledWith({
+      validation: 'crc32c',
+    });
   });
   it('deletes and treats an already missing object as successful cleanup', async () => {
     await adapter.remove(key);

@@ -23,6 +23,7 @@ import {
   LoadingState,
   TicketRows,
 } from '@/components/TicketUI'
+import { MultiSelectFilter } from '@/components/MultiSelectFilter'
 
 export function EmployeeTicketsPage({
   overview = false,
@@ -33,12 +34,12 @@ export function EmployeeTicketsPage({
   const filters = useListFilters()
   const query = filters.get('search')
   const filter = filters.get('state') || 'all'
-  const status = filters.get('status') as TicketStatus | ''
+  const statuses = filters.getMany('status') as TicketStatus[]
   const search = useDebouncedValue(query)
   const resource = usePagedList<TicketSummary>('/tickets', {
     queue: 'requests',
     search: search || undefined,
-    status: status || undefined,
+    statuses: statuses.length ? statuses.join(',') : undefined,
     active:
       filter === 'active'
         ? 'true'
@@ -56,7 +57,7 @@ export function EmployeeTicketsPage({
   }
   const visible = tickets
   const counts = summary.data?.counts
-  const searching = !!(query || status || filter !== 'all')
+  const searching = !!(query || statuses.length || filter !== 'all')
   return (
     <RefreshSurface busy={!!(loading && tickets.length)}><div className="ticket-workspace">
       <header className="page-heading">
@@ -122,18 +123,7 @@ export function EmployeeTicketsPage({
                   placeholder="Search by title or ticket number"
                 />
               </label>
-              <select
-                aria-label="Filter by status"
-                value={status}
-                onChange={(event) => filters.set('status', event.target.value)}
-              >
-                <option value="">All statuses</option>
-                {ticketStatuses.map((value) => (
-                  <option key={value} value={value}>
-                    {value === 'WAITING_FOR_EMPLOYEE' ? 'Waiting for you' : statusLabels[value]}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectFilter label="Filter by ticket status" allLabel="All statuses" selected={statuses} onChange={values => filters.setMany('status', values)} options={ticketStatuses.map(value => ({ value, label: value === 'WAITING_FOR_EMPLOYEE' ? 'Waiting for you' : statusLabels[value] }))} />
             </div>
           </>
         )}

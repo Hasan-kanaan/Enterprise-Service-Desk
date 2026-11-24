@@ -93,7 +93,7 @@ export function TicketOperationForm({
       )}
       {action === 'transfer' && (
         <>
-          <p className="notice">
+          <p className="notice warning">
             The selected manager will take responsibility. This ticket will
             leave your workspace; its team and agent remain unchanged.
           </p>
@@ -149,7 +149,7 @@ export function TicketOperationForm({
           </label>
           {status === 'RESOLVED' && (
             <>
-              <p className="notice">
+              <p className="notice warning">
                 Resolving ends this work cycle and freezes ticket details and
                 all subtasks, including unfinished subtasks.
               </p>
@@ -166,7 +166,7 @@ export function TicketOperationForm({
             </>
           )}
           {status === 'CLOSED' && (
-            <p className="notice">
+            <p className="notice warning">
               Confirm closure of the resolved ticket. Its work history will be
               preserved.
             </p>

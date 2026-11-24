@@ -11,6 +11,7 @@ import { administrationPolish } from './ui-polish.mjs'
 import { accountDirectoryChecks } from './account-directory.mjs'
 import { manualPolish } from './manual-polish.mjs'
 import { pageFixture } from './list-fixture.mjs'
+import { setMultiSelectFilter } from './multi-select-filter.mjs'
 // Dependency-free browser acceptance checks using installed Chrome/Edge and CDP.
 // Run after `pnpm build`: node test/employee-flow.mjs. API responses are isolated fixtures.
 import assert from 'node:assert/strict'
@@ -424,9 +425,27 @@ function response(request) {
   if (lookup && request.method === 'GET') {
     const team = teams.find(t => t.id === Number(lookup[1]))
     if (!team) return [404, { message: 'Team not found' }]
-    if (lookup[2] === 'members') return [200, pageFixture(team.memberIds.map(id => member(id).user), url, false)]
+    if (lookup[2] === 'members') {
+      const specialtyIds = new Set((url.searchParams.get('specialtyIds') ?? '').split(',').filter(Boolean))
+      const regionIds = new Set((url.searchParams.get('regionIds') ?? '').split(',').filter(Boolean))
+      const departmentIds = new Set((url.searchParams.get('departmentIds') ?? '').split(',').filter(Boolean))
+      const rows = team.memberIds.map(id => {
+        const account = accounts.find(a => a.id === id)
+        const specialties = (specialtyLinks.get(`agents/${id}`) ?? [])
+          .map(specialtyId => catalogs.specialties.find(specialty => specialty.id === specialtyId))
+          .filter(Boolean)
+          .map(specialty => ({ specialty }))
+        return { ...account, specialties }
+      }).filter(account =>
+        (!specialtyIds.size || account.specialties.some(({ specialty }) => specialtyIds.has(String(specialty.id)))) &&
+        (!regionIds.size || regionIds.has(String(account.region?.id))) &&
+        (!departmentIds.size || departmentIds.has(String(account.department?.id))),
+      )
+      return [200, pageFixture(rows, url, false)]
+    }
     const purpose = url.searchParams.get('purpose'), search = (url.searchParams.get('search') ?? '').toLowerCase()
-    return [200, pageFixture(accounts.filter(a => a.status === 'ACTIVE' && a.activatedAt && a.displayName.toLowerCase().includes(search) && (purpose === 'manager' ? a.role === 'MANAGER' : a.role === 'AGENT' && (purpose === 'member' ? !team.memberIds.includes(a.id) : team.memberIds.includes(a.id) && !teams.some(t => t.id !== team.id && t.teamLeadId === a.id)))).map(({id, displayName}) => ({id, displayName})), url, false)]
+    const departmentIds = new Set((url.searchParams.get('departmentIds') ?? '').split(',').filter(Boolean))
+    return [200, pageFixture(accounts.filter(a => a.status === 'ACTIVE' && a.activatedAt && a.displayName.toLowerCase().includes(search) && (purpose !== 'member' || !departmentIds.size || departmentIds.has(String(a.department?.id))) && (purpose === 'manager' ? a.role === 'MANAGER' : a.role === 'AGENT' && (purpose === 'member' ? !team.memberIds.includes(a.id) : team.memberIds.includes(a.id) && !teams.some(t => t.id !== team.id && t.teamLeadId === a.id)))).map(({id, displayName, department}) => ({id, displayName, department: department ? {id: department.id, name: department.name} : null})), url, false)]
   }
   if (path === '/organization/teams') {
     if (request.method === 'GET') return [200, teams.map(viewTeam)]
@@ -538,12 +557,13 @@ async function click(text) {
 async function fill(selector, value) {
   await until(() => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`), `input ready: ${selector}`)
   if (value && selector === '.people-picker') {
-    await until(() => evaluate(`!!document.querySelector('.people-picker input[type="radio"][value="${value}"]')`), 'eligible candidate')
-    await evaluate(`document.querySelector('.people-picker input[type="radio"][value="${value}"]').click()`)
+    const candidate = `.people-picker input[value="${value}"]`
+    await until(() => evaluate(`!!document.querySelector(${JSON.stringify(candidate)})`), 'eligible candidate')
+    await evaluate(`document.querySelector(${JSON.stringify(candidate)}).click()`)
     return
   }
   await evaluate(
-    `(() => { const el = document.querySelector(${JSON.stringify(selector)}); const prototype = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+    `(() => { const el = document.querySelector(${JSON.stringify(selector)}); const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set; if (!setter) throw Error('Element has no value setter: ' + ${JSON.stringify(selector)}); setter.call(el, ${JSON.stringify(value)}); const EventConstructor = el.ownerDocument.defaultView.Event; el.dispatchEvent(new EventConstructor('input', { bubbles: true })); el.dispatchEvent(new EventConstructor('change', { bubbles: true })); })()`,
   )
   await delay(30)
 }
@@ -1024,7 +1044,7 @@ try {
     await action('Remove specialty'); await confirm()
     accounts.find(a => a.id === 4).activatedAt = new Date().toISOString()
     await navigate('/admin/accounts'); await waitText('Agent Ali')
-    await evaluate(`(() => { const row = document.querySelector('[data-account-id="4"]'); row.querySelector('button[popovertarget]').click(); [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Manage specialties').click() })()`)
+    await evaluate(`(() => { const row = document.querySelector('[data-account-id="4"]'); row.querySelector('.action-menu-trigger').click(); [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Manage specialties').click() })()`)
     await waitText('Add specialty'); await action('Add specialty'); await fill('[aria-label="Specialty"]', '1'); await confirm(); await waitText('Remove specialty')
     await action('Remove specialty'); await confirm(); await waitText('No specialties linked')
     await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
@@ -1098,7 +1118,13 @@ try {
   await until(() => evaluate("document.querySelector('h1')?.textContent === 'Administration'"), 'administration heading')
   await evaluate("document.querySelector('[aria-label=\"Administration areas\"] a[href=\"/admin/accounts\"]').click()")
   await waitText('Employee Eve')
-  await waitText('Region: Beirut / Department: Operations')
+  assert.deepEqual(
+    await evaluate(`(() => {
+      const cells = [...document.querySelector('[data-account-id="3"]').children]
+      return { department: cells[2].textContent.trim(), region: cells[3].textContent.trim() }
+    })()`),
+    { department: 'Operations', region: 'Beirut' },
+  )
   assert(
     !(await evaluate(
       `document.querySelector('[data-account-id="2"]').querySelector('button')!==null`,
@@ -1206,6 +1232,12 @@ try {
   await waitText('Team specialties')
   await waitText('Team specialty coverage is separate from individual Agent specialties.')
   console.log('PASS: immediate bounded Agents, load more, search/empty, native keyboard selection and separate Team specialty explanation')
+  accounts.find(a => a.id === 4).region = { id: 1, name: 'Beirut' }
+  const supportDepartment = { id: catalogs.departments.length + 1, name: 'Support' }
+  catalogs.departments.push(supportDepartment)
+  accounts.find(a => a.id === 4).department = catalogs.departments[0]
+  accounts.find(a => a.id === 5).department = supportDepartment
+  specialtyLinks.set('agents/4', [1])
   await action('Add member')
   await absent('Inactive agent')
   await fill('.people-picker', '4')
@@ -1215,6 +1247,58 @@ try {
   await fill('.people-picker', '5')
   await confirm()
   await waitText('Agent Maya')
+  assert.deepEqual(
+    await evaluate(`[...document.querySelectorAll('.team-members-table thead th')].map(cell => cell.textContent.trim())`),
+    ['Member', 'Email', 'Specialties', 'Region', 'Department', 'Status', 'Actions'],
+  )
+  assert.equal(
+    await evaluate(`getComputedStyle(document.querySelector('.team-members-table tbody tr')).display`),
+    'table-row',
+  )
+  await send('Emulation.setDeviceMetricsOverride', { width: 820, height: 1050, deviceScaleFactor: 1, mobile: false })
+  const memberToolbarLayout = await evaluate(`(() => {
+    const search = document.querySelector('.team-member-search').getBoundingClientRect()
+    const filters = [...document.querySelectorAll('.team-member-toolbar .multi-select-filter')]
+      .map(filter => filter.getBoundingClientRect())
+    return {
+      searchWidth: search.width,
+      searchBottom: search.bottom,
+      filtersTop: filters.map(filter => filter.top),
+    }
+  })()`)
+  assert(memberToolbarLayout.searchWidth > 500)
+  assert(memberToolbarLayout.filtersTop.every(top => top === memberToolbarLayout.filtersTop[0]))
+  assert(memberToolbarLayout.searchBottom < memberToolbarLayout.filtersTop[0])
+  await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false })
+  const aliRow = () =>
+    evaluate(`[...document.querySelectorAll('.team-members-table tbody tr')]
+      .find(row => row.textContent.includes('Agent Ali'))?.textContent ?? ''`)
+  assert((await aliRow()).includes('ali@example.test'))
+  assert((await aliRow()).includes('Networking'))
+  assert((await aliRow()).includes('Beirut'))
+  assert((await aliRow()).includes('Operations'))
+  assert(!(await aliRow()).includes('AGENT'))
+  const toggleMemberFilter = label => evaluate(`(() => {
+    const filter = [...document.querySelectorAll('.team-member-toolbar details')]
+      .find(item => item.querySelector('summary[aria-label="${label}"]'));
+    filter.open = true;
+    filter.querySelector('input').click();
+  })()`)
+  await toggleMemberFilter('Member specialties')
+  await until(() => evaluate(`document.querySelectorAll('.team-members-table tbody tr').length === 1`), 'specialty filter narrows team members')
+  assert((await aliRow()).includes('Agent Ali'))
+  await toggleMemberFilter('Member specialties')
+  await until(() => evaluate(`document.querySelectorAll('.team-members-table tbody tr').length === 2`), 'cleared specialty filter restores members')
+  await toggleMemberFilter('Member regions')
+  await until(() => evaluate(`document.querySelectorAll('.team-members-table tbody tr').length === 1`), 'region filter narrows team members')
+  assert((await aliRow()).includes('Agent Ali'))
+  await toggleMemberFilter('Member regions')
+  await until(() => evaluate(`document.querySelectorAll('.team-members-table tbody tr').length === 2`), 'cleared region filter restores members')
+  await toggleMemberFilter('Member departments')
+  await until(() => evaluate(`document.querySelectorAll('.team-members-table tbody tr').length === 1`), 'department filter narrows team members')
+  assert((await aliRow()).includes('Agent Ali'))
+  await toggleMemberFilter('Member departments')
+  await until(() => evaluate(`document.querySelectorAll('.team-members-table tbody tr').length === 2`), 'cleared department filter restores members')
   await action('Assign Team Lead')
   await fill('.people-picker', '4')
   await confirm()
@@ -1237,9 +1321,16 @@ try {
   await navigate('/admin/organization/teams/2')
   await waitText('GLOBAL - all regions')
   await action('Add member')
+  await setMultiSelectFilter(evaluate, 'Department', 'Support')
+  await until(() => evaluate(`document.querySelectorAll('.people-result').length === 1`), 'department filter narrows add-member candidates')
+  assert(await evaluate(`document.querySelector('.people-result').textContent.includes('Agent Maya')`))
+  assert(await evaluate(`document.querySelector('.people-result').textContent.includes('Department: Support')`))
+  await setMultiSelectFilter(evaluate, 'Department')
+  await until(() => evaluate(`document.querySelectorAll('.people-result').length > 1`), 'cleared department filter restores add-member candidates')
   await fill('.people-picker', '4')
   await confirm()
   await waitText('Agent Ali')
+  await waitText('Team Lead · Regional support')
   await action('Assign Team Lead')
   assert(
     !(await evaluate(
@@ -1350,13 +1441,13 @@ try {
   await click('Load more')
   await until(() => evaluate("document.querySelectorAll('[data-account-id]').length === 61"), 'directory final page')
   await waitText('End of results')
-  await fill('[aria-label="Account role filter"]', 'AGENT')
+  await setMultiSelectFilter(evaluate, 'Account role filter', 'AGENT')
   await until(() => evaluate("document.querySelectorAll('[data-account-id]').length === 25 && !document.querySelector('[data-account-id=\"1060\"]')"), 'role reset')
-  await fill('[aria-label="Account status filter"]', 'ACTIVE')
+  await setMultiSelectFilter(evaluate, 'Account status filter', 'Active')
   await waitText('No matching accounts')
   await navigate('/admin/accounts?search=scale&role=EMPLOYEE&status=ACTIVE')
   await until(() => evaluate("document.querySelectorAll('[data-account-id]').length === 25"), 'directory deep filters')
-  assert.equal(await evaluate("document.querySelector('[aria-label=\"Account role filter\"]').value"), 'EMPLOYEE')
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Account role filter\"]').textContent.trim()"), 'EMPLOYEE')
   const scaleTeam = teams.find(t => t.id === 1)
   const originalMemberIds = scaleTeam.memberIds
   scaleTeam.memberIds = accounts.filter(a => a.id >= 1000).map(a => a.id)
@@ -1452,7 +1543,7 @@ try {
   await waitText('Pending verification')
   const invited = accounts.find(a => a.role === 'ADMIN' && a.activatedAt === null)
   assert(invited)
-  await evaluate(`(() => { const row = document.querySelector('[data-account-id="${invited.id}"]'); row.querySelector('button[popovertarget]').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === '${invited.activatedAt ? 'Send password reset' : 'Resend activation'}').click() })()`)
+  await evaluate(`(() => { const row = document.querySelector('[data-account-id="${invited.id}"]'); row.querySelector('.action-menu-trigger').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === '${invited.activatedAt ? 'Send password reset' : 'Resend activation'}').click() })()`)
   await waitText('Instructions sent to the account email.')
   const activation = securityMail.filter(m => m.account.id === invited.id && m.type === 'activation').at(-1)
   securitySession = false
@@ -1477,7 +1568,7 @@ try {
   user = accounts.find(a => a.role === 'SUPER_ADMIN')
   await navigate('/admin/accounts')
   await waitText('Send password reset')
-  await evaluate(`(() => { const row = document.querySelector('[data-account-id="${invited.id}"]'); row.querySelector('button[popovertarget]').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === '${invited.activatedAt ? 'Send password reset' : 'Resend activation'}').click() })()`)
+  await evaluate(`(() => { const row = document.querySelector('[data-account-id="${invited.id}"]'); row.querySelector('.action-menu-trigger').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === '${invited.activatedAt ? 'Send password reset' : 'Resend activation'}').click() })()`)
   await waitText('Instructions sent to the account email.')
   assert(securityMail.some(m => m.account.id === invited.id && m.type === 'reset'))
   securitySession = false

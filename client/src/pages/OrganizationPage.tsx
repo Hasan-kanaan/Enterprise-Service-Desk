@@ -8,6 +8,7 @@ import { useResource } from '@/hooks/useResource'
 import { getOrganization } from '@/services/administration.service'
 import { usePagedList, useDebouncedValue } from '@/hooks/usePagedList'
 import { ListContinuation } from '@/components/ListContinuation'
+import { MultiSelectFilter } from '@/components/MultiSelectFilter'
 import type { Account } from '@/types/administration'
 import { ErrorState, LoadingState, EmptyState } from '@/components/TicketUI'
 import {
@@ -30,10 +31,24 @@ export function OrganizationPage() {
   const [maintenance, setMaintenance] = useState<MaintenanceAction | null>(null)
   const [coverage, setCoverage] = useState(false)
   const [memberSearch, setMemberSearch] = useState('')
+  const [memberSpecialtyIds, setMemberSpecialtyIds] = useState<string[]>([])
+  const [memberRegionIds, setMemberRegionIds] = useState<string[]>([])
+  const [memberDepartmentIds, setMemberDepartmentIds] = useState<string[]>([])
   const search = useDebouncedValue(memberSearch)
   const members = usePagedList<Account>(
     teamId ? `/organization/teams/${teamId}/members` : null,
-    { search: search || undefined },
+    {
+      search: search || undefined,
+      ...(memberSpecialtyIds.length
+        ? { specialtyIds: memberSpecialtyIds.join(',') }
+        : {}),
+      ...(memberRegionIds.length
+        ? { regionIds: memberRegionIds.join(',') }
+        : {}),
+      ...(memberDepartmentIds.length
+        ? { departmentIds: memberDepartmentIds.join(',') }
+        : {}),
+    },
   )
   const reload = () => {
     setCoverage(false)
@@ -56,10 +71,11 @@ export function OrganizationPage() {
         onRetry={reload}
       />
     )
+  const organization = resource.data
   const data = {
-    ...resource.data,
+    ...organization,
     teams: needsManager
-      ? resource.data.teams.filter(
+      ? organization.teams.filter(
           (team) =>
             team.scope === 'REGION' &&
             !team.archivedAt &&
@@ -142,7 +158,7 @@ export function OrganizationPage() {
             choices={data.specialties}
             onReload={reload}
           />
-          <div className="form-columns">
+          <div className="form-columns team-responsibilities">
             <section className="panel detail-body">
               <h2>Team Lead</h2>
               <p className="muted">{team.teamLead?.displayName ?? 'Unassigned'}</p>
@@ -201,49 +217,154 @@ export function OrganizationPage() {
                 Add member
               </button>
             </div>
-            <label className="search-field">
-              <input
-                aria-label="Search team members"
-                maxLength={120}
-                value={memberSearch}
-                onChange={(e) => setMemberSearch(e.target.value)}
+            <div className="team-member-toolbar">
+              <label className="search-field team-member-search">
+                <input
+                  type="search"
+                  aria-label="Search team members"
+                  maxLength={120}
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  placeholder="Search by name or email"
+                />
+              </label>
+              <MultiSelectFilter
+                label="Member specialties"
+                allLabel="All specialties"
+                selected={memberSpecialtyIds}
+                onChange={setMemberSpecialtyIds}
+                options={data.specialties.map((specialty) => ({
+                  value: String(specialty.id),
+                  label: specialty.archivedAt
+                    ? `${specialty.name} (archived)`
+                    : specialty.name,
+                }))}
               />
-            </label>
+              <MultiSelectFilter
+                label="Member regions"
+                allLabel="All regions"
+                selected={memberRegionIds}
+                onChange={setMemberRegionIds}
+                options={data.regions.map((region) => ({
+                  value: String(region.id),
+                  label: region.archivedAt
+                    ? `${region.name} (archived)`
+                    : region.name,
+                }))}
+              />
+              <MultiSelectFilter
+                label="Member departments"
+                allLabel="All departments"
+                selected={memberDepartmentIds}
+                onChange={setMemberDepartmentIds}
+                options={data.departments.map((department) => ({
+                  value: String(department.id),
+                  label: department.archivedAt
+                    ? `${department.name} (archived)`
+                    : department.name,
+                }))}
+              />
+            </div>
             {members.loading && !members.items.length ? (
               <LoadingState label="Loading team members..." />
             ) : members.error && !members.items.length ? (
               <ErrorState error={members.error} onRetry={members.retry} />
             ) : members.items.length ? (
-              members.items.map((member) => (
-                <article className="admin-row" key={member.id}>
-                  <div>
-                    <h3>{member.displayName}</h3>
-                    <p className="muted">
-                      {member.role} / {member.status}
-                    </p>
-                    {member.id === team.teamLeadId && (
-                      <p className="quiet-note">
-                        Remove Team Lead responsibility before removing
-                        membership.
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    className="button secondary"
-                    disabled={member.id === team.teamLeadId}
-                    onClick={() =>
-                      setAction({
-                        kind: 'remove-member', displayName: member.displayName,
-                        userId: member.id,
-                      })
-                    }
-                  >
-                    Remove member
-                  </button>
-                </article>
-              ))
+              <div
+                className="team-members-table-wrap"
+                role="region"
+                aria-label={`${team.name} members`}
+                tabIndex={0}
+              >
+                <table className="team-members-table">
+                  <colgroup>
+                    <col className="team-member-name-column" />
+                    <col className="team-member-email-column" />
+                    <col className="team-member-specialties-column" />
+                    <col className="team-member-region-column" />
+                    <col className="team-member-department-column" />
+                    <col className="team-member-status-column" />
+                    <col className="team-member-actions-column" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">Member</th>
+                      <th scope="col">Email</th>
+                      <th scope="col">Specialties</th>
+                      <th scope="col">Region</th>
+                      <th scope="col">Department</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.items.map((member) => {
+                      const otherLeadTeam = organization.teams.find(
+                        (candidate) =>
+                          candidate.id !== team.id &&
+                          candidate.teamLeadId === member.id,
+                      )
+                      const leadLabel =
+                        member.id === team.teamLeadId
+                          ? 'Team Lead'
+                          : otherLeadTeam
+                            ? `Team Lead · ${otherLeadTeam.name}`
+                            : null
+                      return (
+                        <tr className="admin-row team-member-row" key={member.id}>
+                          <th scope="row">
+                            <span>{member.displayName}</span>
+                            {leadLabel && (
+                              <small className="team-member-lead">
+                                {leadLabel}
+                              </small>
+                            )}
+                          </th>
+                          <td className="team-member-email">{member.email}</td>
+                          <td>
+                            <SpecialtyBadges
+                              specialties={member.specialties ?? []}
+                            />
+                          </td>
+                          <td>{member.region?.name ?? 'Not set'}</td>
+                          <td>{member.department?.name ?? 'Not set'}</td>
+                          <td>
+                            <span
+                              className={`team-member-status ${member.status === 'ACTIVE' ? 'active' : 'inactive'}`}
+                            >
+                              {member.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              className="button secondary"
+                              disabled={member.id === team.teamLeadId}
+                              onClick={() =>
+                                setAction({
+                                  kind: 'remove-member',
+                                  displayName: member.displayName,
+                                  userId: member.id,
+                                })
+                              }
+                            >
+                              Remove member
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             ) : (
-              <p className="detail-body muted">No members assigned.</p>
+              <p className="detail-body muted">
+                {memberSearch.trim() ||
+                memberSpecialtyIds.length ||
+                memberRegionIds.length ||
+                memberDepartmentIds.length
+                  ? 'No team members match these filters.'
+                  : 'No members assigned.'}
+              </p>
             )}
             <ListContinuation resource={members} />
           </section>
@@ -402,5 +523,45 @@ export function OrganizationPage() {
         />
       )}
     </div></RefreshSurface>
+  )
+}
+
+function SpecialtyBadges({
+  specialties,
+}: {
+  specialties: NonNullable<Account['specialties']>
+}) {
+  const visible = specialties.slice(0, 2)
+  const remaining = specialties.slice(2)
+  const remainingNames = remaining.map(({ specialty }) =>
+    specialty.archivedAt
+      ? `${specialty.name} (archived)`
+      : specialty.name,
+  )
+
+  if (!specialties.length)
+    return <span className="team-member-no-specialties">None</span>
+
+  return (
+    <div className="team-specialty-badges">
+      {visible.map(({ specialty }) => (
+        <span
+          className={`team-specialty-badge ${specialty.archivedAt ? 'archived' : ''}`}
+          key={specialty.id}
+        >
+          {specialty.name}
+        </span>
+      ))}
+      {!!remaining.length && (
+        <span
+          className="team-specialty-more"
+          title={remainingNames.join(', ')}
+          aria-label={`Additional specialties: ${remainingNames.join(', ')}`}
+          tabIndex={0}
+        >
+          +{remaining.length}
+        </span>
+      )}
+    </div>
   )
 }

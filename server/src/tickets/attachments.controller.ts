@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Logger,
   NotFoundException,
   Param,
   ParseIntPipe,
@@ -16,7 +17,11 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketVisibilityService } from './ticket-visibility.service';
-import { AttachmentStorage, attachmentSelect } from './attachment-storage';
+import {
+  AttachmentStorage,
+  attachmentSelect,
+  isMissingAttachmentError,
+} from './attachment-storage';
 
 type Request = { user: { sub: number; role: UserRole } };
 @Controller('tickets')
@@ -29,6 +34,8 @@ type Request = { user: { sub: number; role: UserRole } };
   UserRole.SUPER_ADMIN,
 )
 export class AttachmentsController {
+  private readonly logger = new Logger(AttachmentsController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly visibility: TicketVisibilityService,
@@ -102,31 +109,49 @@ export class AttachmentsController {
           select: { id: true },
         });
         if (!ticket) throw new NotFoundException('Attachment not found');
-        let bytes: Buffer;
-        try {
-          bytes = await this.storage.read(file.storageKey);
-        } catch {
-          throw new NotFoundException('Attachment unavailable');
-        }
         return {
-          bytes,
+          storageKey: file.storageKey,
           filename: file.filename,
           contentType: file.contentType,
+          byteSize: file.byteSize,
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
-    response.setHeader('Content-Type', result.contentType);
-    response.setHeader(
-      'Content-Disposition',
-      `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(result.filename).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16))}`,
-    );
+    const stream = this.storage.stream(result.storageKey);
+    const file = new StreamableFile(stream, {
+      type: result.contentType,
+      disposition: `attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(result.filename).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16))}`,
+      length: result.byteSize,
+    });
+    file.setErrorHandler((error, streamResponse) => {
+      if (streamResponse.headersSent) {
+        streamResponse.end();
+        return;
+      }
+      const missing = isMissingAttachmentError(error);
+      streamResponse.statusCode = missing ? 404 : 503;
+      streamResponse.send(
+        JSON.stringify({
+          statusCode: missing ? 404 : 503,
+          message: missing
+            ? 'Attachment unavailable'
+            : 'Attachment storage download failed',
+        }),
+      );
+    });
+    file.setErrorLogger((error) => {
+      const missing = isMissingAttachmentError(error);
+      this.logger.error(
+        `Attachment stream failed: status=${missing ? 404 : 503}`,
+      );
+    });
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Cache-Control', 'private, no-store');
     response.setHeader(
       'Content-Security-Policy',
       "sandbox; default-src 'none'",
     );
-    return new StreamableFile(result.bytes);
+    return file;
   }
 }

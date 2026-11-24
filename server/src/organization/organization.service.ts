@@ -19,6 +19,14 @@ import { after, ListQuery, listPage, listWindow } from '../common/list-query';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { ChangeTeamCoverageDto } from './dto/change-team-coverage.dto';
 
+function parseFilterIds(value?: string) {
+  if (!value) return [];
+  const ids = value.split(',').map(Number);
+  if (ids.some((id) => !Number.isSafeInteger(id) || id < 1 || id > 2147483647))
+    throw new BadRequestException('Invalid filter selection');
+  return [...new Set(ids)];
+}
+
 @Injectable()
 export class OrganizationService {
   constructor(private readonly prisma: PrismaService) {}
@@ -63,20 +71,56 @@ export class OrganizationService {
     });
   }
 
-  async listMembers(teamId: number, query: ListQuery) {
+  async listMembers(
+    teamId: number,
+    query: ListQuery & {
+      specialtyIds?: string;
+      regionIds?: string;
+      departmentIds?: string;
+    },
+  ) {
     await this.requireTeam(teamId);
     const { limit, position, search } = listWindow(query, false);
+    const specialtyIds = parseFilterIds(query.specialtyIds);
+    const regionIds = parseFilterIds(query.regionIds);
+    const departmentIds = parseFilterIds(query.departmentIds);
     const rows = await this.prisma.user.findMany({
       where: {
         AND: [
           after(position),
           { teamMemberships: { some: { teamId } } },
           search
-            ? { displayName: { contains: search, mode: 'insensitive' } }
+            ? {
+                OR: [
+                  { displayName: { contains: search, mode: 'insensitive' } },
+                  { email: { contains: search, mode: 'insensitive' } },
+                ],
+              }
             : {},
+          ...(specialtyIds.length
+            ? [{ specialties: { some: { specialtyId: { in: specialtyIds } } } }]
+            : []),
+          ...(regionIds.length ? [{ regionId: { in: regionIds } }] : []),
+          ...(departmentIds.length
+            ? [{ departmentId: { in: departmentIds } }]
+            : []),
         ],
       },
-      select: { id: true, displayName: true, role: true, status: true },
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
+        role: true,
+        status: true,
+        region: { select: { id: true, name: true, archivedAt: true } },
+        department: { select: { id: true, name: true, archivedAt: true } },
+        specialties: {
+          select: {
+            specialty: { select: { id: true, name: true, archivedAt: true } },
+          },
+          orderBy: { specialty: { name: 'asc' } },
+        },
+      },
       orderBy: { id: 'desc' },
       take: limit + 1,
     });
@@ -86,7 +130,11 @@ export class OrganizationService {
   async people(
     teamId: number,
     purpose: 'member' | 'lead' | 'manager',
-    query: ListQuery,
+    query: ListQuery & {
+      specialtyIds?: string;
+      regionIds?: string;
+      departmentIds?: string;
+    },
   ) {
     await this.requireActiveTeam(this.prisma, teamId);
     const {
@@ -95,6 +143,9 @@ export class OrganizationService {
       limit: requestedLimit,
     } = listWindow(query, false);
     const limit = Math.min(requestedLimit, 20);
+    const specialtyIds = parseFilterIds(query.specialtyIds);
+    const regionIds = parseFilterIds(query.regionIds);
+    const departmentIds = parseFilterIds(query.departmentIds);
     const eligibility: Prisma.UserWhereInput =
       purpose === 'manager'
         ? { role: UserRole.MANAGER }
@@ -106,6 +157,22 @@ export class OrganizationService {
                 : { some: { teamId } },
             ...(purpose === 'lead'
               ? { OR: [{ ledTeam: null }, { ledTeam: { id: teamId } }] }
+              : {}),
+            ...(purpose === 'member' && specialtyIds.length
+              ? {
+                  specialties: {
+                    some: {
+                      specialtyId: { in: specialtyIds },
+                      specialty: { archivedAt: null },
+                    },
+                  },
+                }
+              : {}),
+            ...(purpose === 'member' && regionIds.length
+              ? { regionId: { in: regionIds } }
+              : {}),
+            ...(purpose === 'member' && departmentIds.length
+              ? { departmentId: { in: departmentIds } }
               : {}),
           };
     const rows = await this.prisma.user.findMany({
@@ -127,7 +194,16 @@ export class OrganizationService {
           },
         ],
       },
-      select: { id: true, displayName: true },
+      select: {
+        id: true,
+        displayName: true,
+        department: { select: { id: true, name: true } },
+        specialties: {
+          where: { specialty: { archivedAt: null } },
+          select: { specialty: { select: { id: true, name: true } } },
+          orderBy: { specialty: { name: 'asc' } },
+        },
+      },
       orderBy: { id: 'desc' },
       take: limit + 1,
     });

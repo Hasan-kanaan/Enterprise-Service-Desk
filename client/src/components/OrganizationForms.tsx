@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { OrganizationPeoplePicker } from './OrganizationPeoplePicker'
 import { AdminDialog } from './AdminDialog'
+import { getApiErrorMessage, getApiStatus } from '@/services/api'
+import { requiresAdministrationReload } from './admin-conflict'
 import type { Catalog, Reference, Team } from '@/types/administration'
 import {
   createReference,
@@ -190,7 +192,7 @@ export function TeamActionForm({
   team: Team
   action: TeamAction
 } & Callbacks) {
-  const [person, setPerson] = useState<number | null>(null)
+  const [person, setPerson] = useState<number | number[] | null>(action.kind === 'member' ? [] : null)
   const removing = action.kind.startsWith('remove-')
   const labels = {
     member: 'Add team member',
@@ -204,15 +206,30 @@ export function TeamActionForm({
     <AdminDialog
       title={labels[action.kind]}
       {...callbacks}
-      valid={removing || person !== null}
-      submit={() => {
+      valid={removing || (action.kind === 'member' ? Array.isArray(person) && person.length > 0 : typeof person === 'number')}
+      submit={async () => {
         switch (action.kind) {
-          case 'member':
-            return addMember(team.id, person!)
+          case 'member': {
+            const results = await Promise.allSettled((person as number[]).map(id => addMember(team.id, id)))
+            const failed = results.flatMap((result, index) => result.status === 'rejected' ? [(person as number[])[index]] : [])
+            if (failed.length) {
+              const staleFailure = results.find(
+                (result) =>
+                  result.status === 'rejected' &&
+                  requiresAdministrationReload(
+                    getApiStatus(result.reason),
+                    getApiErrorMessage(result.reason, ''),
+                  ),
+              )
+              if (staleFailure?.status === 'rejected') throw staleFailure.reason
+              throw new Error(`${results.length - failed.length} added; ${failed.length} could not be added. Reload the team and try again.`)
+            }
+            return
+          }
           case 'lead':
-            return setTeamLead(team.id, person!)
+            return setTeamLead(team.id, person as number)
           case 'manager':
-            return setTeamManager(team.id, person!)
+            return setTeamManager(team.id, person as number)
           case 'remove-member':
             return removeMember(team.id, action.userId!)
           case 'remove-lead':
@@ -222,8 +239,14 @@ export function TeamActionForm({
         }
       }}
     >
+      {!removing && (
+        <div className="team-action-context" aria-label="Team details">
+          <strong>{team.name}</strong>
+          <span>{team.scope === 'GLOBAL' ? 'Global coverage · all regions' : `Region · ${team.region?.name ?? 'Region unavailable'}`}</span>
+        </div>
+      )}
       {removing ? (
-        <p className="notice">
+        <p className="notice warning">
           Confirm removal of{' '}
           {action.kind === 'remove-member'
             ? action.displayName ?? 'this member'
@@ -242,16 +265,17 @@ export function TeamActionForm({
         />
       )}
       {action.kind.includes('manager') && (
-        <p className="notice">
+        <p className="notice warning">
           TeamManager is organizational only. This does not assign tickets or
           grant service-desk authority. Managers do not need Team membership. Remove an existing TeamManager before
           assigning another.
         </p>
       )}
       {action.kind === 'lead' && (
-        <p className="notice">
-          The Team Lead must be an active AGENT member who leads no other team.
-          This replaces the team's current lead, if any.
+        <p className="notice warning">
+          Only active, fully activated Agents on this team who do not already
+          lead another team are eligible. Each Agent may lead one team. This
+          replaces the team's current lead, if any.
         </p>
       )}
       {action.kind === 'remove-member' && (
@@ -304,14 +328,14 @@ export function OrganizationMaintenanceForm({
           />
         </label>
       ) : action.kind === 'archive' ? (
-        <p className="notice">
+        <p className="notice warning">
           Confirm archival. This record will be unavailable for new selections.
           Historical records and references remain intact.
           {action.catalog === 'teams' &&
             ' Current Team/Agent operational assignments may be cleared. Team Lead and TeamManager responsibility will be removed. No replacement is selected.'}
         </p>
       ) : (
-        <p className="notice">
+        <p className="notice warning">
           Restore eligibility for future selections. Previously cleared
           assignments, Team Lead and TeamManager responsibilities will not be
           restored.

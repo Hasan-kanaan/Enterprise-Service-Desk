@@ -112,7 +112,7 @@ export async function administrationVisual(context) {
     [4, 'Change role', 'New role', 'account-role-dialog'],
     [4, 'Deactivate', 'Confirm', 'account-deactivate-dialog'],
   ]) {
-    await evaluate(`(() => { const row = document.querySelector('[data-account-id="${id}"]'); row.querySelector('button[popovertarget]').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === '${action}').click() })()`)
+    await evaluate(`(() => { const row = document.querySelector('[data-account-id="${id}"]'); row.querySelector('.action-menu-trigger').click(); [...row.querySelectorAll('button')].find(b => b.textContent.trim() === '${action}').click() })()`)
     await waitText(ready)
     if (action === 'Change role') await fill('[aria-label="New role"]', 'EMPLOYEE')
     await captureMatrix(context, name); await click('Cancel')
