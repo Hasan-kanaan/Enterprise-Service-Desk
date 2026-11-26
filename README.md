@@ -53,22 +53,25 @@ Attachments are validated and stored through a backend storage adapter. Local fi
 
 Operational analytics are available to Managers as aggregate statistics. Responses contain bounded counts, catalog names, scope labels, and aggregate durations rather than ticket records, requester identities, communications, or individual Agent performance. Analytics access does not grant ticket-detail or employee-directory access. Time ranges and grouping semantics are documented in [service analytics](docs/service-analytics.md) and the [analytics privacy review](docs/analytics-privacy-review.md).
 
-## AI knowledge base (decided; in progress)
+## AI knowledge base (decided; implementation in progress)
 
-Agents and Managers will receive advisory solution suggestions grounded in company knowledge (retrieval-augmented generation). Status: only the PostgreSQL vector extension is enabled so far; no knowledge feature is implemented yet.
+The knowledge base will provide advisory solution suggestions grounded in approved company knowledge. It is separate from requester drafting assistance and Manager AI routing.
 
 Decisions:
 
-- **Same database.** Vectors are stored in the existing PostgreSQL 17 using the `pgvector` extension (Docker image `pgvector/pgvector:pg17`), not a separate vector database. Access rules and soft-deletion are then enforced with SQL joins in one transaction snapshot, and no synchronization between two stores is needed.
-- **Prisma stays.** Vector columns are declared with `Unsupported(...)` and queried with raw SQL; all other data access remains Prisma.
-- **Embeddings.** Gemini embedding model, reduced vector size (planned 768), English only. Chunking is deterministic server code, not AI.
-- **Sources.** Uploaded company documents (policies, runbooks, API docs, project briefings), license/asset records derived from invoices, and resolved ticket cases.
-- **Invoices.** Raw invoices are never stored. Only derived license and asset facts (vendor, product, seats, dates, support references) are kept; amounts, bank and tax details are removed at ingestion.
-- **Tickets.** Only resolved work cycles are indexed (title, redacted description, category, tags, resolution summary), by a background sweep rather than inside ticket transactions. Reopening supersedes the earlier entry. Conversations, internal notes and attachments are never indexed.
-- **Synthetic data.** Historical incidents for testing are standalone knowledge records, never fake `Ticket` rows.
-- **Authority.** Only `SUPER_ADMIN` manages documents. Suggestions are available only to users who can already operate the ticket (assigned Agent, Team Lead, current collaborator, responsible Manager). Retrieval is filtered server-side by audience before any text reaches the model. Suggestions are advisory and never change ticket state.
-- **Limits.** The feature has its own quota, separate from routing and drafting.
+- **Storage.** Store vectors in the existing PostgreSQL 17 database using pgvector, not a separate vector database. Use Prisma for ordinary data operations and raw SQL for vector operations.
+- **Embeddings and chunking.** Use Gemini embeddings and deterministic server-side chunking. The planned vector dimension is 768, but verify the selected Gemini embedding model and supported output dimension before creating the application vector column or migration. Initial content is English only.
+- **Company documents.** Approved company documents such as policies, runbooks, API documentation and project briefings are knowledge sources. They must be reviewed for personal, confidential or classified information before indexing. Their audience is `ALL_STAFF`. Only `SUPER_ADMIN` manages document uploads and lifecycle; `ADMIN` does not receive document-management authority.
+- **Ticket-derived cases.** A resolved work cycle contributes only its resolution summary and selected ticket metadata: category, tags, priority, affected regions and affected departments. Do not create a second AI-generated or sanitized problem description from the original ticket description. Do not index the original ticket title/description, requester identity, assigned personnel, conversations, internal notes, attachments, or invoice/financial records.
+- **Resolution quality.** A non-empty resolution summary is mandatory when changing a ticket to `RESOLVED`; whitespace-only content is invalid. The existing summary remains visible to the requester. The person resolving the ticket should document: the problem addressed, the confirmed cause if known, the action taken, and how the result was verified. Unknown causes must be stated as unknown rather than invented. The summary is the primary ticket-derived knowledge content; metadata supplies retrieval context.
+- **Ticket sanitization.** The resolution summary and selected metadata must be checked for personal or sensitive information before embedding. Sanitization must not invent or alter technical facts. AI may assist with detecting or removing sensitive data, but it must not generate causes, fixes or verification claims. The original ticket and work-cycle history remain unchanged; only a sanitized knowledge copy may be indexed.
+- **Ticket audience and authorization.** Ticket-derived cases use the `SUPPORT_STAFF` audience. The initial assistant is for Agents and Managers and must reuse existing ticket authorization; it must not introduce a parallel ticket-visibility policy. Approved company documents use `ALL_STAFF`. Retrieval filters by audience server-side before content reaches a model. Suggestions are advisory and never change ticket state.
+- **Background processing.** Ticket knowledge ingestion runs asynchronously and must not delay resolve or reopen transactions. Only eligible ended work cycles with outcome `RESOLVED` or `CLOSED` and a non-empty resolution summary may be considered. Reopening immediately deactivates the previous cycle's knowledge source in the same transaction; a worker must recheck eligibility before publishing embeddings. A later resolution creates knowledge for the new work cycle. Preserve old work-cycle history.
+- **Excluded sources.** Do not ingest invoices or derive license/asset facts from them. HR and financial knowledge should come from approved company policies and procedures, not personal invoices or financial records.
+- **Historical examples.** Synthetic historical incidents for testing are standalone knowledge records, never fake `Ticket` rows.
+- **Limits.** The knowledge feature has its own quota, separate from requester drafting and Manager AI routing.
 
+The human-review policy for automatically prepared ticket-derived cases before indexing remains to be decided. Do not implement ticket-case publication until that policy is approved.
 ## Technology and architecture
 
 | Area | Technology |
