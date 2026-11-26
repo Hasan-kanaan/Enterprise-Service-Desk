@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma, UserRole } from '../../generated/prisma/client';
@@ -192,6 +193,10 @@ export class AiRecommendationsService {
   }
 
   async generate(ticketId: number, actor: TicketAuthorizationUser) {
+    if (process.env.AI_ROUTING_ENABLED !== 'true')
+      throw new ServiceUnavailableException(
+        'AI routing suggestions are temporarily disabled while RAG support is being developed.',
+      );
     const before = await this.snapshot(ticketId, actor);
     this.limiter.consume(
       actor.id,

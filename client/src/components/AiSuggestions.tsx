@@ -23,11 +23,13 @@ export function AiSuggestions({
   ticket,
   permissions,
   canGenerate,
+  enabled,
   onChanged,
 }: {
   ticket: TicketDetail
   permissions: TicketOperations['permissions']
   canGenerate: boolean
+  enabled: boolean
   onChanged: () => void
 }) {
   const [result, setResult] = useState<Recommendation | null>(null)
@@ -80,6 +82,20 @@ export function AiSuggestions({
   }
   const s = result?.suggestions
   const expectedUpdatedAt = result?.ticketUpdatedAt
+  if (!enabled) {
+    return (
+      <section
+        className="panel detail-body ai-suggestions"
+        aria-labelledby="ai-suggestions-title"
+      >
+        <h2 id="ai-suggestions-title">AI suggestions</h2>
+        <p className="quiet-note" role="status">
+          AI routing suggestions are temporarily disabled while RAG support is
+          being developed.
+        </p>
+      </section>
+    )
+  }
   function row(
     label: string,
     current: string,

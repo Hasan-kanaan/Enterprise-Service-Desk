@@ -69,6 +69,8 @@ const navigation = {
   { label: string; to: string; icon: typeof LayoutDashboard }[]
 >
 
+type Breadcrumb = { label: string; to?: string }
+
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const drawer = useRef<HTMLDialogElement>(null)
@@ -121,10 +123,17 @@ export function AppLayout() {
       : userRole === 'ADMIN' || userRole === 'SUPER_ADMIN'
         ? 'Administration'
         : 'Support workspace'
-  const ticketDetail = /^\/work\/tickets\/\d+$/.test(location.pathname)
+  const operationalTicketId =
+    /^\/work\/tickets\/(\d+)$/.exec(location.pathname)?.[1]
+  const employeeTicketId = /^\/tickets\/(\d+)$/.exec(location.pathname)?.[1]
+  const subtaskId = /^\/work\/subtasks\/(\d+)$/.exec(location.pathname)?.[1]
+  const teamId =
+    /^\/admin\/organization\/teams\/(\d+)$/.exec(location.pathname)?.[1]
+  const ticketDetail = operationalTicketId !== undefined
   const origin = workOrigin(location.state)
-  const contextPath = origin ? workPaths[origin] : null
-  const pageLabel = ticketDetail ? (origin ? workLabels[origin] : 'Support workspace') : location.pathname.startsWith('/profile') || location.pathname.startsWith('/settings')
+  const ticketOrigin = origin ?? 'mine'
+  const ticketOriginPath = workPaths[ticketOrigin]
+  const pageLabel = ticketDetail ? workLabels[ticketOrigin] : location.pathname.startsWith('/profile') || location.pathname.startsWith('/settings')
     ? 'Account settings'
     : ([...userNavigation]
         .reverse()
@@ -132,8 +141,46 @@ export function AppLayout() {
           (item) =>
             location.pathname === item.to ||
             location.pathname.startsWith(`${item.to}/`),
-        )?.label ?? 'Dashboard')
+        )?.label ?? (location.pathname === '/notifications' ? 'Notifications' : 'Dashboard'))
   const contextLabel = location.pathname.startsWith('/tickets') ? 'Personal' : viewLabel
+  const contextPath = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' ? '/admin' : '/dashboard'
+  const breadcrumbs: Breadcrumb[] = []
+  if (ticketDetail) {
+    breadcrumbs.push(
+      { label: contextLabel, to: contextPath },
+      { label: workLabels[ticketOrigin], to: ticketOriginPath },
+      { label: `Ticket #${operationalTicketId}` },
+    )
+  } else if (employeeTicketId) {
+    breadcrumbs.push(
+      { label: contextLabel, to: contextPath },
+      { label: 'My Requests', to: '/tickets' },
+      { label: `Ticket #${employeeTicketId}` },
+    )
+  } else if (subtaskId) {
+    breadcrumbs.push(
+      { label: contextLabel, to: contextPath },
+      { label: 'Subtasks', to: '/work/subtasks' },
+      { label: `Subtask #${subtaskId}` },
+    )
+  } else if (teamId) {
+    breadcrumbs.push(
+      { label: contextLabel, to: contextPath },
+      { label: 'Organization', to: '/admin/organization' },
+      { label: `Team #${teamId}` },
+    )
+  } else if (location.pathname === '/tickets/new') {
+    breadcrumbs.push(
+      { label: contextLabel, to: contextPath },
+      { label: 'My Requests', to: '/tickets' },
+      { label: 'New request' },
+    )
+  } else {
+    if (contextLabel !== pageLabel) {
+      breadcrumbs.push({ label: contextLabel, to: contextPath })
+    }
+    breadcrumbs.push({ label: pageLabel })
+  }
   const handleLogout = async () => {
     try {
       await logout()
@@ -167,8 +214,8 @@ export function AppLayout() {
               <p className="nav-section-label">{viewLabel}</p>
             )}
             {ticketDetail ? <Link to={to} onClick={closeNavigation}
-              aria-current={to === contextPath ? 'page' : undefined}
-              className={`nav-item ${to === contextPath ? 'active' : ''}`}>
+              aria-current={to === ticketOriginPath ? 'page' : undefined}
+              className={`nav-item ${to === ticketOriginPath ? 'active' : ''}`}>
               <Icon size={17} aria-hidden="true" />{label}
             </Link> : <NavLink
               end={to === '/admin'}
@@ -258,13 +305,20 @@ export function AppLayout() {
           >
             <Menu size={20} />
           </button>
-          <div className="workspace-context">
-            {contextLabel !== pageLabel && <>
-              <span>{contextLabel}</span>
-              <ChevronRight size={13} aria-hidden="true" />
-            </>}
-            <strong>{pageLabel}</strong>
-          </div>
+          <nav className="workspace-context" aria-label="Breadcrumb">
+            <ol>
+              {breadcrumbs.map(({ label, to }, index) => (
+                <li key={`${label}-${index}`}>
+                  {index > 0 && <ChevronRight size={13} aria-hidden="true" />}
+                  {to ? (
+                    <Link to={to}>{label}</Link>
+                  ) : (
+                    <span aria-current="page">{label}</span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </nav>
           <div className="topbar-account">
             <NotificationBell key={user!.id} role={userRole} />
             <ThemeToggle />

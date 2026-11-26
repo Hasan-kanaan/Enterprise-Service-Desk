@@ -713,6 +713,11 @@ try {
   await waitText('Open ticket')
   await click('Open ticket')
   await waitText('Owned network issue')
+  assert(await evaluate(`!!document.querySelector('[aria-label="Breadcrumb"] a[href="/work-history"]')`))
+  await evaluate(`document.querySelector('[aria-label="Breadcrumb"] a[href="/work-history"]').click()`)
+  await waitText('Work History')
+  await click('Open ticket')
+  await waitText('Owned network issue')
   console.log('PASS: manager history, completed subtask, pagination, filters, empty state and current ticket navigation')
   user = { ...user, id: 31, role: 'AGENT' }
   await navigate('/work-history')
@@ -762,7 +767,13 @@ try {
   assert(
     await evaluate(`!!document.querySelector('a[href="/work/tickets/142"]')`),
   )
-  await navigate('/work/tickets/142')
+  await evaluate(`document.querySelector('a[href="/work/tickets/142"]').click()`)
+  await waitText('Shared intake.')
+  assert(await evaluate(`!!document.querySelector('[aria-label="Breadcrumb"] a[href="/work/intake"]')`))
+  await evaluate(`document.querySelector('[aria-label="Breadcrumb"] a[href="/work/intake"]').click()`)
+  await waitText('New ticket intake')
+  await until(() => evaluate(`!!document.querySelector('a[href="/work/tickets/142"]')`), 'intake ticket row after breadcrumb navigation')
+  await evaluate(`document.querySelector('a[href="/work/tickets/142"]').click()`)
   await waitText('Shared intake.')
   await waitText('This conversation is read-only.')
   assert(!(await button('Send message')))

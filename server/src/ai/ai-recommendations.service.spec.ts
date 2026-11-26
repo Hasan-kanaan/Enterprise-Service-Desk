@@ -1,4 +1,7 @@
-import { ForbiddenException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { UserRole } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAuthorizationService } from '../tickets/ticket-authorization.service';
@@ -37,6 +40,7 @@ describe('AI recommendations responsibility', () => {
   );
   const generate = jest.fn();
   const consume = jest.fn();
+  let originalRoutingEnabled: string | undefined;
   const service = () =>
     new AiRecommendationsService(
       { $transaction: transaction } as unknown as PrismaService,
@@ -47,9 +51,33 @@ describe('AI recommendations responsibility', () => {
     );
 
   beforeEach(() => {
+    originalRoutingEnabled = process.env.AI_ROUTING_ENABLED;
+    process.env.AI_ROUTING_ENABLED = 'true';
     jest.clearAllMocks();
     db.user.findUnique.mockResolvedValue(activeUser);
     db.ticket.findFirst.mockResolvedValue(ticket);
+  });
+
+  afterEach(() => {
+    if (originalRoutingEnabled === undefined)
+      delete process.env.AI_ROUTING_ENABLED;
+    else process.env.AI_ROUTING_ENABLED = originalRoutingEnabled;
+  });
+
+  it('does not load ticket data or call the provider while routing suggestions are disabled', async () => {
+    process.env.AI_ROUTING_ENABLED = 'false';
+
+    await expect(
+      service().generate(142, {
+        id: 20,
+        role: UserRole.MANAGER,
+        sessionVersion: 0,
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+    expect(db.ticket.findFirst).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+    expect(consume).not.toHaveBeenCalled();
   });
 
   it('rejects unclaimed intake before consuming quota or calling the provider', async () => {

@@ -250,15 +250,6 @@ function OperationalTicket({ id }: { id: number }) {
           </section>
         </div>
         <aside id="ticket-information" className="detail-aside">
-          {user.role === 'MANAGER' && !isTerminal(ticket.status) && (
-            <AiSuggestions
-              key={ticket.updatedAt}
-              ticket={ticket}
-              permissions={p}
-              canGenerate={ticket.assignedManagerId === user.id}
-              onChanged={reload}
-            />
-          )}
           <section className="panel detail-body">
             <h2>Request information</h2>
             <dl className="metadata-grid">
@@ -304,6 +295,16 @@ function OperationalTicket({ id }: { id: number }) {
               </div>
             </dl>
           </section>
+          {user.role === 'MANAGER' && !isTerminal(ticket.status) && (
+            <AiSuggestions
+              key={ticket.updatedAt}
+              ticket={ticket}
+              permissions={p}
+              canGenerate={ticket.assignedManagerId === user.id}
+              enabled={false}
+              onChanged={reload}
+            />
+          )}
           <section className="panel detail-body">
             <h2>Current responsibility</h2>
             <dl className="owner-list">

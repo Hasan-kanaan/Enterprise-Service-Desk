@@ -169,6 +169,7 @@ export function WorkHistoryPage() {
                     <Link
                       className="text-button shrink-0"
                       to={`/work/tickets/${row.ticketId}`}
+                      state={{ workOrigin: 'history' }}
                     >
                       Open ticket
                     </Link>

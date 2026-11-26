@@ -30,6 +30,7 @@ describe('Manager AI recommendations (isolated PostgreSQL / HTTP)', () => {
   const prefix = `ai-${randomUUID()}`;
   const ids: Record<string, number> = {},
     tokens: Record<string, string> = {};
+  let originalRoutingEnabled: string | undefined;
   const provider = { generate: jest.fn<Promise<unknown>, [AiInput]>() };
   let limiter = new AiRateLimiter();
   const evidence = { confidence: 0.8, reason: 'VPN issue' };
@@ -53,6 +54,8 @@ describe('Manager AI recommendations (isolated PostgreSQL / HTTP)', () => {
       .set('Authorization', `Bearer ${tokens.MANAGER}`)
       .send(body);
   beforeAll(async () => {
+    originalRoutingEnabled = process.env.AI_ROUTING_ENABLED;
+    process.env.AI_ROUTING_ENABLED = 'true';
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(MailProvider)
       .useValue(new FakeMailProvider())
@@ -234,6 +237,19 @@ describe('Manager AI recommendations (isolated PostgreSQL / HTTP)', () => {
       if (region) await db.region.deleteMany({ where: { id: region } });
     }
     await app?.close();
+    if (originalRoutingEnabled === undefined)
+      delete process.env.AI_ROUTING_ENABLED;
+    else process.env.AI_ROUTING_ENABLED = originalRoutingEnabled;
+  });
+  it('does not call the provider while routing suggestions are disabled', async () => {
+    process.env.AI_ROUTING_ENABLED = 'false';
+    provider.generate.mockClear();
+    try {
+      await post().expect(503);
+      expect(provider.generate).not.toHaveBeenCalled();
+    } finally {
+      process.env.AI_ROUTING_ENABLED = 'true';
+    }
   });
   it('authorized Manager generates without changing any ticket state', async () => {
     await post().expect(200).expect('Cache-Control', 'no-store');

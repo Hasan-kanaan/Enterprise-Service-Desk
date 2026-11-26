@@ -167,11 +167,45 @@ textarea:disabled {
 .workspace-context {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
   color: var(--muted-foreground);
   font-size: 12px;
+  scrollbar-width: none;
 }
-.workspace-context strong {
+.workspace-context::-webkit-scrollbar {
+  display: none;
+}
+.workspace-context ol {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: max-content;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.workspace-context li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.workspace-context a {
+  color: inherit;
+  text-decoration: none;
+}
+.workspace-context a:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.workspace-context a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+.workspace-context [aria-current='page'] {
   color: var(--foreground);
   font-weight: 500;
 }
@@ -926,8 +960,6 @@ textarea:disabled {
   .app-content {
     padding: 20px 14px;
   }
-  .workspace-context > span,
-  .workspace-context > svg,
   .topbar-account > span {
     display: none;
   }
