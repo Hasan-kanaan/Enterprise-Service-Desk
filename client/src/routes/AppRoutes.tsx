@@ -50,6 +50,11 @@ const AdministrationPage = lazy(() =>
     default: module.AdministrationPage,
   })),
 )
+const TicketRoutingPage = lazy(() =>
+  import('@/pages/TicketRoutingPage').then((module) => ({
+    default: module.TicketRoutingPage,
+  })),
+)
 const OrganizationPage = lazy(() =>
   import('@/pages/OrganizationPage').then((module) => ({
     default: module.OrganizationPage,
@@ -88,6 +93,12 @@ export function AppRoutes() {
                 path="/admin/organization/teams/:teamId"
                 element={<OrganizationPage />}
               />
+              <Route element={<ProtectedRoute roles={['SUPER_ADMIN']} />}>
+                <Route
+                  path="/admin/ticket-routing"
+                  element={<TicketRoutingPage />}
+                />
+              </Route>
             </Route>
             <Route path="/profile" element={<ProfilePage />} />
             <Route element={<ProtectedRoute />}>

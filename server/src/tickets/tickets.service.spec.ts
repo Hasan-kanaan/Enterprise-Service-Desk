@@ -21,6 +21,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, TicketStatus, UserRole } from '../../generated/prisma/client';
 import { TicketAuthorizationService } from './ticket-authorization.service';
+import { TicketRoutingService } from './ticket-routing.service';
 import { TicketsService } from './tickets.service';
 
 const manager = { id: 31, role: UserRole.MANAGER };
@@ -28,23 +29,34 @@ describe('TicketsService', () => {
   const db = {
     $queryRaw: jest.fn(),
     ticket: {
+      findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
+      create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    ticketCategory: { findUnique: jest.fn() },
+    ticketTag: { findMany: jest.fn() },
+    region: { findMany: jest.fn() },
+    department: { findMany: jest.fn() },
     user: { findUnique: jest.fn(), findMany: jest.fn() },
     team: { findUnique: jest.fn(), findFirst: jest.fn() },
     teamMember: { findUnique: jest.fn() },
     subtask: { findUnique: jest.fn(), update: jest.fn() },
   };
   const transaction = jest.fn();
+  const routing = { assignManager: jest.fn() };
   const service = new TicketsService(
     { ...db, $transaction: transaction } as unknown as PrismaService,
     new TicketAuthorizationService(),
+    routing as unknown as TicketRoutingService,
   );
   let current: CurrentTicket;
+  let createdTicket: Record<string, unknown> | null;
   beforeEach(() => {
     jest.resetAllMocks();
+    createdTicket = null;
+    routing.assignManager.mockResolvedValue(null);
     db.user.findMany.mockResolvedValue([]);
     current = {
       id: 1,
@@ -62,6 +74,22 @@ describe('TicketsService', () => {
       (callback: (tx: typeof db) => Promise<unknown>) => callback(db),
     );
     db.$queryRaw.mockResolvedValue([{ id: 1 }]);
+    db.ticket.findUnique.mockImplementation(() =>
+      Promise.resolve(createdTicket),
+    );
+    db.ticket.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) => {
+        createdTicket = data;
+        return Promise.resolve(data);
+      },
+    );
+    db.ticketCategory.findUnique.mockResolvedValue({
+      id: 1,
+      archivedAt: null,
+    });
+    db.ticketTag.findMany.mockResolvedValue([]);
+    db.region.findMany.mockResolvedValue([]);
+    db.department.findMany.mockResolvedValue([]);
     db.ticket.findUniqueOrThrow.mockImplementation(() =>
       Promise.resolve(current),
     );
@@ -88,6 +116,70 @@ describe('TicketsService', () => {
           sessionVersion: 0,
         }),
     );
+  });
+
+  it('routes new tickets to only a Manager and preserves NEW intake ownership', async () => {
+    routing.assignManager.mockResolvedValue(45);
+    db.user.findUnique.mockResolvedValue({
+      id: 10,
+      role: UserRole.EMPLOYEE,
+      status: 'ACTIVE',
+      activatedAt: new Date(),
+      sessionVersion: 0,
+    });
+
+    const result = await service.create(
+      { id: 10, role: UserRole.EMPLOYEE },
+      {
+        clientRequestId: 'ticket-create-1',
+        title: 'Cannot connect',
+        description: 'Network issue',
+        categoryId: 1,
+        allRegions: true,
+        allDepartments: true,
+        affectedRegionIds: [],
+        affectedDepartmentIds: [],
+      },
+    );
+
+    expect(routing.assignManager).toHaveBeenCalledWith(db, 1);
+    expect(result).toMatchObject({
+      assignedManagerId: 45,
+      assignedTeamId: null,
+      assignedAgentId: null,
+      status: TicketStatus.NEW,
+    });
+  });
+
+  it('does not reroute an idempotent replay', async () => {
+    routing.assignManager.mockResolvedValue(45);
+    db.user.findUnique.mockResolvedValue({
+      id: 10,
+      role: UserRole.EMPLOYEE,
+      status: 'ACTIVE',
+      activatedAt: new Date(),
+      sessionVersion: 0,
+    });
+    const dto = {
+      clientRequestId: 'ticket-create-replay',
+      title: 'Cannot connect',
+      description: 'Network issue',
+      categoryId: 1,
+      allRegions: true,
+      allDepartments: true,
+      affectedRegionIds: [],
+      affectedDepartmentIds: [],
+    };
+
+    await service.create({ id: 10, role: UserRole.EMPLOYEE }, dto);
+    const replay = await service.create(
+      { id: 10, role: UserRole.EMPLOYEE },
+      dto,
+    );
+
+    expect(routing.assignManager).toHaveBeenCalledTimes(1);
+    expect(db.ticket.create).toHaveBeenCalledTimes(1);
+    expect(replay).toMatchObject({ assignedManagerId: 45 });
   });
 
   it('preserves an omitted agent and active status on reassignment', async () => {

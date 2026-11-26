@@ -848,7 +848,19 @@ button:disabled {
 .attachment-card-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; }
 .attachment-card-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
 .attachment-preview { display: block; width: 100%; max-width: 480px; max-height: 280px; object-fit: contain; margin-top: 12px; background: var(--muted); border-radius: var(--radius); }
-.ai-suggestions { overflow-wrap: anywhere; }
+.ai-suggestions {
+  display: grid;
+  align-content: start;
+  gap: .75rem;
+  overflow-wrap: anywhere;
+}
+.ai-suggestions > h2,
+.ai-suggestions > p { margin: 0; }
+.ai-suggestions > .button,
+.ai-suggestions > .text-button {
+  justify-self: start;
+  white-space: normal;
+}
 .draft-assistance { margin-block: .75rem; overflow-wrap: anywhere; }
 .ticket-ai-tools { display: flex; align-items: flex-start; gap: .75rem; flex-wrap: wrap; }
 .ticket-ai-tools > .voice-dictation { display: contents; }
@@ -862,6 +874,25 @@ button:disabled {
 .ticket-ai-tools > .draft-assistance > .notice { order: 3; flex: 0 0 100%; margin: 0 0 .35rem; }
 .draft-assistance p { margin-block: .4rem; }
 .draft-assistance [aria-disabled=true] { cursor: not-allowed; opacity: .55; }
-.ai-suggestion { border-top: 1px solid var(--border); padding-block: 1rem; }
-.ai-suggestion h3 { font-size: 1rem; margin: 0 0 .5rem; }
-.ai-suggestion p { margin-block: .4rem; }
+.ai-suggestion {
+  display: grid;
+  gap: .5rem;
+  border-top: 1px solid var(--border);
+  margin: .25rem 0 0;
+  padding: 1rem 0 0;
+}
+.ai-suggestion h3,
+.ai-suggestion p { margin: 0; }
+.ai-suggestion h3 { font-size: .95rem; line-height: 1.35; }
+.ai-suggestion p { line-height: 1.55; }
+.ai-suggestion .button {
+  justify-self: start;
+  margin-top: .15rem;
+  text-align: left;
+  white-space: normal;
+}
+.ai-suggestions-footnote {
+  border-top: 1px solid var(--border);
+  margin-top: .25rem !important;
+  padding-top: .85rem;
+}

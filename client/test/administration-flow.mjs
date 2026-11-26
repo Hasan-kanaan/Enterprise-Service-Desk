@@ -166,6 +166,39 @@ const catalogs = {
   specialties: [{ id: 1, name: 'Networking' }],
 }
 const configuration = { categories: [], tags: [] }
+const routingConfiguration = {
+  enabled: false,
+  strategy: 'EQUAL_ROUND_ROBIN',
+  categories: [
+    {
+      id: 1,
+      name: 'Hardware',
+      archivedAt: null,
+      specialties: [
+        { id: 1, name: 'Laptop Repair', archivedAt: null },
+        {
+          id: 3,
+          name: 'Legacy specialty',
+          archivedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+    },
+    { id: 2, name: 'Network', archivedAt: null, specialties: [] },
+    {
+      id: 3,
+      name: 'Retired category',
+      archivedAt: '2026-01-01T00:00:00Z',
+      specialties: [
+        { id: 3, name: 'Legacy specialty', archivedAt: null },
+      ],
+    },
+  ],
+  specialties: [
+    { id: 1, name: 'Laptop Repair', archivedAt: null },
+    { id: 2, name: 'Desktop Support', archivedAt: null },
+    { id: 3, name: 'Legacy specialty', archivedAt: '2026-01-01T00:00:00Z' },
+  ],
+}
 const specialtyLinks = new Map()
 const teams = []
 const member = (id) => {
@@ -314,6 +347,33 @@ function response(request) {
         },
       ]
     }
+  }
+  if (path === '/ticket-configuration/routing') {
+    if (user.role !== 'SUPER_ADMIN') return [403, { message: 'Forbidden' }]
+    if (request.method === 'GET') return [200, routingConfiguration]
+    if (request.method === 'PATCH') {
+      Object.assign(routingConfiguration, body)
+      return [200, { enabled: routingConfiguration.enabled, strategy: routingConfiguration.strategy }]
+    }
+  }
+  const categorySpecialties = path.match(
+    /^\/ticket-configuration\/routing\/categories\/(\d+)\/specialties$/,
+  )
+  if (categorySpecialties) {
+    if (user.role !== 'SUPER_ADMIN') return [403, { message: 'Forbidden' }]
+    const category = routingConfiguration.categories.find(
+      (item) => item.id === Number(categorySpecialties[1]),
+    )
+    if (category.archivedAt)
+      return [409, { message: 'Reactivate the category before changing its specialty mappings' }]
+    const retained = category.specialties.filter((item) => item.archivedAt)
+    category.specialties = [
+      ...retained,
+      ...body.specialtyIds.map((id) =>
+        routingConfiguration.specialties.find((item) => item.id === id),
+      ),
+    ]
+    return [200, { message: 'Category specialty mappings updated' }]
   }
   const config = path.match(/^\/ticket-configuration\/(categories|tags)(?:\/(\d+)(?:\/(archive|reactivate))?)?$/)
   if (config) {
@@ -550,7 +610,7 @@ async function navigate(path) {
 async function click(text) {
   await until(() => evaluate(`[...document.querySelectorAll('button,a')].some(el => el.textContent.trim() === ${JSON.stringify(text)} && !el.disabled)`), `ready: ${text}`)
   await evaluate(
-    `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)}); if (!el || el.disabled) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); const popover=el.closest('[popover]'); if(popover && !popover.matches(':popover-open')) popover.previousElementSibling.click(); el.click(); })()`,
+    `(() => { const el = [...document.querySelectorAll('button,a')].find(el => el.textContent.trim() === ${JSON.stringify(text)} && !el.disabled); if (!el) throw Error('Missing or disabled: ' + ${JSON.stringify(text)}); const popover=el.closest('[popover]'); if(popover && !popover.matches(':popover-open')) popover.previousElementSibling.click(); el.click(); })()`,
   )
   await delay(70)
 }
@@ -611,6 +671,8 @@ try {
       browserErrors.push(data.params.args)
     if (data.method === 'Runtime.exceptionThrown')
       browserErrors.push(data.params.exceptionDetails)
+    if (data.method === 'Page.javascriptDialogOpening')
+      void send('Page.handleJavaScriptDialog', { accept: true })
     if (data.method === 'Fetch.requestPaused') {
       const { requestId, request } = data.params
       let delayedDirectoryRequest = false
@@ -1400,7 +1462,59 @@ try {
   await navigate('/admin/organization/teams/999')
   await waitText('Team not found')
   console.log('PASS: 403/404/409 reload, missing team, network error and retry')
+  await navigate('/admin')
+  await waitText('Administration')
+  assert(
+    !(await evaluate('!!document.querySelector(\'a[href="/admin/ticket-routing"]\')')),
+    'ADMIN navigation must not expose ticket routing',
+  )
+  const adminRoutingRequests = requests.length
+  await navigate('/admin/ticket-routing')
+  await waitText('This page is not available')
+  assert(
+    !requests
+      .slice(adminRoutingRequests)
+      .includes('GET /ticket-configuration/routing'),
+    'ADMIN must not load routing controls',
+  )
   user = { ...user, id: 2, displayName: 'Root user', role: 'SUPER_ADMIN' }
+  await navigate('/admin/ticket-routing')
+  await waitText('Ticket routing')
+  await waitText('Give every eligible Manager an equal turn')
+  await waitText('fewest active tickets')
+  await waitText('Retained archived specialties')
+  assert(
+    await evaluate(
+      'document.querySelector(\'[aria-label="Retired category specialties"]\') === null',
+    ),
+    'archived categories must be read-only',
+  )
+  await evaluate(
+    'document.querySelector(\'input[value="LEAST_ACTIVE_TICKETS"]\').click()',
+  )
+  await click('Save routing settings')
+  assert.equal(routingConfiguration.strategy, 'LEAST_ACTIVE_TICKETS')
+  await checkLabel('Enable automatic routing')
+  await click('Save routing settings')
+  assert.equal(routingConfiguration.enabled, true)
+  await evaluate(`(() => {
+    const network = [...document.querySelectorAll('.ticket-routing-category')]
+      .find(section => section.querySelector('h3')?.textContent === 'Network')
+    const label = [...network.querySelectorAll('label')]
+      .find(item => item.textContent.trim() === 'Desktop Support')
+    label.querySelector('input').click()
+  })()`)
+  await click('Save mappings')
+  assert.deepEqual(
+    routingConfiguration.categories.find((category) => category.id === 2)
+      .specialties.map((specialty) => specialty.id),
+    [2],
+  )
+  await navigate('/admin/ticket-routing')
+  await waitText('On for new tickets')
+  console.log(
+    'PASS: SUPER_ADMIN routing settings, fair strategy explanations, confirmation, active specialty mapping, archived category read-only behavior, and ADMIN denial',
+  )
   await navigate('/admin/accounts')
   await waitText('Accounts')
   await action('Create account')
@@ -1526,6 +1640,7 @@ try {
       '/admin/accounts',
       '/admin/organization',
       '/admin/organization/teams/1',
+      '/admin/ticket-routing',
     ]) {
       const count = requests.length
       await navigate(path)

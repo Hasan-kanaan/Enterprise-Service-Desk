@@ -5,7 +5,7 @@ Enterprise Service Desk is a full-stack IT service management application for or
 ## Capabilities
 
 - Create and track tickets with categories, priorities, regions, departments, tags, and validated attachments.
-- Route work through managers, teams, and agents, with collaborative subtasks and separate requester conversations and private internal notes.
+- Route work through managers, teams, and agents, with optional rule-based automatic Manager assignment for new tickets, collaborative subtasks, and separate requester conversations and private internal notes.
 - Preserve ticket work cycles, resolution and closure facts, reopen reasons, and paginated communication and work history.
 - Manage identities, activation and recovery workflows, teams, coverage, specialties, and service catalogs.
 - Provide in-app notifications and manager-only operational analytics.
@@ -22,6 +22,8 @@ Authorization is enforced by the backend against the current account, session, t
 | `MANAGER` | Coordinate and assign support work, access manager operations and aggregate analytics, and make authorized lifecycle decisions. |
 | `ADMIN` | Administer identities, organization structure, teams, and service configuration; the role does not itself grant ticket-operation access. |
 | `SUPER_ADMIN` | Perform protected initial and system-level administration; the role does not itself grant ticket-operation access. |
+
+Automatic ticket routing is configured only by `SUPER_ADMIN`. It supports equal round-robin assignment or least-active-ticket assignment, using explicit category-to-specialty mappings and qualifying TeamManager/TeamSpecialty relationships. Routing assigns only the responsible Manager; it does not assign a Team or Agent or advance the ticket lifecycle.
 
 Team Leads have a specific team relationship but remain Agents; that relationship does not grant general manager authority. See [the approved decisions](docs/decision.md) for complete visibility and mutation rules.
 

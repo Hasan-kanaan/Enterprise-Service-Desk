@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useAppSelector } from '@/hooks/storeHooks'
 
 const destinations = [
   {
@@ -19,6 +20,18 @@ const destinations = [
   },
 ]
 export function AdministrationPage() {
+  const role = useAppSelector((state) => state.auth.user?.role)
+  const visibleDestinations =
+    role === 'SUPER_ADMIN'
+      ? [
+          ...destinations,
+          {
+            title: 'Ticket routing',
+            description: 'Automatic Manager assignment and category coverage',
+            to: '/admin/ticket-routing',
+          },
+        ]
+      : destinations
   return (
     <div className="ticket-workspace">
       <header className="page-heading">
@@ -33,7 +46,7 @@ export function AdministrationPage() {
         className="panel admin-destinations"
         aria-label="Administration areas"
       >
-        {destinations.map((item) => (
+        {visibleDestinations.map((item) => (
           <Link key={item.to} className="ticket-row" to={item.to}>
             <div className="ticket-row-main">
               <div>

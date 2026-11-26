@@ -12,6 +12,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { jwtConstants } from '../auth/auth.constants';
 import { TicketsController } from './tickets.controller';
 import { TicketsService } from './tickets.service';
+import { TicketRoutingController } from './ticket-routing.controller';
+import { TicketRoutingService } from './ticket-routing.service';
 import { TicketWorkspaceController } from './ticket-workspace.controller';
 import { TicketOptionsController } from './ticket-options.controller';
 import { WorkHistoryController } from './work-history.controller';
@@ -39,6 +41,7 @@ import {
     AttachmentsController,
     TicketCommunicationController,
     TicketsController,
+    TicketRoutingController,
     TicketOptionsController,
     TicketWorkspaceController,
   ],
@@ -57,6 +60,7 @@ import {
     AttachmentUploads,
     TicketCommunicationService,
     TicketAuthorizationService,
+    TicketRoutingService,
     TicketVisibilityService,
     TicketsService,
     AuthGuard,

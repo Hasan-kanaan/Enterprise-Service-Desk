@@ -1,0 +1,139 @@
+.ticket-routing-page {
+  max-width: 1080px;
+}
+.ticket-routing-settings form {
+  padding: 18px 20px 20px;
+}
+.ticket-routing-settings-fields {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ticket-routing-toggle {
+  width: fit-content;
+  font-weight: 650;
+}
+.ticket-routing-strategies {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ticket-routing-strategies legend {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.ticket-routing-strategy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 84px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  cursor: pointer;
+}
+.ticket-routing-strategy[data-selected='true'] {
+  border-color: var(--primary);
+  box-shadow: inset 3px 0 var(--primary);
+}
+.ticket-routing-strategy input,
+.ticket-routing-specialties input,
+.ticket-routing-toggle input {
+  accent-color: var(--primary);
+}
+.ticket-routing-strategy > span {
+  display: grid;
+  gap: 5px;
+}
+.ticket-routing-strategy strong {
+  font-size: 13px;
+}
+.ticket-routing-strategy > span > span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.ticket-routing-state {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 650;
+}
+.ticket-routing-state.is-enabled {
+  border-color: color-mix(in srgb, var(--success), transparent 55%);
+  color: var(--success);
+}
+.ticket-routing-form-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.ticket-routing-category {
+  padding: 18px 20px;
+}
+.ticket-routing-category + .ticket-routing-category {
+  border-top: 1px solid var(--border);
+}
+.ticket-routing-category-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.ticket-routing-category-heading h3 {
+  margin: 0 0 5px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.ticket-routing-specialties {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ticket-routing-specialties .check-option {
+  min-width: 0;
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+}
+.ticket-routing-archived,
+.ticket-routing-unmapped {
+  color: var(--warning);
+  font-size: 12px;
+}
+.ticket-routing-unmapped {
+  margin: 12px 0 0;
+}
+.ticket-routing-retained {
+  margin: 12px 0 0;
+}
+.ticket-routing-empty {
+  padding: 16px 20px;
+  color: var(--muted-foreground);
+}
+@media (max-width: 640px) {
+  .ticket-routing-strategies {
+    grid-template-columns: 1fr;
+  }
+  .ticket-routing-category-heading {
+    align-items: flex-start;
+  }
+  .ticket-routing-category-heading .button {
+    white-space: normal;
+  }
+}

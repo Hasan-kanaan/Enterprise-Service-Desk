@@ -70,7 +70,10 @@ export class AiRecommendationsService {
           },
         });
         if (!ticket) throw new NotFoundException('Ticket not found');
-        // Intake/requester visibility grants classification only, never an assignment directory.
+        if (ticket.assignedManagerId !== actor.id)
+          throw new ForbiddenException(
+            'Take responsibility for this ticket before generating AI suggestions',
+          );
         const canRoute =
           ticket.assignedManagerId === actor.id &&
           !['RESOLVED', 'CLOSED', 'CANCELLED'].includes(ticket.status);

@@ -74,6 +74,11 @@ enum TicketPriority {
   CRITICAL
 }
 
+enum TicketRoutingStrategy {
+  EQUAL_ROUND_ROBIN
+  LEAST_ACTIVE_TICKETS
+}
+
 enum SubtaskStatus {
   TODO
   IN_PROGRESS
@@ -220,6 +225,7 @@ model Specialty {
   updatedAt DateTime        @updatedAt
   users     UserSpecialty[]
   teams     TeamSpecialty[]
+  categories TicketCategorySpecialty[]
 }
 
 // Catalog case-insensitive expression indexes are maintained in migration
@@ -303,6 +309,25 @@ model TicketCategory {
   updatedAt        DateTime @updatedAt
   tickets          Ticket[] @relation("TicketCategory")
   suggestedTickets Ticket[] @relation("TicketSuggestedCategory")
+  specialties      TicketCategorySpecialty[]
+}
+
+model TicketCategorySpecialty {
+  categoryId  Int
+  specialtyId Int
+  category    TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  specialty   Specialty      @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@id([categoryId, specialtyId])
+  @@index([specialtyId])
+}
+
+model TicketRoutingConfiguration {
+  id                    Int                   @id @default(1)
+  enabled               Boolean               @default(false)
+  strategy              TicketRoutingStrategy @default(EQUAL_ROUND_ROBIN)
+  lastAssignedManagerId Int?
+  updatedAt             DateTime              @default(now()) @updatedAt
 }
 
 model TicketTag {

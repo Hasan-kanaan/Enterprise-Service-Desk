@@ -35,6 +35,11 @@ const navigation = {
       to: '/admin/ticket-configuration',
       icon: Settings2,
     },
+    {
+      label: 'Ticket routing',
+      to: '/admin/ticket-routing',
+      icon: Settings,
+    },
   ],
   ADMIN: [
     { label: 'Administration', to: '/admin', icon: LayoutDashboard },

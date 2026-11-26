@@ -150,7 +150,12 @@ export async function aiBrowser({
   const calls = fixture.calls
   await delay(250)
   assert.equal(fixture.calls, calls, 'Intake must not generate automatically')
-  await generate()
+  await waitText('Take responsibility for this ticket before generating suggestions.')
+  assert(
+    await evaluate(`${panel}.querySelector('button').disabled`),
+    'Unclaimed intake cannot generate suggestions',
+  )
+  assert.equal(fixture.calls, calls, 'Unclaimed intake must not generate')
   assert(
     await evaluate(
       `[...${panel}.querySelectorAll('button')].filter(b => b.textContent.startsWith('Apply')).every(b => b.disabled)`,

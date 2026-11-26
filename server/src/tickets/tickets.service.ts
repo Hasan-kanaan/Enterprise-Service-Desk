@@ -16,6 +16,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAuthorizationService } from './ticket-authorization.service';
 import { TicketAuthorizationUser } from './ticket-authorization.types';
+import { TicketRoutingService } from './ticket-routing.service';
 import {
   lockUser,
   requireActiveActor,
@@ -49,6 +50,7 @@ export class TicketsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authorization: TicketAuthorizationService,
+    private readonly routing: TicketRoutingService,
   ) {}
 
   async create(
@@ -116,6 +118,10 @@ export class TicketsService {
         await this.requireTags(dto.tagIds ?? [], db);
         await this.requireRegions(dto.affectedRegionIds, db);
         await this.requireDepartments(dto.affectedDepartmentIds, db);
+        const assignedManagerId = await this.routing.assignManager(
+          db,
+          dto.categoryId,
+        );
         const now = new Date();
         const ticket = await db.ticket.create({
           data: {
@@ -139,7 +145,7 @@ export class TicketsService {
             title: dto.title,
             description: dto.description,
             requesterId: user.id,
-            assignedManagerId: null,
+            assignedManagerId,
             assignedTeamId: null,
             assignedAgentId: null,
             status: TicketStatus.NEW,

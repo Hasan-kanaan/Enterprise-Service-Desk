@@ -22,10 +22,12 @@ type Recommendation = {
 export function AiSuggestions({
   ticket,
   permissions,
+  canGenerate,
   onChanged,
 }: {
   ticket: TicketDetail
   permissions: TicketOperations['permissions']
+  canGenerate: boolean
   onChanged: () => void
 }) {
   const [result, setResult] = useState<Recommendation | null>(null)
@@ -51,6 +53,8 @@ export function AiSuggestions({
           ? 'AI generation limit reached. Please try again later.'
           : status === 409
             ? 'Ticket or eligible choices changed. Reload and regenerate AI suggestions.'
+            : status === 403
+              ? 'Take responsibility for this ticket before generating AI suggestions.'
             : 'AI suggestions are temporarily unavailable. You can continue working on this ticket.',
       )
     } finally {
@@ -118,9 +122,14 @@ export function AiSuggestions({
       <p className="quiet-note">
         AI-generated suggestion — review before applying.
       </p>
+      {!canGenerate && (
+        <p className="quiet-note" role="status">
+          Take responsibility for this ticket before generating suggestions.
+        </p>
+      )}
       <button
         className="button secondary"
-        disabled={busy}
+        disabled={busy || !canGenerate}
         onClick={() => void generate()}
       >
         {busy
@@ -233,7 +242,7 @@ export function AiSuggestions({
               ),
             `Apply agent with team ${s.team.name ?? ''}`,
           )}
-          <p className="quiet-note">
+          <p className="quiet-note ai-suggestions-footnote">
             Each successful change clears these suggestions. Generate again to
             review the updated ticket. Team changes preserve the current agent;
             incompatible assignments require manual review.

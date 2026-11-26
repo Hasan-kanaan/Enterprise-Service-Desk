@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './tickets.css';
+@import './ticket-routing.css';
 @import './workspace.css';
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
