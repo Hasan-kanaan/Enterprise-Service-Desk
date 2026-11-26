@@ -7,7 +7,7 @@ services:
       - "127.0.0.1:8025:8025"
 
   postgres:
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     container_name: enterprise-service-desk-db
     restart: unless-stopped
     environment:

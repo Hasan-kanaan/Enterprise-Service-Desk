@@ -20,6 +20,7 @@ import {
   type TeamAction,
 } from '@/components/OrganizationForms'
 import type { Catalog } from '@/types/administration'
+import { Archive, ArchiveRestore, Pencil } from 'lucide-react'
 export function OrganizationPage() {
   const { teamId } = useParams()
   const [params, setParams] = useSearchParams()
@@ -467,9 +468,12 @@ export function OrganizationPage() {
                   <span className="small muted">
                     {item.archivedAt ? 'Archived' : 'Active'}
                   </span>
-                  <ActionMenu label={`Actions for ${item.name}`}>
+                  <div className="admin-row-actions">
                     <button
-                      className="button secondary"
+                      type="button"
+                      className="button secondary admin-row-icon-action"
+                      aria-label={`Edit ${item.name}`}
+                      title={`Edit ${item.name}`}
                       onClick={() =>
                         setMaintenance({
                           catalog: tab,
@@ -478,10 +482,26 @@ export function OrganizationPage() {
                         })
                       }
                     >
+                      <Pencil size={16} aria-hidden="true" />
+                    </button>
+                    <ActionMenu label={`More options for ${item.name}`}>
+                    <button
+                      className="button secondary"
+                      title={`Edit ${item.name}`}
+                      onClick={() =>
+                        setMaintenance({
+                          catalog: tab,
+                          record: item,
+                          kind: 'rename',
+                        })
+                      }
+                    >
+                      <Pencil size={16} aria-hidden="true" />
                       Rename
                     </button>
                     <button
                       className="button secondary"
+                      title={`${item.archivedAt ? 'Reactivate' : 'Archive'} ${item.name}`}
                       onClick={() =>
                         setMaintenance({
                           catalog: tab,
@@ -490,9 +510,15 @@ export function OrganizationPage() {
                         })
                       }
                     >
+                      {item.archivedAt ? (
+                        <ArchiveRestore size={16} aria-hidden="true" />
+                      ) : (
+                        <Archive size={16} aria-hidden="true" />
+                      )}
                       {item.archivedAt ? 'Reactivate' : 'Archive'}
                     </button>
-                  </ActionMenu>
+                    </ActionMenu>
+                  </div>
                 </div>
               ))
             ) : (

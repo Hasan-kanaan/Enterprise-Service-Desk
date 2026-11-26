@@ -51,6 +51,22 @@ Attachments are validated and stored through a backend storage adapter. Local fi
 
 Operational analytics are available to Managers as aggregate statistics. Responses contain bounded counts, catalog names, scope labels, and aggregate durations rather than ticket records, requester identities, communications, or individual Agent performance. Analytics access does not grant ticket-detail or employee-directory access. Time ranges and grouping semantics are documented in [service analytics](docs/service-analytics.md) and the [analytics privacy review](docs/analytics-privacy-review.md).
 
+## AI knowledge base (decided; in progress)
+
+Agents and Managers will receive advisory solution suggestions grounded in company knowledge (retrieval-augmented generation). Status: only the PostgreSQL vector extension is enabled so far; no knowledge feature is implemented yet.
+
+Decisions:
+
+- **Same database.** Vectors are stored in the existing PostgreSQL 17 using the `pgvector` extension (Docker image `pgvector/pgvector:pg17`), not a separate vector database. Access rules and soft-deletion are then enforced with SQL joins in one transaction snapshot, and no synchronization between two stores is needed.
+- **Prisma stays.** Vector columns are declared with `Unsupported(...)` and queried with raw SQL; all other data access remains Prisma.
+- **Embeddings.** Gemini embedding model, reduced vector size (planned 768), English only. Chunking is deterministic server code, not AI.
+- **Sources.** Uploaded company documents (policies, runbooks, API docs, project briefings), license/asset records derived from invoices, and resolved ticket cases.
+- **Invoices.** Raw invoices are never stored. Only derived license and asset facts (vendor, product, seats, dates, support references) are kept; amounts, bank and tax details are removed at ingestion.
+- **Tickets.** Only resolved work cycles are indexed (title, redacted description, category, tags, resolution summary), by a background sweep rather than inside ticket transactions. Reopening supersedes the earlier entry. Conversations, internal notes and attachments are never indexed.
+- **Synthetic data.** Historical incidents for testing are standalone knowledge records, never fake `Ticket` rows.
+- **Authority.** Only `SUPER_ADMIN` manages documents. Suggestions are available only to users who can already operate the ticket (assigned Agent, Team Lead, current collaborator, responsible Manager). Retrieval is filtered server-side by audience before any text reaches the model. Suggestions are advisory and never change ticket state.
+- **Limits.** The feature has its own quota, separate from routing and drafting.
+
 ## Technology and architecture
 
 | Area | Technology |

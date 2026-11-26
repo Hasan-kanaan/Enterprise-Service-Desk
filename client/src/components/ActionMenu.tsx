@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
-import { MoreHorizontal } from 'lucide-react'
+import { MoreVertical } from 'lucide-react'
 
 /** Native popover provides Escape, light-dismiss and keyboard focus return. */
 export function ActionMenu({
@@ -21,6 +21,7 @@ export function ActionMenu({
         aria-label={label}
         aria-controls={id}
         aria-expanded={open}
+        title={label}
         onClick={(event) => {
           const menu = popover.current
           if (!menu) return
@@ -48,8 +49,7 @@ export function ActionMenu({
           })
         }}
       >
-        <MoreHorizontal size={16} aria-hidden="true" />
-        <span>Actions</span>
+        <MoreVertical size={18} aria-hidden="true" />
       </button>
       <div
         id={id}

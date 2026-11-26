@@ -20,6 +20,7 @@ import { AccountForm } from '@/components/AccountForm'
 import { EditAccountForm } from '@/components/EditAccountForm'
 import { ErrorState, LoadingState, EmptyState } from '@/components/TicketUI'
 import { MultiSelectFilter } from '@/components/MultiSelectFilter'
+import { CircleCheck, CircleSlash2, Pencil } from 'lucide-react'
 export function UsersPage() {
   const role = useAppSelector((state) => state.auth.user)!.role
   const filters = useListFilters()
@@ -124,7 +125,7 @@ export function UsersPage() {
                   <th scope="col">Region</th>
                   <th scope="col">Role</th>
                   <th scope="col">Status</th>
-                  <th scope="col">Actions</th>
+                  <th scope="col" aria-label="Account options" />
                 </tr>
               </thead>
               <tbody>
@@ -172,14 +173,27 @@ export function UsersPage() {
                       <td>
                         <div className="directory-actions">
                           {manageableRoles(role).includes(account.role) && (
+                            <button
+                              type="button"
+                              className="button secondary admin-row-icon-action"
+                              aria-label={`Edit ${account.displayName}`}
+                              title={`Edit ${account.displayName}`}
+                              onClick={() => setEditing(account)}
+                            >
+                              <Pencil size={16} aria-hidden="true" />
+                            </button>
+                          )}
+                          {manageableRoles(role).includes(account.role) && (
                             <ActionMenu
-                              label={`Actions for ${account.displayName}`}
+                              label={`More options for ${account.displayName}`}
                             >
                   {manageableRoles(role).includes(account.role) && (
                     <button
                       className="button secondary"
+                      title={`Edit ${account.displayName}`}
                       onClick={() => setEditing(account)}
                     >
+                      <Pencil size={16} aria-hidden="true" />
                       Edit account
                     </button>
                   )}
@@ -250,8 +264,14 @@ export function UsersPage() {
                   {manageableRoles(role).includes(account.role) && (
                     <button
                       className={`button secondary${account.status === 'ACTIVE' ? ' account-deactivate' : ''}`}
+                      title={`${account.status === 'ACTIVE' ? 'Deactivate' : 'Activate'} ${account.displayName}`}
                       onClick={() => setTarget(account)}
                     >
+                      {account.status === 'ACTIVE' ? (
+                        <CircleSlash2 size={16} aria-hidden="true" />
+                      ) : (
+                        <CircleCheck size={16} aria-hidden="true" />
+                      )}
                       {account.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
                     </button>
                   )}

@@ -7,6 +7,7 @@ import { AdminDialog } from '@/components/AdminDialog'
 import { ActionMenu } from '@/components/ActionMenu'
 import { ErrorState, LoadingState, EmptyState } from '@/components/TicketUI'
 import type { Reference } from '@/types/administration'
+import { Archive, ArchiveRestore, Pencil } from 'lucide-react'
 type Catalog = 'categories' | 'tags'
 type Action = {
   catalog: Catalog
@@ -59,17 +60,32 @@ export function TicketConfigurationPage() {
               <article className="admin-row catalog-row" key={record.id}>
                 <span>{record.name}</span>
                 <span>{record.archivedAt ? 'Archived' : 'Active'}</span>
-                <ActionMenu label={`Actions for ${catalog === 'categories' ? 'category' : 'tag'} ${record.name}`}>
+                <div className="admin-row-actions">
                   <button
-                    className="button secondary"
+                    type="button"
+                    className="button secondary admin-row-icon-action"
+                    aria-label={`Edit ${record.name}`}
+                    title={`Edit ${record.name}`}
                     onClick={() =>
                       setAction({ catalog, record, kind: 'rename' })
                     }
                   >
+                    <Pencil size={16} aria-hidden="true" />
+                  </button>
+                  <ActionMenu label={`More options for ${catalog === 'categories' ? 'category' : 'tag'} ${record.name}`}>
+                  <button
+                    className="button secondary"
+                    title={`Edit ${record.name}`}
+                    onClick={() =>
+                      setAction({ catalog, record, kind: 'rename' })
+                    }
+                  >
+                    <Pencil size={16} aria-hidden="true" />
                     Rename
                   </button>
                   <button
                     className="button secondary"
+                    title={`${record.archivedAt ? 'Reactivate' : 'Archive'} ${record.name}`}
                     onClick={() =>
                       setAction({
                         catalog,
@@ -78,9 +94,15 @@ export function TicketConfigurationPage() {
                       })
                     }
                   >
+                    {record.archivedAt ? (
+                      <ArchiveRestore size={16} aria-hidden="true" />
+                    ) : (
+                      <Archive size={16} aria-hidden="true" />
+                    )}
                     {record.archivedAt ? 'Reactivate' : 'Archive'}
                   </button>
-                </ActionMenu>
+                  </ActionMenu>
+                </div>
               </article>
             ))
           ) : (
