@@ -25,77 +25,121 @@ export type Message = Omit<
   'canEdit' | 'canDelete'
 >;
 export type Attachment = Message['attachments'][number];
+type CompanyKnowledgeVersion = {
+  id: number;
+  versionNumber: number;
+  originalName: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+type CompanyKnowledgeDocument = {
+  id: number;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  versions: CompanyKnowledgeVersion[];
+};
 type GetBody<P extends string> = P extends
   | `/ticket-workspace/tickets/${string}/people${string}`
   | `/ticket-workspace/subtasks/${string}/people${string}`
   ? { id: number; displayName: string }[]
-  : P extends `/organization/teams/${string}/members${string}`
-    ? Result<
-        import('../src/organization/organization.service').OrganizationService['listMembers']
-      >
-    : P extends `/tickets/${string}/subtasks${string}`
-      ? Result<TicketVisibilityService['listVisibleSubtasks']>
-      : P extends '/ticket-options'
+  : P extends
+        | '/company-knowledge/documents'
+        | `/company-knowledge/documents?${string}`
+    ? {
+        items: Array<
+          Omit<CompanyKnowledgeDocument, 'versions'> & {
+            _count: { versions: number };
+            versions: CompanyKnowledgeVersion[];
+          }
+        >;
+        hasMore: boolean;
+        nextCursor: string | null;
+      }
+    : P extends `/company-knowledge/documents/${number}`
+      ? CompanyKnowledgeDocument
+      : P extends `/organization/teams/${string}/members${string}`
         ? Result<
-            import('../src/tickets/ticket-options.controller').TicketOptionsController['list']
+            import('../src/organization/organization.service').OrganizationService['listMembers']
           >
-        : P extends '/users' | `/users?${string}`
-          ? Result<import('../src/users/users.service').UsersService['findAll']>
-          : P extends '/organization/teams'
+        : P extends `/tickets/${string}/subtasks${string}`
+          ? Result<TicketVisibilityService['listVisibleSubtasks']>
+          : P extends '/ticket-options'
             ? Result<
-                import('../src/organization/organization.service').OrganizationService['listTeams']
+                import('../src/tickets/ticket-options.controller').TicketOptionsController['list']
               >
-            : P extends `/my-work-history${string}`
-              ? HistoryPage
-              : P extends '/notifications/unread-count'
-                ? { count: number }
-                : P extends `/notifications${string}`
-                  ? Result<NotificationsController['list']>
-                  : P extends `/ticket-workspace/tickets/${string}`
-                    ? Result<TicketWorkspaceController['ticket']>
-                    : P extends `/ticket-workspace/subtasks/${string}`
-                      ? Result<TicketWorkspaceController['subtask']>
-                      : P extends '/ticket-workspace'
-                        ? Result<TicketWorkspaceController['context']>
-                        : P extends `/tickets/${string}/history`
-                          ? Result<TicketVisibilityService['history']>
-                          : P extends `/tickets/${string}/attachments`
-                            ? Result<AttachmentsController['list']>
-                            : P extends
-                                  | `/tickets/${string}/messages`
-                                  | `/tickets/${string}/internal-notes`
-                              ? Communication
-                              : P extends `/tickets/subtasks/${string}`
-                                ? Json<Subtask>
-                                : P extends `/tickets/subtasks${string}`
-                                  ? Result<
-                                      TicketVisibilityService['listVisibleSubtasks']
-                                    >
-                                  : P extends '/tickets' | `/tickets?${string}`
-                                    ? Result<
-                                        TicketVisibilityService['listVisible']
-                                      >
-                                    : P extends `/tickets/${string}`
+            : P extends '/users' | `/users?${string}`
+              ? Result<
+                  import('../src/users/users.service').UsersService['findAll']
+                >
+              : P extends '/organization/teams'
+                ? Result<
+                    import('../src/organization/organization.service').OrganizationService['listTeams']
+                  >
+                : P extends `/my-work-history${string}`
+                  ? HistoryPage
+                  : P extends '/notifications/unread-count'
+                    ? { count: number }
+                    : P extends `/notifications${string}`
+                      ? Result<NotificationsController['list']>
+                      : P extends `/ticket-workspace/tickets/${string}`
+                        ? Result<TicketWorkspaceController['ticket']>
+                        : P extends `/ticket-workspace/subtasks/${string}`
+                          ? Result<TicketWorkspaceController['subtask']>
+                          : P extends '/ticket-workspace'
+                            ? Result<TicketWorkspaceController['context']>
+                            : P extends `/tickets/${string}/history`
+                              ? Result<TicketVisibilityService['history']>
+                              : P extends `/tickets/${string}/attachments`
+                                ? Result<AttachmentsController['list']>
+                                : P extends
+                                      | `/tickets/${string}/messages`
+                                      | `/tickets/${string}/internal-notes`
+                                  ? Communication
+                                  : P extends `/tickets/subtasks/${string}`
+                                    ? Json<Subtask>
+                                    : P extends `/tickets/subtasks${string}`
                                       ? Result<
-                                          TicketVisibilityService['findVisibleById']
+                                          TicketVisibilityService['listVisibleSubtasks']
                                         >
-                                      : unknown;
-type WriteBody<P extends string> = P extends `/users/${number}`
-  ? Result<import('../src/users/users.service').UsersService['updateMetadata']>
-  : P extends '/auth/accounts'
-    ? Result<AuthService['createAccount']>
-    : P extends '/auth/login' | '/auth/refresh'
-      ? Omit<Result<AuthService['login']>, 'refreshToken'>
-      : P extends
-            | `/tickets/${string}/messages${string}`
-            | `/tickets/${string}/internal-notes${string}`
-        ? Message
+                                      : P extends
+                                            '/tickets' | `/tickets?${string}`
+                                        ? Result<
+                                            TicketVisibilityService['listVisible']
+                                          >
+                                        : P extends `/tickets/${string}`
+                                          ? Result<
+                                              TicketVisibilityService['findVisibleById']
+                                            >
+                                          : unknown;
+type WriteBody<P extends string> = P extends
+  | '/company-knowledge/documents'
+  | `/company-knowledge/documents/${number}/versions`
+  ? P extends `/company-knowledge/documents/${number}/versions`
+    ? CompanyKnowledgeVersion
+    : CompanyKnowledgeDocument
+  : P extends `/users/${number}`
+    ? Result<
+        import('../src/users/users.service').UsersService['updateMetadata']
+      >
+    : P extends '/auth/accounts'
+      ? Result<AuthService['createAccount']>
+      : P extends '/auth/login' | '/auth/refresh'
+        ? Omit<Result<AuthService['login']>, 'refreshToken'>
         : P extends
-              `/tickets/${string}/subtasks` | `/tickets/subtasks/${string}`
-          ? Json<Subtask>
-          : P extends `/tickets${string}`
-            ? Json<Ticket>
-            : unknown;
+              | `/tickets/${string}/messages${string}`
+              | `/tickets/${string}/internal-notes${string}`
+          ? Message
+          : P extends
+                `/tickets/${string}/subtasks` | `/tickets/subtasks/${string}`
+            ? Json<Subtask>
+            : P extends `/tickets${string}`
+              ? Json<Ticket>
+              : unknown;
 type Response<T> = Omit<supertest.Response, 'body'> & { body: T };
 type Fluent<T> = {
   [K in keyof supertest.Test]: supertest.Test[K] extends (

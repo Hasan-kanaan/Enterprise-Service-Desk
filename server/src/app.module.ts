@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module';
 import { OrganizationModule } from './organization/organization.module';
 import { TicketsAuthorizationModule } from './tickets/tickets-authorization.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { CompanyKnowledgeModule } from './company-knowledge/company-knowledge.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     OrganizationModule,
     TicketsAuthorizationModule,
     NotificationsModule,
+    CompanyKnowledgeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

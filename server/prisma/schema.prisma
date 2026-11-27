@@ -97,6 +97,15 @@ enum NotificationType {
   MANAGER_TRANSFERRED
 }
 
+enum CompanyKnowledgeVersionStatus {
+  UPLOADED
+  PROCESSING
+  READY_FOR_REVIEW
+  PUBLISHED
+  DEACTIVATED
+  FAILED
+}
+
 model Notification {
   id              Int              @id @default(autoincrement())
   recipientUserId Int
@@ -119,76 +128,79 @@ model Notification {
 }
 
 model User {
-  uploadedAttachments Attachment[]
-  notifications     Notification[] @relation("NotificationRecipient")
-  causedNotifications Notification[] @relation("NotificationActor")
-  id                Int             @id @default(autoincrement())
-  displayName String @db.VarChar(100)
-  jobTitle String? @db.VarChar(100)
-  email             String          @unique @db.VarChar(255)
-  password          String?         @db.VarChar(255)
-  activatedAt DateTime?
-  emailVerifiedAt DateTime?
-  phoneNumber String? @db.VarChar(16)
-  phoneVerifiedAt DateTime?
-  accountActionTokens AccountActionToken[]
-  role              UserRole        @default(EMPLOYEE)
-  status            UserStatus      @default(ACTIVE)
-  sessionVersion    Int             @default(0)
-  passwordChangeRequired Boolean @default(false)
-  regionId          Int?
-  departmentId      Int?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  sessions          UserSession[]
-  refreshTokens     RefreshToken[]
-  region            Region?         @relation("UserHomeRegion", fields: [regionId], references: [id], onDelete: SetNull)
-  department        Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  teamMemberships   TeamMember[]
-  managedTeams      TeamManager[]
-  ledTeam           Team?          @relation("TeamLead")
-  specialties       UserSpecialty[]
-  requestedTickets  Ticket[]        @relation("TicketRequester")
-  assignedTickets   Ticket[]        @relation("TicketAssignedAgent")
-  responsibleTickets Ticket[]       @relation("TicketAssignedManager")
-  assignedSubtasks  Subtask[]       @relation("SubtaskAssignedAgent")
-  suggestedTickets  Ticket[]        @relation("TicketSuggestedAgent")
-  aiReviewedTickets Ticket[]        @relation("TicketAiReviewer")
-  startedCycles     TicketWorkCycle[] @relation("CycleStarter")
-  ticketMessages   TicketMessage[]
-  ticketInternalNotes TicketInternalNote[]
-  endedCycles       TicketWorkCycle[] @relation("CycleEnder")
-  closedCycles      TicketWorkCycle[] @relation("CycleCloser")
-  managedCycles     TicketWorkCycle[] @relation("CycleManager")
-  assignedCycles    TicketWorkCycle[] @relation("CycleAgent")
-  completedSubtasks Subtask[]         @relation("SubtaskCompleter")
+  uploadedAttachments     Attachment[]
+  companyKnowledgeUploads CompanyKnowledgeDocumentVersion[]
+  notifications           Notification[]                    @relation("NotificationRecipient")
+  causedNotifications     Notification[]                    @relation("NotificationActor")
+  id                      Int                               @id @default(autoincrement())
+  displayName             String                            @db.VarChar(100)
+  jobTitle                String?                           @db.VarChar(100)
+  email                   String                            @unique @db.VarChar(255)
+  password                String?                           @db.VarChar(255)
+  activatedAt             DateTime?
+  emailVerifiedAt         DateTime?
+  phoneNumber             String?                           @db.VarChar(16)
+  phoneVerifiedAt         DateTime?
+  accountActionTokens     AccountActionToken[]
+  role                    UserRole                          @default(EMPLOYEE)
+  status                  UserStatus                        @default(ACTIVE)
+  sessionVersion          Int                               @default(0)
+  passwordChangeRequired  Boolean                           @default(false)
+  regionId                Int?
+  departmentId            Int?
+  createdAt               DateTime                          @default(now())
+  updatedAt               DateTime                          @updatedAt
+  sessions                UserSession[]
+  refreshTokens           RefreshToken[]
+  region                  Region?                           @relation("UserHomeRegion", fields: [regionId], references: [id], onDelete: SetNull)
+  department              Department?                       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  teamMemberships         TeamMember[]
+  managedTeams            TeamManager[]
+  ledTeam                 Team?                             @relation("TeamLead")
+  specialties             UserSpecialty[]
+  requestedTickets        Ticket[]                          @relation("TicketRequester")
+  assignedTickets         Ticket[]                          @relation("TicketAssignedAgent")
+  responsibleTickets      Ticket[]                          @relation("TicketAssignedManager")
+  assignedSubtasks        Subtask[]                         @relation("SubtaskAssignedAgent")
+  suggestedTickets        Ticket[]                          @relation("TicketSuggestedAgent")
+  aiReviewedTickets       Ticket[]                          @relation("TicketAiReviewer")
+  startedCycles           TicketWorkCycle[]                 @relation("CycleStarter")
+  ticketMessages          TicketMessage[]
+  ticketInternalNotes     TicketInternalNote[]
+  endedCycles             TicketWorkCycle[]                 @relation("CycleEnder")
+  closedCycles            TicketWorkCycle[]                 @relation("CycleCloser")
+  managedCycles           TicketWorkCycle[]                 @relation("CycleManager")
+  assignedCycles          TicketWorkCycle[]                 @relation("CycleAgent")
+  completedSubtasks       Subtask[]                         @relation("SubtaskCompleter")
+
   @@index([role, status, id])
 }
 
 model UserSession {
-  id String @id @default(uuid()) @db.Uuid
-  userId Int
-  createdAt DateTime @default(now())
-  lastUsedAt DateTime @default(now())
-  revokedAt DateTime?
-  deviceLabel String? @db.VarChar(100)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String         @id @default(uuid()) @db.Uuid
+  userId        Int
+  createdAt     DateTime       @default(now())
+  lastUsedAt    DateTime       @default(now())
+  revokedAt     DateTime?
+  deviceLabel   String?        @db.VarChar(100)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   refreshTokens RefreshToken[]
+
   @@index([userId, revokedAt, createdAt])
 }
 
 model RefreshToken {
-  sessionId String? @db.Uuid
-  session UserSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  @@index([sessionId, revokedAt, expiresAt])
-  id        Int       @id @default(autoincrement())
-  tokenHash String    @unique @db.VarChar(64)
+  sessionId String?      @db.Uuid
+  session   UserSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id        Int          @id @default(autoincrement())
+  tokenHash String       @unique @db.VarChar(64)
   userId    Int
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime  @default(now())
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([sessionId, revokedAt, expiresAt])
   @@index([userId])
 }
 
@@ -219,12 +231,12 @@ model Department {
 
 model Specialty {
   archivedAt DateTime?
-  id        Int             @id @default(autoincrement())
-  name      String          @unique @db.VarChar(100)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  users     UserSpecialty[]
-  teams     TeamSpecialty[]
+  id         Int                       @id @default(autoincrement())
+  name       String                    @unique @db.VarChar(100)
+  createdAt  DateTime                  @default(now())
+  updatedAt  DateTime                  @updatedAt
+  users      UserSpecialty[]
+  teams      TeamSpecialty[]
   categories TicketCategorySpecialty[]
 }
 
@@ -233,22 +245,22 @@ model Specialty {
 // Team retains its existing (name, regionId) key and NULL-region global key.
 model Team {
   archivedAt       DateTime?
-  id               Int             @id @default(autoincrement())
-  name             String          @db.VarChar(150)
+  id               Int               @id @default(autoincrement())
+  name             String            @db.VarChar(150)
   scope            TeamScope
   regionId         Int?
   teamLeadId       Int?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  region           Region?         @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  region           Region?           @relation(fields: [regionId], references: [id], onDelete: Restrict)
   members          TeamMember[]
   managers         TeamManager[]
   specialties      TeamSpecialty[]
-  assignedTickets  Ticket[]        @relation("TicketAssignedTeam")
-  assignedSubtasks Subtask[]       @relation("SubtaskAssignedTeam")
-  suggestedTickets Ticket[]        @relation("TicketSuggestedTeam")
+  assignedTickets  Ticket[]          @relation("TicketAssignedTeam")
+  assignedSubtasks Subtask[]         @relation("SubtaskAssignedTeam")
+  suggestedTickets Ticket[]          @relation("TicketSuggestedTeam")
   endingCycles     TicketWorkCycle[]
-  teamLead         User?           @relation("TeamLead", fields: [teamLeadId], references: [id], onDelete: SetNull)
+  teamLead         User?             @relation("TeamLead", fields: [teamLeadId], references: [id], onDelete: SetNull)
 
   @@unique([name, regionId])
   @@unique([teamLeadId])
@@ -302,13 +314,13 @@ model TeamSpecialty {
 }
 
 model TicketCategory {
-  archivedAt DateTime?
-  id               Int      @id @default(autoincrement())
-  name             String   @unique @db.VarChar(100)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  tickets          Ticket[] @relation("TicketCategory")
-  suggestedTickets Ticket[] @relation("TicketSuggestedCategory")
+  archivedAt       DateTime?
+  id               Int                       @id @default(autoincrement())
+  name             String                    @unique @db.VarChar(100)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  tickets          Ticket[]                  @relation("TicketCategory")
+  suggestedTickets Ticket[]                  @relation("TicketSuggestedCategory")
   specialties      TicketCategorySpecialty[]
 }
 
@@ -331,30 +343,29 @@ model TicketRoutingConfiguration {
 }
 
 model TicketTag {
-  archivedAt DateTime?
-  id            Int                @id @default(autoincrement())
-  name          String             @unique @db.VarChar(100)
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  tickets       TicketTagOnTicket[]
-  suggestedFor  TicketSuggestedTag[]
+  archivedAt   DateTime?
+  id           Int                  @id @default(autoincrement())
+  name         String               @unique @db.VarChar(100)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  tickets      TicketTagOnTicket[]
+  suggestedFor TicketSuggestedTag[]
 }
 
 model Ticket {
-  clientRequestId String? @db.VarChar(128)
-  creationHash String? @db.VarChar(64)
-  @@unique([requesterId, clientRequestId])
-  attachments Attachment[]
-  notifications Notification[]
-  id                    Int                @id @default(autoincrement())
-  title                 String             @db.VarChar(200)
-  description           String             @db.Text
+  clientRequestId       String?              @db.VarChar(128)
+  creationHash          String?              @db.VarChar(64)
+  attachments           Attachment[]
+  notifications         Notification[]
+  id                    Int                  @id @default(autoincrement())
+  title                 String               @db.VarChar(200)
+  description           String               @db.Text
   requesterId           Int
   categoryId            Int
-  priority              TicketPriority     @default(MEDIUM)
-  status                TicketStatus       @default(NEW)
-  allRegions            Boolean            @default(false)
-  allDepartments        Boolean            @default(false)
+  priority              TicketPriority       @default(MEDIUM)
+  status                TicketStatus         @default(NEW)
+  allRegions            Boolean              @default(false)
+  allDepartments        Boolean              @default(false)
   assignedTeamId        Int?
   assignedManagerId     Int?
   assignedAgentId       Int?
@@ -362,30 +373,31 @@ model Ticket {
   aiSuggestedPriority   TicketPriority?
   aiSuggestedTeamId     Int?
   aiSuggestedAgentId    Int?
-  aiConfidence          Decimal?           @db.Decimal(5, 4)
-  aiReason              String?            @db.Text
+  aiConfidence          Decimal?             @db.Decimal(5, 4)
+  aiReason              String?              @db.Text
   aiReviewedAt          DateTime?
   aiReviewedById        Int?
   resolvedAt            DateTime?
   closedAt              DateTime?
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
-  requester             User               @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
-  category              TicketCategory     @relation("TicketCategory", fields: [categoryId], references: [id], onDelete: Restrict)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  requester             User                 @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  category              TicketCategory       @relation("TicketCategory", fields: [categoryId], references: [id], onDelete: Restrict)
   affectedRegions       TicketRegion[]
   affectedDepartments   TicketDepartment[]
-  assignedTeam          Team?              @relation("TicketAssignedTeam", fields: [assignedTeamId], references: [id], onDelete: SetNull)
-  assignedManager       User?              @relation("TicketAssignedManager", fields: [assignedManagerId], references: [id], onDelete: Restrict)
-  assignedAgent         User?              @relation("TicketAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
-  suggestedCategory     TicketCategory?    @relation("TicketSuggestedCategory", fields: [aiSuggestedCategoryId], references: [id], onDelete: SetNull)
-  suggestedTeam         Team?              @relation("TicketSuggestedTeam", fields: [aiSuggestedTeamId], references: [id], onDelete: SetNull)
-  suggestedAgent        User?              @relation("TicketSuggestedAgent", fields: [aiSuggestedAgentId], references: [id], onDelete: SetNull)
-  aiReviewedBy          User?              @relation("TicketAiReviewer", fields: [aiReviewedById], references: [id], onDelete: SetNull)
+  assignedTeam          Team?                @relation("TicketAssignedTeam", fields: [assignedTeamId], references: [id], onDelete: SetNull)
+  assignedManager       User?                @relation("TicketAssignedManager", fields: [assignedManagerId], references: [id], onDelete: Restrict)
+  assignedAgent         User?                @relation("TicketAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  suggestedCategory     TicketCategory?      @relation("TicketSuggestedCategory", fields: [aiSuggestedCategoryId], references: [id], onDelete: SetNull)
+  suggestedTeam         Team?                @relation("TicketSuggestedTeam", fields: [aiSuggestedTeamId], references: [id], onDelete: SetNull)
+  suggestedAgent        User?                @relation("TicketSuggestedAgent", fields: [aiSuggestedAgentId], references: [id], onDelete: SetNull)
+  aiReviewedBy          User?                @relation("TicketAiReviewer", fields: [aiReviewedById], references: [id], onDelete: SetNull)
   tags                  TicketTagOnTicket[]
   aiSuggestedTags       TicketSuggestedTag[]
   subtasks              Subtask[]
   workCycles            TicketWorkCycle[]
 
+  @@unique([requesterId, clientRequestId])
   @@index([requesterId, createdAt, id])
   @@index([assignedManagerId, createdAt, id])
   @@index([status, assignedManagerId, createdAt, id])
@@ -400,9 +412,9 @@ model Ticket {
 model TicketTagOnTicket {
   ticketId  Int
   tagId     Int
-  createdAt DateTime   @default(now())
-  ticket    Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  tag       TicketTag  @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  createdAt DateTime  @default(now())
+  ticket    Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tag       TicketTag @relation(fields: [tagId], references: [id], onDelete: Restrict)
 
   @@id([ticketId, tagId])
   @@index([tagId])
@@ -440,27 +452,26 @@ model TicketDepartment {
 }
 
 model Subtask {
-  notifications Notification[]
-  id              Int           @id @default(autoincrement())
-  ticketId        Int
+  notifications    Notification[]
+  id               Int             @id @default(autoincrement())
+  ticketId         Int
   createdInCycleId Int
-  title           String        @db.VarChar(200)
-  description     String        @db.Text
-  status          SubtaskStatus @default(TODO)
-  assignedTeamId  Int?
-  assignedAgentId Int?
-  completedAt     DateTime?
-  completedById   Int?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  ticket          Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  assignedTeam    Team?         @relation("SubtaskAssignedTeam", fields: [assignedTeamId], references: [id], onDelete: SetNull)
-  assignedAgent   User?         @relation("SubtaskAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
-  createdInCycle  TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
-  completedBy     User? @relation("SubtaskCompleter", fields: [completedById], references: [id], onDelete: Restrict)
+  title            String          @db.VarChar(200)
+  description      String          @db.Text
+  status           SubtaskStatus   @default(TODO)
+  assignedTeamId   Int?
+  assignedAgentId  Int?
+  completedAt      DateTime?
+  completedById    Int?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  ticket           Ticket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  assignedTeam     Team?           @relation("SubtaskAssignedTeam", fields: [assignedTeamId], references: [id], onDelete: SetNull)
+  assignedAgent    User?           @relation("SubtaskAssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
+  createdInCycle   TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
+  completedBy      User?           @relation("SubtaskCompleter", fields: [completedById], references: [id], onDelete: Restrict)
 
   @@index([completedById, completedAt, id])
-
   @@index([ticketId])
   @@index([assignedTeamId])
   @@index([assignedAgentId])
@@ -468,13 +479,13 @@ model Subtask {
 }
 
 model TicketWorkCycle {
-  id                     Int @id @default(autoincrement())
+  id                     Int                     @id @default(autoincrement())
   ticketId               Int
   sequenceNumber         Int
   type                   TicketWorkCycleType
   startedAt              DateTime
   startedById            Int?
-  startReason            String? @db.VarChar(2000)
+  startReason            String?                 @db.VarChar(2000)
   startDisposition       CycleStartDisposition?
   outcome                TicketWorkCycleOutcome?
   endedAt                DateTime?
@@ -482,92 +493,94 @@ model TicketWorkCycle {
   closedAt               DateTime?
   closedById             Int?
   closeSource            TicketCloseSource?
-  resolutionSummary      String? @db.VarChar(4000)
+  resolutionSummary      String?                 @db.VarChar(4000)
   endingManagerId        Int?
   endingTeamId           Int?
   endingAgentId          Int?
   ownershipSnapshotBasis OwnershipSnapshotBasis?
   ownershipCapturedAt    DateTime?
-  ticket                 Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  startedBy              User? @relation("CycleStarter", fields: [startedById], references: [id], onDelete: Restrict)
-  endedBy                User? @relation("CycleEnder", fields: [endedById], references: [id], onDelete: Restrict)
-  closedBy               User? @relation("CycleCloser", fields: [closedById], references: [id], onDelete: Restrict)
-  endingManager          User? @relation("CycleManager", fields: [endingManagerId], references: [id], onDelete: Restrict)
-  endingAgent            User? @relation("CycleAgent", fields: [endingAgentId], references: [id], onDelete: Restrict)
-  endingTeam             Team? @relation(fields: [endingTeamId], references: [id], onDelete: Restrict)
+  ticket                 Ticket                  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  startedBy              User?                   @relation("CycleStarter", fields: [startedById], references: [id], onDelete: Restrict)
+  endedBy                User?                   @relation("CycleEnder", fields: [endedById], references: [id], onDelete: Restrict)
+  closedBy               User?                   @relation("CycleCloser", fields: [closedById], references: [id], onDelete: Restrict)
+  endingManager          User?                   @relation("CycleManager", fields: [endingManagerId], references: [id], onDelete: Restrict)
+  endingAgent            User?                   @relation("CycleAgent", fields: [endingAgentId], references: [id], onDelete: Restrict)
+  endingTeam             Team?                   @relation(fields: [endingTeamId], references: [id], onDelete: Restrict)
   subtasks               Subtask[]
   messages               TicketMessage[]
   internalNotes          TicketInternalNote[]
 
+  @@unique([ticketId, sequenceNumber])
+  @@unique([id, ticketId])
   @@index([endingManagerId, endedAt, id])
   @@index([endingAgentId, endedAt, id])
   @@index([endedById, endedAt, id])
   @@index([closedById, closedAt, id])
   @@index([startedById, endedAt, id])
-  @@unique([ticketId, sequenceNumber])
-  @@unique([id, ticketId])
 }
 
 model TicketMessage {
-  deletedAt DateTime?
-  attachments Attachment[]
-  id Int @id @default(autoincrement())
-  ticketId Int
+  deletedAt        DateTime?
+  attachments      Attachment[]
+  id               Int             @id @default(autoincrement())
+  ticketId         Int
   createdInCycleId Int
-  authorId Int
-  content String @db.VarChar(4000)
-  createdAt DateTime @default(now())
-  editedAt DateTime?
-  clientRequestId String @db.Uuid
-  creationHash String @db.Char(64)
-  createdInCycle TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
-  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  authorId         Int
+  content          String          @db.VarChar(4000)
+  createdAt        DateTime        @default(now())
+  editedAt         DateTime?
+  clientRequestId  String          @db.Uuid
+  creationHash     String          @db.Char(64)
+  createdInCycle   TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
+  author           User            @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
   @@unique([authorId, clientRequestId])
   @@index([ticketId, createdAt, id])
   @@index([createdInCycleId, ticketId])
 }
 
 model TicketInternalNote {
-  deletedAt DateTime?
-  attachments Attachment[]
-  id Int @id @default(autoincrement())
-  ticketId Int
+  deletedAt        DateTime?
+  attachments      Attachment[]
+  id               Int             @id @default(autoincrement())
+  ticketId         Int
   createdInCycleId Int
-  authorId Int
-  content String @db.VarChar(4000)
-  createdAt DateTime @default(now())
-  editedAt DateTime?
-  clientRequestId String @db.Uuid
-  creationHash String @db.Char(64)
-  createdInCycle TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
-  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  authorId         Int
+  content          String          @db.VarChar(4000)
+  createdAt        DateTime        @default(now())
+  editedAt         DateTime?
+  clientRequestId  String          @db.Uuid
+  creationHash     String          @db.Char(64)
+  createdInCycle   TicketWorkCycle @relation(fields: [createdInCycleId, ticketId], references: [id, ticketId], onDelete: Restrict)
+  author           User            @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
   @@unique([authorId, clientRequestId])
   @@index([ticketId, createdAt, id])
   @@index([createdInCycleId, ticketId])
 }
 
 model Attachment {
-  id Int @id @default(autoincrement())
-  ticketId Int?
-  messageId Int?
+  id             Int                 @id @default(autoincrement())
+  ticketId       Int?
+  messageId      Int?
   internalNoteId Int?
-  uploaderId Int
-  filename String @db.VarChar(200)
-  contentType String @db.VarChar(100)
-  byteSize Int
-  storageKey String @unique @db.Uuid
-  createdAt DateTime @default(now())
-  deletedAt DateTime?
-  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: Restrict)
-  message TicketMessage? @relation(fields: [messageId], references: [id], onDelete: Restrict)
-  internalNote TicketInternalNote? @relation(fields: [internalNoteId], references: [id], onDelete: Restrict)
-  uploader User @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  uploaderId     Int
+  filename       String              @db.VarChar(200)
+  contentType    String              @db.VarChar(100)
+  byteSize       Int
+  storageKey     String              @unique @db.Uuid
+  createdAt      DateTime            @default(now())
+  deletedAt      DateTime?
+  ticket         Ticket?             @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  message        TicketMessage?      @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  internalNote   TicketInternalNote? @relation(fields: [internalNoteId], references: [id], onDelete: Restrict)
+  uploader       User                @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+
   @@index([ticketId])
   @@index([messageId])
   @@index([internalNoteId])
   @@index([uploaderId])
 }
-
 
 enum AccountActionType {
   ACCOUNT_ACTIVATION
@@ -575,14 +588,46 @@ enum AccountActionType {
 }
 
 model AccountActionToken {
-  id Int @id @default(autoincrement())
-  userId Int
-  type AccountActionType
-  tokenHash String @unique @db.VarChar(64)
-  createdAt DateTime @default(now())
+  id        Int               @id @default(autoincrement())
+  userId    Int
+  type      AccountActionType
+  tokenHash String            @unique @db.VarChar(64)
+  createdAt DateTime          @default(now())
   expiresAt DateTime
-  usedAt DateTime?
+  usedAt    DateTime?
   revokedAt DateTime?
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+
   @@index([userId, type, createdAt])
+}
+
+model CompanyKnowledgeDocument {
+  id        Int                               @id @default(autoincrement())
+  title     String                            @db.VarChar(200)
+  createdAt DateTime                          @default(now())
+  updatedAt DateTime                          @updatedAt
+  versions  CompanyKnowledgeDocumentVersion[]
+
+  @@index([createdAt, id])
+}
+
+model CompanyKnowledgeDocumentVersion {
+  id            Int                           @id @default(autoincrement())
+  documentId    Int
+  versionNumber Int
+  uploadedById  Int
+  originalName  String                        @db.VarChar(200)
+  contentType   String                        @db.VarChar(100)
+  byteSize      Int
+  sha256        String                        @db.Char(64)
+  storageKey    String                        @unique @db.Uuid
+  status        CompanyKnowledgeVersionStatus @default(UPLOADED)
+  createdAt     DateTime                      @default(now())
+  updatedAt     DateTime                      @updatedAt
+  document      CompanyKnowledgeDocument      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  uploadedBy    User                          @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, versionNumber])
+  @@index([status, createdAt, id])
+  @@index([uploadedById])
 }
