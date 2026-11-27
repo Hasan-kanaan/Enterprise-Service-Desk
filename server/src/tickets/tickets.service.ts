@@ -378,6 +378,13 @@ export class TicketsService {
   ) {
     return this.withTicket(ticketId, user, async (db, ticket) => {
       this.authorization.assertCanTransitionStatus(user, ticket, status);
+      if (status === TicketStatus.RESOLVED) {
+        resolutionSummary = resolutionSummary?.trim();
+        if (!resolutionSummary)
+          throw new BadRequestException(
+            'Resolution summary is required when resolving',
+          );
+      }
       if (resolutionSummary !== undefined && status !== TicketStatus.RESOLVED)
         throw new BadRequestException(
           'Resolution summary is only accepted when resolving',

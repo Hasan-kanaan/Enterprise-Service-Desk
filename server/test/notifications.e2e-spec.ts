@@ -56,7 +56,12 @@ describe('Persistent notifications (PostgreSQL and HTTP)', () => {
       agentId: name ? users[name].id : null,
     });
   const status = (value: string) =>
-    patch(`/tickets/${ticketId}/status`, 'manager', { status: value });
+    patch(`/tickets/${ticketId}/status`, 'manager', {
+      status: value,
+      ...(value === 'RESOLVED'
+        ? { resolutionSummary: 'Issue addressed and verified' }
+        : {}),
+    });
   const reopen = (who: string) =>
     post(`/tickets/${ticketId}/reopen`, who, {
       reason: 'Private reopening reason',
@@ -227,6 +232,7 @@ describe('Persistent notifications (PostgreSQL and HTTP)', () => {
       // A support action would ordinarily send a resolution event to the requester.
       await patch(`/tickets/${ticketId}/status`, who, {
         status: 'RESOLVED',
+        resolutionSummary: 'Issue addressed and verified',
       }).expect(200);
       expect(await rows()).toHaveLength(0);
     },

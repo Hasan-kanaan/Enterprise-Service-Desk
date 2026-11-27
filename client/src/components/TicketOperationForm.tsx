@@ -66,7 +66,8 @@ export function TicketOperationForm({
           : action === 'transfer'
             ? manager !== null
             : action === 'status'
-              ? status !== ''
+              ? status !== '' &&
+                (status !== 'RESOLVED' || !!summary.trim())
               : action === 'reopen'
                 ? !!reason.trim()
                 : true
@@ -157,12 +158,18 @@ export function TicketOperationForm({
                 Resolution summary (visible to requester)
                 <textarea
                   aria-label="Resolution summary"
+                  required
                   rows={4}
                   maxLength={4000}
                   value={summary}
                   onChange={(event) => setSummary(event.target.value)}
                 />
               </label>
+              <p className="muted small">
+                Include the problem addressed, the confirmed cause if known,
+                the action taken, and how you verified the issue was fixed. If
+                the cause is unknown, say so rather than guessing.
+              </p>
             </>
           )}
           {status === 'CLOSED' && (

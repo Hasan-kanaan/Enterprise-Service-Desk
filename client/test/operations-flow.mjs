@@ -896,7 +896,23 @@ try {
   await waitText('VPN now owned')
   await action('Change status')
   await fill('[aria-label="Next ticket status"]', 'RESOLVED')
+  assert(
+    await evaluate(
+      `[...document.querySelectorAll('button')].find(el=>el.textContent.trim()==='Confirm').disabled`,
+    ),
+  )
+  await fill('[aria-label="Resolution summary"]', ' \t ')
+  assert(
+    await evaluate(
+      `[...document.querySelectorAll('button')].find(el=>el.textContent.trim()==='Confirm').disabled`,
+    ),
+  )
   await fill('[aria-label="Resolution summary"]', 'Updated network client')
+  assert(
+    !(await evaluate(
+      `[...document.querySelectorAll('button')].find(el=>el.textContent.trim()==='Confirm').disabled`,
+    )),
+  )
   await click('Confirm')
   await waitText('This ticket is read-only.')
   assert(!(await button('Edit details')))
