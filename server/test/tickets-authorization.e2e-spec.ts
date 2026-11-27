@@ -503,6 +503,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     }).expect(200);
     await patch(`/tickets/${owned.id}/status`, 'manager', {
       status: 'RESOLVED',
+      resolutionSummary: 'Issue addressed and verified',
     }).expect(200);
     await get(`/tickets/${owned.id}`, 'otherAgent').expect(404);
     await post(`/tickets/${owned.id}/reopen`, 'employee', {
@@ -589,6 +590,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
       });
       await patch(`/tickets/${owned.id}/status`, 'manager', {
         status: 'RESOLVED',
+        resolutionSummary: 'Issue addressed and verified',
       }).expect(200);
       await patch(path, 'otherAgent', dto).expect(404);
       await post(`/tickets/${owned.id}/reopen`, 'employee', {
@@ -767,6 +769,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     if (change === 'reopening')
       await patch(`/tickets/${owned.id}/status`, 'manager', {
         status: 'RESOLVED',
+        resolutionSummary: 'Issue addressed and verified',
       }).expect(200);
     let release!: () => void;
     let ready!: () => void;
@@ -1113,6 +1116,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     expect(complete.subtask.completedAt).not.toBeNull();
     await patch(`/tickets/${owned.id}/status`, 'manager', {
       status: 'RESOLVED',
+      resolutionSummary: 'Issue addressed and verified',
     }).expect(200);
     const terminal = (
       await get(`/ticket-workspace/tickets/${owned.id}`, 'manager').expect(200)
@@ -1769,6 +1773,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     }).expect(200);
     const resolved = await patch(`/tickets/${owned.id}/status`, 'agent', {
       status: 'RESOLVED',
+      resolutionSummary: 'Issue addressed and verified',
     }).expect(200);
     await patch(`/tickets/${owned.id}/status`, 'otherManager', {
       status: 'CLOSED',
@@ -1781,6 +1786,53 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     await patch(`/tickets/${owned.id}/status`, 'manager', {
       status: 'IN_PROGRESS',
     }).expect(409);
+  });
+
+  it('requires a nonblank resolution summary and trims it before storage', async () => {
+    const path = `/tickets/${owned.id}/status`;
+    await patch(path, 'agent', { status: 'RESOLVED' }).expect(400);
+    await patch(path, 'agent', {
+      status: 'RESOLVED',
+      resolutionSummary: '',
+    }).expect(400);
+    await patch(path, 'agent', {
+      status: 'RESOLVED',
+      resolutionSummary: ' \t ',
+    }).expect(400);
+    await patch(path, 'agent', {
+      status: 'BLOCKED',
+      resolutionSummary: 'Not a resolution',
+    }).expect(400);
+    await patch(path, 'agent', {
+      status: 'RESOLVED',
+      resolutionSummary: 'x'.repeat(4001),
+    }).expect(400);
+
+    const summary = `  ${'x'.repeat(3996)}  `;
+    await patch(path, 'agent', {
+      status: 'RESOLVED',
+      resolutionSummary: summary,
+    }).expect(200);
+
+    const cycle = await db.ticketWorkCycle.findUniqueOrThrow({
+      where: { id: subtask.createdInCycleId },
+    });
+    expect(cycle.resolutionSummary).toBe('x'.repeat(3996));
+    expect(
+      (await db.ticket.findUniqueOrThrow({ where: { id: owned.id } })).status,
+    ).toBe('RESOLVED');
+  });
+
+  it('lets the requester read the exact resolution summary after an agent resolves the ticket', async () => {
+    const resolutionSummary =
+      'The VPN issue was fixed by updating the client and confirming a successful connection.';
+    await patch(`/tickets/${owned.id}/status`, 'agent', {
+      status: 'RESOLVED',
+      resolutionSummary,
+    }).expect(200);
+
+    const ticket = await get(`/tickets/${owned.id}`, 'employee').expect(200);
+    expect(ticket.body.currentCycle?.resolutionSummary).toBe(resolutionSummary);
   });
 
   it('filters support subtasks independently of parent visibility and never includes the parent', async () => {
@@ -2258,6 +2310,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     expect(newTask.body.createdInCycleId).not.toBe(first.id);
     await patch(`/tickets/${owned.id}/status`, 'manager', {
       status: 'RESOLVED',
+      resolutionSummary: 'Issue addressed and verified',
     }).expect(200);
     await post(`/tickets/${owned.id}/reopen`, 'employee', {
       reason: 'Second recurrence',
@@ -3166,6 +3219,7 @@ describe('Ticket security (real PostgreSQL and HTTP)', () => {
     const responses = await Promise.all([
       patch(`/tickets/${owned.id}/status`, 'agent', {
         status: 'RESOLVED',
+        resolutionSummary: 'Issue addressed and verified',
       }).then((response) => response),
       post(`/tickets/${owned.id}/cancel`, 'employee', {}).then(
         (response) => response,
