@@ -74,6 +74,16 @@ export class CompanyKnowledgeController {
     });
   }
 
+  @Post('versions/:versionId/retry')
+  retry(@Param('versionId', ParseIntPipe) versionId: number) {
+    return this.service.retry(versionId);
+  }
+
+  @Get('versions/:versionId/extracted-text')
+  extractedText(@Param('versionId', ParseIntPipe) versionId: number) {
+    return this.service.extractedText(versionId);
+  }
+
   @Get('documents/:documentId')
   details(@Param('documentId', ParseIntPipe) documentId: number) {
     return this.service.details(documentId);

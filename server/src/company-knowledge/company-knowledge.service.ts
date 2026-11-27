@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '../../generated/prisma/client';
 import { after, listPage, listWindow, ListQuery } from '../common/list-query';
@@ -14,6 +19,7 @@ const versionMetadataSelect = {
   byteSize: true,
   sha256: true,
   status: true,
+  processingError: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.CompanyKnowledgeDocumentVersionSelect;
@@ -188,6 +194,39 @@ export class CompanyKnowledgeService {
     if (!version)
       throw new NotFoundException('Company document version not found');
     return version;
+  }
+
+  async retry(versionId: number) {
+    const result = await this.prisma.$transaction(async (db) => {
+      const version = await db.companyKnowledgeDocumentVersion.updateMany({
+        where: { id: versionId, status: 'FAILED' },
+        data: {
+          status: 'UPLOADED',
+          processingError: null,
+        },
+      });
+      if (version.count === 0) return false;
+      await db.companyKnowledgeExtractedText.deleteMany({
+        where: { versionId },
+      });
+      return true;
+    });
+    if (!result)
+      throw new ConflictException(
+        'Only failed company document versions can be retried',
+      );
+    return { versionId, status: 'UPLOADED' as const };
+  }
+
+  async extractedText(versionId: number) {
+    const extracted =
+      await this.prisma.companyKnowledgeExtractedText.findUnique({
+        where: { versionId },
+        select: { text: true },
+      });
+    if (!extracted)
+      throw new NotFoundException('Extracted company document text not found');
+    return { text: extracted.text };
   }
 
   private async persistWithCleanup<T>(

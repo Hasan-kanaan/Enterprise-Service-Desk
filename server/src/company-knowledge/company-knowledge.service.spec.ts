@@ -46,6 +46,77 @@ describe('CompanyKnowledgeService persistence reconciliation', () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
+  describe('CompanyKnowledgeService extraction access and retry', () => {
+    it('atomically resets only a failed version and removes stale extracted text', async () => {
+      const versionUpdate = jest.fn().mockResolvedValue({ count: 1 });
+      const deleteText = jest.fn().mockResolvedValue({ count: 0 });
+      const tx = {
+        companyKnowledgeDocumentVersion: { updateMany: versionUpdate },
+        companyKnowledgeExtractedText: { deleteMany: deleteText },
+      };
+      const transaction = jest.fn(
+        (callback: (db: typeof tx) => Promise<unknown>) => callback(tx),
+      );
+      const service = new CompanyKnowledgeService(
+        { $transaction: transaction } as unknown as PrismaService,
+        {} as CompanyKnowledgeStorage,
+      );
+
+      await expect(service.retry(12)).resolves.toEqual({
+        versionId: 12,
+        status: 'UPLOADED',
+      });
+      expect(versionUpdate).toHaveBeenCalledWith({
+        where: { id: 12, status: 'FAILED' },
+        data: { status: 'UPLOADED', processingError: null },
+      });
+      expect(deleteText).toHaveBeenCalledWith({ where: { versionId: 12 } });
+    });
+
+    it('rejects duplicate retries after another retry wins the state transition', async () => {
+      const tx = {
+        companyKnowledgeDocumentVersion: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        companyKnowledgeExtractedText: { deleteMany: jest.fn() },
+      };
+      const service = new CompanyKnowledgeService(
+        {
+          $transaction: (callback: (db: typeof tx) => Promise<unknown>) =>
+            callback(tx),
+        } as unknown as PrismaService,
+        {} as CompanyKnowledgeStorage,
+      );
+
+      await expect(service.retry(12)).rejects.toThrow(
+        'Only failed company document versions can be retried',
+      );
+      expect(
+        tx.companyKnowledgeExtractedText.deleteMany,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('returns only separately persisted extracted text', async () => {
+      const extractedText = {
+        findUnique: jest.fn().mockResolvedValue({ text: 'private text' }),
+      };
+      const service = new CompanyKnowledgeService(
+        {
+          companyKnowledgeExtractedText: extractedText,
+        } as unknown as PrismaService,
+        {} as CompanyKnowledgeStorage,
+      );
+
+      await expect(service.extractedText(12)).resolves.toEqual({
+        text: 'private text',
+      });
+      expect(extractedText.findUnique).toHaveBeenCalledWith({
+        where: { versionId: 12 },
+        select: { text: true },
+      });
+    });
+  });
+
   it('retains the object when a commit outcome cannot be reconciled', async () => {
     const transaction = {
       companyKnowledgeDocument: {

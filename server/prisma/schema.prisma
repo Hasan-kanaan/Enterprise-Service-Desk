@@ -612,22 +612,36 @@ model CompanyKnowledgeDocument {
 }
 
 model CompanyKnowledgeDocumentVersion {
-  id            Int                           @id @default(autoincrement())
-  documentId    Int
-  versionNumber Int
-  uploadedById  Int
-  originalName  String                        @db.VarChar(200)
-  contentType   String                        @db.VarChar(100)
-  byteSize      Int
-  sha256        String                        @db.Char(64)
-  storageKey    String                        @unique @db.Uuid
-  status        CompanyKnowledgeVersionStatus @default(UPLOADED)
-  createdAt     DateTime                      @default(now())
-  updatedAt     DateTime                      @updatedAt
-  document      CompanyKnowledgeDocument      @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  uploadedBy    User                          @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  id                       Int                            @id @default(autoincrement())
+  documentId               Int
+  versionNumber            Int
+  uploadedById             Int
+  originalName             String                         @db.VarChar(200)
+  contentType              String                         @db.VarChar(100)
+  byteSize                 Int
+  sha256                   String                         @db.Char(64)
+  storageKey               String                         @unique @db.Uuid
+  status                   CompanyKnowledgeVersionStatus  @default(UPLOADED)
+  processingWorkerId       String?                        @db.Uuid
+  processingLeaseToken     String?                        @db.Uuid
+  processingLeaseExpiresAt DateTime?
+  processingError          String?                        @db.VarChar(500)
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
+  document                 CompanyKnowledgeDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  uploadedBy               User                           @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  extractedText            CompanyKnowledgeExtractedText?
 
   @@unique([documentId, versionNumber])
   @@index([status, createdAt, id])
   @@index([uploadedById])
+}
+
+model CompanyKnowledgeExtractedText {
+  id        Int                             @id @default(autoincrement())
+  versionId Int                             @unique
+  text      String                          @db.Text
+  createdAt DateTime                        @default(now())
+  updatedAt DateTime                        @updatedAt
+  version   CompanyKnowledgeDocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 }
