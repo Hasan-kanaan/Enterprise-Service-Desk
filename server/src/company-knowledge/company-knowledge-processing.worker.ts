@@ -7,14 +7,21 @@ import {
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CompanyKnowledgeTextExtractionService } from './company-knowledge-text-extraction.service';
+import {
+  COMPANY_KNOWLEDGE_PROCESSING_STAGE,
+  CompanyKnowledgeStatusGateway,
+} from './company-knowledge-status.gateway';
 
 export const COMPANY_KNOWLEDGE_QUEUE_POLL_INTERVAL_MS = 1_000;
 export const COMPANY_KNOWLEDGE_PROCESSING_LEASE_MS = 60_000;
 
 type ClaimedVersion = {
   id: number;
+  documentId: number;
   storageKey: string;
   contentType: string;
+  processingStartedAt: Date;
+  updatedAt: Date;
 };
 
 @Injectable()
@@ -30,6 +37,7 @@ export class CompanyKnowledgeProcessingWorker
   constructor(
     private readonly prisma: PrismaService,
     private readonly extraction: CompanyKnowledgeTextExtractionService,
+    private readonly statusGateway: CompanyKnowledgeStatusGateway,
   ) {}
 
   onModuleInit() {
@@ -60,7 +68,17 @@ export class CompanyKnowledgeProcessingWorker
 
   private async processNext() {
     const claim = await this.claimNext();
-    if (claim) await this.processClaim(claim);
+    if (claim) {
+      await this.statusGateway.emitStatus({
+        documentId: claim.documentId,
+        versionId: claim.id,
+        status: 'PROCESSING',
+        stage: COMPANY_KNOWLEDGE_PROCESSING_STAGE,
+        processingStartedAt: claim.processingStartedAt,
+        updatedAt: claim.updatedAt,
+      });
+      await this.processClaim(claim);
+    }
   }
 
   private claimNext() {
@@ -80,6 +98,7 @@ export class CompanyKnowledgeProcessingWorker
       )
       UPDATE "CompanyKnowledgeDocumentVersion" AS version
       SET "status" = 'PROCESSING',
+          "processingStartedAt" = COALESCE("processingStartedAt", CURRENT_TIMESTAMP),
           "processingWorkerId" = ${this.workerId}::uuid,
           "processingLeaseToken" = ${leaseToken}::uuid,
           "processingLeaseExpiresAt" =
@@ -88,7 +107,9 @@ export class CompanyKnowledgeProcessingWorker
           "updatedAt" = CURRENT_TIMESTAMP
       FROM candidate
       WHERE version."id" = candidate."id"
-      RETURNING version."id", version."storageKey", version."contentType"
+      RETURNING version."id", version."documentId", version."storageKey",
+                version."contentType", version."processingStartedAt",
+                version."updatedAt"
     `.then((rows) => (rows[0] ? { ...rows[0], leaseToken } : null));
   }
 
@@ -154,8 +175,15 @@ export class CompanyKnowledgeProcessingWorker
     claim: ClaimedVersion & { leaseToken: string },
     text: string,
   ) {
-    await this.prisma.$transaction(async (db) => {
-      const updated = await db.$queryRaw<Array<{ id: number }>>`
+    const result = await this.prisma.$transaction(async (db) => {
+      const updated = await db.$queryRaw<
+        Array<{
+          id: number;
+          documentId: number;
+          processingStartedAt: Date;
+          updatedAt: Date;
+        }>
+      >`
         UPDATE "CompanyKnowledgeDocumentVersion"
         SET "status" = 'READY_FOR_REVIEW',
             "processingWorkerId" = NULL,
@@ -168,18 +196,35 @@ export class CompanyKnowledgeProcessingWorker
           AND "processingWorkerId" = ${this.workerId}::uuid
           AND "processingLeaseToken" = ${claim.leaseToken}::uuid
           AND "processingLeaseExpiresAt" > CURRENT_TIMESTAMP
-        RETURNING "id"
+        RETURNING "id", "documentId", "processingStartedAt", "updatedAt"
       `;
-      if (updated.length === 0) return;
+      if (updated.length === 0) return null;
       await db.companyKnowledgeExtractedText.create({
         data: { versionId: claim.id, text },
       });
+      return updated[0];
     });
+    if (result)
+      await this.statusGateway.emitStatus({
+        documentId: result.documentId,
+        versionId: result.id,
+        status: 'READY_FOR_REVIEW',
+        stage: null,
+        processingStartedAt: result.processingStartedAt,
+        updatedAt: result.updatedAt,
+      });
   }
 
   private async fail(claim: ClaimedVersion & { leaseToken: string }) {
     const error = 'Text extraction failed. Verify the file is valid and retry.';
-    await this.prisma.$executeRaw`
+    const updated = await this.prisma.$queryRaw<
+      Array<{
+        id: number;
+        documentId: number;
+        processingStartedAt: Date;
+        updatedAt: Date;
+      }>
+    >`
       UPDATE "CompanyKnowledgeDocumentVersion"
       SET "status" = 'FAILED',
           "processingWorkerId" = NULL,
@@ -192,6 +237,16 @@ export class CompanyKnowledgeProcessingWorker
         AND "processingWorkerId" = ${this.workerId}::uuid
         AND "processingLeaseToken" = ${claim.leaseToken}::uuid
         AND "processingLeaseExpiresAt" > CURRENT_TIMESTAMP
+      RETURNING "id", "documentId", "processingStartedAt", "updatedAt"
     `;
+    if (updated[0])
+      await this.statusGateway.emitStatus({
+        documentId: updated[0].documentId,
+        versionId: updated[0].id,
+        status: 'FAILED',
+        stage: null,
+        processingStartedAt: updated[0].processingStartedAt,
+        updatedAt: updated[0].updatedAt,
+      });
   }
 }

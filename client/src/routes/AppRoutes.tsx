@@ -55,6 +55,11 @@ const TicketRoutingPage = lazy(() =>
     default: module.TicketRoutingPage,
   })),
 )
+const CompanyKnowledgePage = lazy(() =>
+  import('@/pages/CompanyKnowledgePage').then((module) => ({
+    default: module.CompanyKnowledgePage,
+  })),
+)
 const OrganizationPage = lazy(() =>
   import('@/pages/OrganizationPage').then((module) => ({
     default: module.OrganizationPage,
@@ -97,6 +102,10 @@ export function AppRoutes() {
                 <Route
                   path="/admin/ticket-routing"
                   element={<TicketRoutingPage />}
+                />
+                <Route
+                  path="/admin/company-knowledge"
+                  element={<CompanyKnowledgePage />}
                 />
               </Route>
             </Route>

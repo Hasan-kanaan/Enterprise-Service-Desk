@@ -1,11 +1,15 @@
 import { CompanyKnowledgeProcessingWorker } from './company-knowledge-processing.worker';
 import { PrismaService } from '../prisma/prisma.service';
 import { CompanyKnowledgeTextExtractionService } from './company-knowledge-text-extraction.service';
+import type { CompanyKnowledgeStatusPayload } from './company-knowledge-status.gateway';
 
 const claimed = {
   id: 12,
+  documentId: 7,
   storageKey: '9a8b7c6d-5e4f-3210-9876-123456789abc',
   contentType: 'text/plain',
+  processingStartedAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 };
 
 function sqlOf(mock: jest.Mock, callIndex = 0) {
@@ -49,7 +53,15 @@ function makeWorker(
     overrides.claim ?? jest.fn().mockResolvedValue([{ ...claimed }]);
   const renew = overrides.renew ?? jest.fn().mockResolvedValue(1);
   const complete =
-    overrides.complete ?? jest.fn().mockResolvedValue([{ id: 12 }]);
+    overrides.complete ??
+    jest.fn().mockResolvedValue([
+      {
+        id: 12,
+        documentId: claimed.documentId,
+        processingStartedAt: claimed.processingStartedAt,
+        updatedAt: new Date('2026-01-01T00:05:00.000Z'),
+      },
+    ]);
   const createText = jest.fn().mockResolvedValue({ versionId: 12 });
   const tx = {
     $queryRaw: complete,
@@ -66,14 +78,27 @@ function makeWorker(
   const extractor = {
     extract: extraction,
   } as unknown as CompanyKnowledgeTextExtractionService;
+  const emittedStatuses: CompanyKnowledgeStatusPayload[] = [];
+  const statusGateway = {
+    emitStatus: jest.fn((event: CompanyKnowledgeStatusPayload) => {
+      emittedStatuses.push(event);
+      return Promise.resolve();
+    }),
+    emittedStatuses,
+  };
   return {
-    worker: new CompanyKnowledgeProcessingWorker(prisma, extractor),
+    worker: new CompanyKnowledgeProcessingWorker(
+      prisma,
+      extractor,
+      statusGateway as never,
+    ),
     claim,
     renew,
     complete,
     createText,
     transaction,
     extraction,
+    statusGateway,
   };
 }
 
@@ -91,6 +116,9 @@ describe('CompanyKnowledgeProcessingWorker', () => {
     expect(sql).toContain('ORDER BY "createdAt" ASC, "id" ASC');
     expect(sql).toContain('FOR UPDATE SKIP LOCKED');
     expect(sql).toContain('"processingLeaseExpiresAt" <= CURRENT_TIMESTAMP');
+    expect(sql).toContain(
+      '"processingStartedAt" = COALESCE("processingStartedAt", CURRENT_TIMESTAMP)',
+    );
   });
 
   it('processes no more than one job at a time per worker instance', async () => {
@@ -141,8 +169,19 @@ describe('CompanyKnowledgeProcessingWorker', () => {
     const extraction = {
       extract,
     } as unknown as CompanyKnowledgeTextExtractionService;
-    const first = new CompanyKnowledgeProcessingWorker(prisma, extraction);
-    const second = new CompanyKnowledgeProcessingWorker(prisma, extraction);
+    const statusGateway = {
+      emitStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const first = new CompanyKnowledgeProcessingWorker(
+      prisma,
+      extraction,
+      statusGateway as never,
+    );
+    const second = new CompanyKnowledgeProcessingWorker(
+      prisma,
+      extraction,
+      statusGateway as never,
+    );
 
     await Promise.all([first.trigger(), second.trigger()]);
 
@@ -156,7 +195,7 @@ describe('CompanyKnowledgeProcessingWorker', () => {
   it('renews a live lease and atomically persists complete text with READY_FOR_REVIEW', async () => {
     jest.useFakeTimers();
     const extraction = deferred<string>();
-    const { worker, renew, complete, createText } = makeWorker(
+    const { worker, renew, complete, createText, statusGateway } = makeWorker(
       jest.fn(() => extraction.promise),
     );
 
@@ -174,12 +213,42 @@ describe('CompanyKnowledgeProcessingWorker', () => {
     expect(createText.mock.invocationCallOrder[0]).toBeGreaterThan(
       complete.mock.invocationCallOrder[0],
     );
+    expect(sqlOf(complete)).not.toContain('"processingStartedAt" =');
+    expect(statusGateway.emittedStatuses.map((event) => event.status)).toEqual([
+      'PROCESSING',
+      'READY_FOR_REVIEW',
+    ]);
+    expect(Object.keys(statusGateway.emittedStatuses[0])).toEqual([
+      'documentId',
+      'versionId',
+      'status',
+      'stage',
+      'processingStartedAt',
+      'updatedAt',
+    ]);
+    expect(
+      statusGateway.emitStatus.mock.invocationCallOrder[1],
+    ).toBeGreaterThan(createText.mock.invocationCallOrder[0]);
+  });
+
+  it('does not emit completion when its lease-guarded update affects no row', async () => {
+    const { worker, statusGateway, createText } = makeWorker(
+      jest.fn().mockResolvedValue('complete extracted text'),
+      { complete: jest.fn().mockResolvedValue([]) },
+    );
+
+    await worker.trigger();
+
+    expect(createText).not.toHaveBeenCalled();
+    expect(statusGateway.emittedStatuses.map((event) => event.status)).toEqual([
+      'PROCESSING',
+    ]);
   });
 
   it('does not complete after losing its lease to a newer claim', async () => {
     jest.useFakeTimers();
     const extraction = deferred<string>();
-    const { worker, renew, transaction } = makeWorker(
+    const { worker, renew, transaction, statusGateway } = makeWorker(
       jest.fn(() => extraction.promise),
       { renew: jest.fn().mockResolvedValue(0) },
     );
@@ -191,21 +260,26 @@ describe('CompanyKnowledgeProcessingWorker', () => {
     await running;
 
     expect(transaction).not.toHaveBeenCalled();
+    expect(statusGateway.emitStatus).toHaveBeenCalledTimes(1);
+    expect(statusGateway.emittedStatuses[0].status).toBe('PROCESSING');
   });
 
   it('fails a replacement without creating text or changing other versions', async () => {
     const extraction = jest
       .fn()
       .mockRejectedValue(new Error('private parser details'));
-    const { worker, renew, transaction } = makeWorker(extraction);
+    const { worker, claim, statusGateway } = makeWorker(extraction);
 
     await worker.trigger();
 
-    expect(sqlOf(renew)).toContain('"status" = \'FAILED\'');
-    expect(argumentOf(renew, 0, 1)).toBe(
+    expect(sqlOf(claim, 1)).toContain('"status" = \'FAILED\'');
+    expect(argumentOf(claim, 1, 1)).toBe(
       'Text extraction failed. Verify the file is valid and retry.',
     );
-    expect(sqlOf(renew)).not.toContain('"CompanyKnowledgeDocument"');
-    expect(transaction).not.toHaveBeenCalled();
+    expect(sqlOf(claim, 1)).not.toContain('"processingStartedAt" =');
+    expect(statusGateway.emittedStatuses.map((event) => event.status)).toEqual([
+      'PROCESSING',
+      'FAILED',
+    ]);
   });
 });

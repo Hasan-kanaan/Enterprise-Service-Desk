@@ -1,0 +1,174 @@
+.company-knowledge-page {
+  max-width: 1080px;
+}
+
+.company-knowledge-upload {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.company-knowledge-upload > div {
+  flex: 1;
+}
+
+.company-knowledge-upload h2,
+.company-knowledge-list-heading h2 {
+  margin: 0 0 5px;
+  font-size: 15px;
+}
+
+.company-knowledge-upload p {
+  margin: 0;
+}
+
+.company-knowledge-file {
+  display: grid;
+  gap: 5px;
+  max-width: min(100%, 360px);
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.company-knowledge-file input {
+  max-width: 100%;
+}
+
+.company-knowledge-list-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.company-knowledge-list-heading h2 {
+  margin: 0;
+}
+
+.company-knowledge-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.company-knowledge-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.company-knowledge-item:last-child {
+  border-bottom: 0;
+}
+
+.company-knowledge-item-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.75fr);
+  align-items: center;
+  gap: 22px;
+  min-width: 0;
+  flex: 1;
+}
+
+.company-knowledge-item-title,
+.company-knowledge-item-state {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.company-knowledge-item-title h3 {
+  max-width: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.company-knowledge-item-title .quiet-note {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.company-knowledge-status-processing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+}
+
+.company-knowledge-status-ready-for-review,
+.company-knowledge-status-published {
+  color: var(--success);
+}
+
+.company-knowledge-status-failed {
+  color: var(--danger);
+}
+
+.company-knowledge-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.company-knowledge-spinner {
+  animation: company-knowledge-spin 1s linear infinite;
+}
+
+.company-knowledge-empty {
+  margin: 0;
+  padding: 24px 20px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.company-knowledge-more {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+@keyframes company-knowledge-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 700px) {
+  .company-knowledge-upload {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .company-knowledge-upload .button {
+    align-self: flex-start;
+  }
+
+  .company-knowledge-item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .company-knowledge-item-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .company-knowledge-spinner {
+    animation: none;
+  }
+}

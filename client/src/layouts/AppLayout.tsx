@@ -40,6 +40,11 @@ const navigation = {
       to: '/admin/ticket-routing',
       icon: Settings,
     },
+    {
+      label: 'Company knowledge',
+      to: '/admin/company-knowledge',
+      icon: Settings,
+    },
   ],
   ADMIN: [
     { label: 'Administration', to: '/admin', icon: LayoutDashboard },

@@ -5,11 +5,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { Prisma } from '../../generated/prisma/client';
+import {
+  Prisma,
+  type CompanyKnowledgeVersionStatus,
+} from '../../generated/prisma/client';
 import { after, listPage, listWindow, ListQuery } from '../common/list-query';
 import { PrismaService } from '../prisma/prisma.service';
 import { CompanyKnowledgeStorage } from './company-knowledge.storage';
 import { CompanyKnowledgeUpload } from './company-knowledge-upload.interceptor';
+import {
+  CompanyKnowledgeStatusGateway,
+  type CompanyKnowledgeStatusPayload,
+} from './company-knowledge-status.gateway';
 
 const versionMetadataSelect = {
   id: true,
@@ -20,6 +27,7 @@ const versionMetadataSelect = {
   sha256: true,
   status: true,
   processingError: true,
+  processingStartedAt: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.CompanyKnowledgeDocumentVersionSelect;
@@ -44,6 +52,7 @@ export class CompanyKnowledgeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: CompanyKnowledgeStorage,
+    private readonly statusGateway: CompanyKnowledgeStatusGateway,
   ) {}
 
   async list(query: ListQuery) {
@@ -89,7 +98,7 @@ export class CompanyKnowledgeService {
 
   async uploadNew(file: CompanyKnowledgeUpload, actor: UploadActor) {
     const storageKey = randomUUID();
-    return this.persistWithCleanup(
+    const document = await this.persistWithCleanup(
       storageKey,
       file.path,
       (markCommitUncertain) =>
@@ -120,6 +129,9 @@ export class CompanyKnowledgeService {
           select: documentMetadataSelect,
         }),
     );
+    const version = document.versions[0];
+    if (version) await this.emitStatus(document.id, version);
+    return document;
   }
 
   async uploadVersion(
@@ -134,7 +146,7 @@ export class CompanyKnowledgeService {
     if (!exists) throw new NotFoundException('Company document not found');
 
     const storageKey = randomUUID();
-    return this.persistWithCleanup(
+    const version = await this.persistWithCleanup(
       storageKey,
       file.path,
       (markCommitUncertain) =>
@@ -178,6 +190,8 @@ export class CompanyKnowledgeService {
           select: versionMetadataSelect,
         }),
     );
+    await this.emitStatus(documentId, version);
+    return version;
   }
 
   async downloadMetadata(versionId: number) {
@@ -197,24 +211,35 @@ export class CompanyKnowledgeService {
   }
 
   async retry(versionId: number) {
-    const result = await this.prisma.$transaction(async (db) => {
+    const version = await this.prisma.$transaction(async (db) => {
       const version = await db.companyKnowledgeDocumentVersion.updateMany({
         where: { id: versionId, status: 'FAILED' },
         data: {
           status: 'UPLOADED',
           processingError: null,
+          processingStartedAt: null,
         },
       });
-      if (version.count === 0) return false;
+      if (version.count === 0) return null;
       await db.companyKnowledgeExtractedText.deleteMany({
         where: { versionId },
       });
-      return true;
+      return db.companyKnowledgeDocumentVersion.findUnique({
+        where: { id: versionId },
+        select: {
+          id: true,
+          documentId: true,
+          status: true,
+          processingStartedAt: true,
+          updatedAt: true,
+        },
+      });
     });
-    if (!result)
+    if (!version)
       throw new ConflictException(
         'Only failed company document versions can be retried',
       );
+    await this.emitStatus(version.documentId, version);
     return { versionId, status: 'UPLOADED' as const };
   }
 
@@ -227,6 +252,27 @@ export class CompanyKnowledgeService {
     if (!extracted)
       throw new NotFoundException('Extracted company document text not found');
     return { text: extracted.text };
+  }
+
+  private emitStatus(
+    documentId: number,
+    version: {
+      id: number;
+      status: CompanyKnowledgeVersionStatus;
+      processingStartedAt: Date | null;
+      updatedAt: Date;
+    },
+  ) {
+    const payload: CompanyKnowledgeStatusPayload = {
+      documentId,
+      versionId: version.id,
+      status: version.status,
+      stage:
+        version.status === 'PROCESSING' ? 'Extracting document text' : null,
+      processingStartedAt: version.processingStartedAt,
+      updatedAt: version.updatedAt,
+    };
+    return this.statusGateway.emitStatus(payload);
   }
 
   private async persistWithCleanup<T>(

@@ -625,6 +625,7 @@ model CompanyKnowledgeDocumentVersion {
   processingWorkerId       String?                        @db.Uuid
   processingLeaseToken     String?                        @db.Uuid
   processingLeaseExpiresAt DateTime?
+  processingStartedAt      DateTime?
   processingError          String?                        @db.VarChar(500)
   createdAt                DateTime                       @default(now())
   updatedAt                DateTime                       @updatedAt

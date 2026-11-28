@@ -9,6 +9,7 @@ import {
 } from '../generated/prisma/client';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { CompanyKnowledgeProcessingWorker } from '../src/company-knowledge/company-knowledge-processing.worker';
+import { CompanyKnowledgeStatusGateway } from '../src/company-knowledge/company-knowledge-status.gateway';
 import { CompanyKnowledgeStorage } from '../src/company-knowledge/company-knowledge.storage';
 import { CompanyKnowledgeTextExtractionService } from '../src/company-knowledge/company-knowledge-text-extraction.service';
 
@@ -116,6 +117,7 @@ describe('Company Knowledge processing worker (isolated PostgreSQL)', () => {
     for (const migration of [
       '20261127120000_company_knowledge_documents',
       '20261127230000_company_knowledge_processing_queue',
+      '20261128000000_company_knowledge_processing_started_at',
     ]) {
       const migrationSql = readFileSync(
         join(__dirname, '../prisma/migrations', migration, 'migration.sql'),
@@ -170,6 +172,7 @@ describe('Company Knowledge processing worker (isolated PostgreSQL)', () => {
       workerId?: string;
       leaseToken?: string;
       leaseExpiresAt?: Date;
+      processingStartedAt?: Date;
     } = {},
   ) {
     const createdAt = options.createdAt ?? new Date();
@@ -194,6 +197,7 @@ describe('Company Knowledge processing worker (isolated PostgreSQL)', () => {
         processingWorkerId: options.workerId,
         processingLeaseToken: options.leaseToken,
         processingLeaseExpiresAt: options.leaseExpiresAt,
+        processingStartedAt: options.processingStartedAt,
         createdAt,
       },
       select: { id: true, storageKey: true },
@@ -232,6 +236,9 @@ describe('Company Knowledge processing worker (isolated PostgreSQL)', () => {
     return new CompanyKnowledgeProcessingWorker(
       client() as unknown as PrismaService,
       extraction,
+      {
+        emitStatus: () => Promise.resolve(),
+      } as unknown as CompanyKnowledgeStatusGateway,
     );
   }
 
@@ -328,6 +335,59 @@ describe('Company Knowledge processing worker (isolated PostgreSQL)', () => {
         control.result.resolve('test cleanup');
       await Promise.allSettled(running);
       await Promise.all(workers.map((worker) => worker.onModuleDestroy()));
+      await cleanupFixture(fixture);
+    }
+  });
+
+  it('preserves the original processing start time when another worker recovers an expired lease', async () => {
+    const fixture = await createFixture();
+    const startedAt = new Date(Date.now() - 120_000);
+    const extractionResult = deferred<string>();
+    const extractionStarted = deferred<void>();
+    let worker: CompanyKnowledgeProcessingWorker | undefined;
+    let running: Promise<void> | undefined;
+    try {
+      const version = await createVersion(fixture, fixture.userIds[0], {
+        status: CompanyKnowledgeVersionStatus.PROCESSING,
+        workerId: randomUUID(),
+        leaseToken: randomUUID(),
+        leaseExpiresAt: new Date(Date.now() - 60_000),
+        processingStartedAt: startedAt,
+      });
+      worker = makeWorker(async () => {
+        extractionStarted.resolve(undefined);
+        return extractionResult.promise;
+      });
+      running = runWorker(worker);
+      await waitForStart(extractionStarted.promise, 'the recovered claim');
+
+      const recovered =
+        await client().companyKnowledgeDocumentVersion.findUniqueOrThrow({
+          where: { id: version.id },
+          select: {
+            status: true,
+            processingWorkerId: true,
+            processingStartedAt: true,
+          },
+        });
+      expect(recovered.status).toBe(CompanyKnowledgeVersionStatus.PROCESSING);
+      expect(recovered.processingStartedAt).toEqual(startedAt);
+
+      extractionResult.resolve('recovered document text');
+      await running;
+      const completed =
+        await client().companyKnowledgeDocumentVersion.findUniqueOrThrow({
+          where: { id: version.id },
+          select: { status: true, processingStartedAt: true },
+        });
+      expect(completed.status).toBe(
+        CompanyKnowledgeVersionStatus.READY_FOR_REVIEW,
+      );
+      expect(completed.processingStartedAt).toEqual(startedAt);
+    } finally {
+      extractionResult.resolve('test cleanup');
+      await running;
+      await worker?.onModuleDestroy();
       await cleanupFixture(fixture);
     }
   });

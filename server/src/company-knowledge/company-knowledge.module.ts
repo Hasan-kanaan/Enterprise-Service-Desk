@@ -11,6 +11,7 @@ import {
 import { CompanyKnowledgeService } from './company-knowledge.service';
 import { CompanyKnowledgeTextExtractionService } from './company-knowledge-text-extraction.service';
 import { CompanyKnowledgeProcessingWorker } from './company-knowledge-processing.worker';
+import { CompanyKnowledgeStatusGateway } from './company-knowledge-status.gateway';
 
 @Module({
   imports: [JwtModule.register({ secret: jwtConstants.secret })],
@@ -21,6 +22,7 @@ import { CompanyKnowledgeProcessingWorker } from './company-knowledge-processing
     CompanyKnowledgeService,
     CompanyKnowledgeTextExtractionService,
     CompanyKnowledgeProcessingWorker,
+    CompanyKnowledgeStatusGateway,
     {
       provide: CompanyKnowledgeStorage,
       useFactory: () => createCompanyKnowledgeStorage(),

@@ -30,6 +30,11 @@ export function AdministrationPage() {
             description: 'Automatic Manager assignment and category coverage',
             to: '/admin/ticket-routing',
           },
+          {
+            title: 'Company knowledge',
+            description: 'Manage documents and processing status',
+            to: '/admin/company-knowledge',
+          },
         ]
       : destinations
   return (
